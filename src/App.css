@@ -1,0 +1,137 @@
+.app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.main-content {
+    flex: 1;
+}
+
+.hero {
+    padding: 80px var(--space-xl);
+    background-color: var(--sand);
+    text-align: center;
+}
+
+.hero-content {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.hero-title {
+    font-size: var(--size-display);
+    color: var(--deep-ocean);
+    margin-bottom: var(--space-md);
+}
+
+.hero-subtitle {
+    font-size: var(--size-h3);
+    color: var(--dark-gray);
+    opacity: 0.8;
+    margin-bottom: var(--space-3xl);
+}
+
+.hero-search {
+    margin-top: var(--space-xl);
+}
+
+.featured-destinations {
+    padding: 80px var(--space-xl);
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: var(--space-2xl);
+}
+
+.section-title {
+    font-size: var(--size-h2);
+    color: var(--deep-ocean);
+}
+
+.grid {
+    display: grid;
+    gap: var(--space-xl);
+}
+
+.grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+.cta-section {
+    padding: 80px var(--space-xl);
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.cta-card {
+    background-color: var(--deep-ocean);
+    color: var(--white);
+    padding: 64px;
+    border-radius: var(--radius-card);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-lg);
+}
+
+.cta-card h2 {
+    font-size: var(--size-h1);
+}
+
+.cta-card p {
+    font-size: var(--size-body);
+    max-width: 500px;
+    opacity: 0.9;
+}
+
+.footer {
+    padding: 40px var(--space-xl);
+    background-color: var(--soft-gray);
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.footer-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.footer-logo {
+    font-family: var(--font-brand);
+    font-size: var(--size-h3);
+    font-weight: 700;
+    color: var(--deep-ocean);
+}
+
+@media (max-width: 1024px) {
+    .grid-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .grid-4 {
+        grid-template-columns: 1fr;
+    }
+
+    .hero-title {
+        font-size: var(--size-h1);
+    }
+
+    .hero {
+        padding: 40px var(--space-lg);
+    }
+
+    .cta-card {
+        padding: 32px;
+    }
+}

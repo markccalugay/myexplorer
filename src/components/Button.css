@@ -1,0 +1,55 @@
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 20px;
+    border-radius: var(--radius-button);
+    font-family: var(--font-ui);
+    font-size: var(--size-body);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 2px solid transparent;
+    width: fit-content;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Primary Button */
+.btn-primary {
+    background-color: var(--explorer-blue);
+    color: var(--white);
+}
+
+.btn-primary:hover:not(:disabled) {
+    background-color: var(--deep-ocean);
+    transform: translateY(-1px);
+}
+
+/* Secondary Button */
+.btn-secondary {
+    background-color: var(--white);
+    color: var(--explorer-blue);
+    border-color: var(--explorer-blue);
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background-color: var(--soft-gray);
+    transform: translateY(-1px);
+}
+
+/* CTA Button */
+.btn-cta {
+    background-color: var(--sunset-orange);
+    color: var(--white);
+    padding: 14px 24px;
+}
+
+.btn-cta:hover:not(:disabled) {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-soft);
+}

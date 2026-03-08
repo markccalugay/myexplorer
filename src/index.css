@@ -1,0 +1,68 @@
+:root {
+  /* Colors */
+  --explorer-blue: #1E88E5;
+  --deep-ocean: #0D47A1;
+  --sky-blue: #64B5F6;
+  --sunset-orange: #FF7043;
+  --forest-green: #2E7D32;
+  --sand: #F5E9DA;
+  --white: #FFFFFF;
+  --soft-gray: #F4F6F8;
+  --dark-gray: #263238;
+
+  /* Typography */
+  --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-brand: 'Playfair Display', serif;
+
+  --size-display: 48px;
+  --size-h1: 36px;
+  --size-h2: 28px;
+  --size-h3: 22px;
+  --size-h4: 18px;
+  --size-body: 16px;
+  --size-small: 14px;
+  --size-caption: 12px;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --space-4xl: 64px;
+
+  /* Radius */
+  --radius-button: 12px;
+  --radius-card: 16px;
+
+  /* Shadows */
+  --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--dark-gray);
+  background-color: var(--white);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, .font-brand {
+  font-family: var(--font-brand);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+h1 { font-size: var(--size-h1); }
+h2 { font-size: var(--size-h2); }
+h3 { font-size: var(--size-h3); }
+h4 { font-size: var(--size-h4); }
