@@ -1,7 +1,8 @@
 .app {
-    min-height: 100vh;
     display: flex;
     flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
 }
 
 .main-content {
@@ -89,6 +90,77 @@
     font-size: var(--size-body);
     max-width: 500px;
     opacity: 0.9;
+}
+
+.explorer-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.results-panel {
+    width: 40%;
+    min-width: 400px;
+    height: 100%;
+    overflow-y: auto;
+    background: var(--bg-color, #ffffff);
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #eee;
+    z-index: 10;
+}
+
+.map-panel {
+    flex: 1;
+    height: 100%;
+    background: #f0f0f0;
+}
+
+.search-overlay {
+    padding: 24px;
+    background: #fff;
+    border-bottom: 1px solid #eee;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.results-content {
+    padding: 24px;
+}
+
+.results-header {
+    margin-bottom: 24px;
+}
+
+.results-header h2 {
+    font-size: 24px;
+    margin-bottom: 4px;
+    color: var(--text-primary, #263238);
+}
+
+.results-header p {
+    color: var(--text-secondary, #666);
+    font-size: 14px;
+}
+
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 24px;
+}
+
+.mini-footer {
+    padding: 12px 24px;
+    background: #fff;
+    border-top: 1px solid #eee;
+}
+
+.mini-footer .footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .footer {

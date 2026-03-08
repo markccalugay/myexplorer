@@ -29,11 +29,16 @@
 
 .search-input {
     border: none;
-    background: transparent;
-    font-family: var(--font-ui);
-    font-size: var(--size-small);
-    color: var(--dark-gray);
+    outline: none;
+    font-size: 14px;
+    color: #263238;
     width: 100%;
+    background: transparent;
+    padding: 4px 0;
+}
+
+.search-input::placeholder {
+    color: #999;
 }
 
 .search-input:focus {

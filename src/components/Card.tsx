@@ -7,6 +7,7 @@ interface DestinationCardProps {
     rating: number;
     price: string;
     title: string;
+    onClick?: () => void;
 }
 
 export const DestinationCard: React.FC<DestinationCardProps> = ({
@@ -15,9 +16,10 @@ export const DestinationCard: React.FC<DestinationCardProps> = ({
     rating,
     price,
     title,
+    onClick,
 }) => {
     return (
-        <div className="card destination-card">
+        <div className="card destination-card" onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
             <div className="card-image-container">
                 <img src={image} alt={title} className="card-image" />
                 <div className="card-badge">Top Rated</div>
