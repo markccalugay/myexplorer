@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { Navbar } from './components/Navbar';
 import { SearchBar } from './components/SearchBar';
 import { DestinationCard } from './components/Card';
@@ -127,6 +128,8 @@ function App() {
                     <p>© 2026 MyExplorer. All rights reserved.</p>
                 </div>
             </footer>
+            
+            <Analytics />
         </div>
     )
 }
