@@ -37,4 +37,3 @@ android/build/
 logs/
 *.log
 coverage/
-dist/
