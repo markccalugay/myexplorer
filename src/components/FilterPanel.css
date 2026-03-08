@@ -1,0 +1,66 @@
+.filter-panel {
+    padding: 24px;
+    background: #fdfdfd;
+    border-top: 1px solid #eee;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.filter-section {
+    margin-bottom: 20px;
+}
+
+.filter-section h4 {
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    margin: 0 0 16px 0;
+    font-size: 12px;
+    font-weight: 800;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+}
+
+.filter-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.filter-chip {
+    cursor: pointer;
+}
+
+.filter-chip input {
+    display: none;
+}
+
+.filter-chip span {
+    padding: 8px 18px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #555;
+    transition: all 0.25s ease;
+    display: inline-block;
+    background: #f8f8f8;
+}
+
+.filter-chip input:checked+span {
+    background: linear-gradient(135deg, var(--explorer-blue), #00b4db);
+    color: white;
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(0, 102, 204, 0.2);
+}
+
+.filter-chip:hover span {
+    border-color: var(--explorer-blue);
+    background: #f0f7ff;
+    color: var(--explorer-blue);
+    transform: translateY(-1px);
+}
+
+.filter-chip input:checked:hover span {
+    color: white;
+}

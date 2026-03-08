@@ -1,0 +1,9 @@
+.trip-timeline {
+    width: 100%;
+}
+
+.timeline-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: #999;
+}
