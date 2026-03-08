@@ -34,29 +34,60 @@
 
 .planner-body {
     padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
 .input-group {
-    margin-top: 20px;
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 
 .input-group label {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
-    color: #444;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.route-input {
+.route-input,
+.route-select {
     padding: 12px;
     border: 1px solid #ddd;
     border-radius: 8px;
     font-size: 14px;
+    background: #f9f9f9;
+    transition: all 0.2s ease;
 }
 
-.route-input:focus {
+.route-input:focus,
+.route-select:focus {
     border-color: var(--explorer-blue);
+    background: white;
     outline: none;
+    box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
+.input-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #999;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.input-divider .line {
+    flex: 1;
+    height: 1px;
+    background: #eee;
+}
+
+.route-select {
+    cursor: pointer;
+    color: #444;
 }
