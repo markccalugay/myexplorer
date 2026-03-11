@@ -83,16 +83,19 @@
 .journey-summary {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
     padding: 20px;
     background: linear-gradient(135deg, #f0f7ff 0%, #e0efff 100%);
     border-radius: 16px;
     border: 1px solid rgba(0, 102, 204, 0.1);
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .summary-item {
     display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 
 .summary-item .label {
@@ -101,12 +104,28 @@
     color: var(--explorer-blue);
     text-transform: uppercase;
     letter-spacing: 1.2px;
+    white-space: nowrap;
 }
 
 .summary-item .value {
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 800;
     color: var(--explorer-blue);
+}
+
+.bathroom-advisory {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 112, 67, 0.08);
+    border: 1px solid rgba(255, 112, 67, 0.3);
+    color: #bf360c;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    line-height: 1.4;
 }
 
 .planner-footer {
