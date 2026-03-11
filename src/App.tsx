@@ -6,6 +6,7 @@ import Map from './components/Map';
 import { LocationDetail } from './components/LocationDetail';
 import { RoutePlanner } from './components/RoutePlanner';
 import { TripPlanner } from './components/TripPlanner';
+import { ExplorePage } from './components/ExplorePage';
 import { usePlaces } from './hooks/usePlaces';
 import { usePitstops } from './hooks/usePitstops';
 import { Trip } from './types/trip';
@@ -22,7 +23,7 @@ const App = () => {
     const [selectedPlace, setSelectedPlace] = useState<google.maps.places.PlaceResult | null>(null);
     const [isPlanning, setIsPlanning] = useState(false);
     const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
-    const [view, setView] = useState<'discovery' | 'planner'>('discovery');
+    const [view, setView] = useState<'explore' | 'discovery' | 'planner'>('explore');
     const [currentTrip] = useState<Trip>({
         id: '1',
         name: 'New Adventure',
@@ -64,7 +65,7 @@ const App = () => {
     };
 
     const handleExplore = () => {
-        setView('discovery');
+        setView('explore');
     };
 
     const lodgingMarkers = places.map((place: any) => ({
@@ -88,9 +89,19 @@ const App = () => {
 
     return (
         <div className="app">
-            <Navbar onStartPlanning={handleStartPlanning} onExplore={handleExplore} />
+            <Navbar 
+                onStartPlanning={handleStartPlanning} 
+                onExplore={handleExplore} 
+                activeView={view} 
+            />
 
-            {view === 'discovery' ? (
+            {view === 'explore' && (
+                <main className="main-content" style={{ overflowY: 'auto' }}>
+                    <ExplorePage onStartPlanning={handleStartPlanning} />
+                </main>
+            )}
+
+            {view === 'discovery' && (
                 <main className="main-content">
                     <div className="results-panel">
                         <SearchBar onPlaceSelect={handlePlaceSelect} />
@@ -145,7 +156,9 @@ const App = () => {
                         />
                     )}
                 </main>
-            ) : (
+            )}
+            
+            {view === 'planner' && (
                 <TripPlanner
                     trip={currentTrip}
                     onClose={handleExplore}

@@ -5,9 +5,10 @@ import './Navbar.css';
 interface NavbarProps {
     onStartPlanning?: () => void;
     onExplore?: () => void;
+    activeView?: 'explore' | 'discovery' | 'planner';
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onStartPlanning, onExplore }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onStartPlanning, onExplore, activeView }) => {
     return (
         <nav className="navbar">
             <div className="navbar-container">
@@ -22,8 +23,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onStartPlanning, onExplore }) =>
                 </div>
 
                 <div className="navbar-links">
-                    <a href="#" className="nav-link" onClick={(e) => { e.preventDefault(); onExplore?.(); }}>Explore</a>
-                    <a href="#" className="nav-link">Trips</a>
+                    <a href="#" className={`nav-link ${(activeView === 'explore' || activeView === 'discovery') ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); onExplore?.(); }}>Explore</a>
+                    <a href="#" className={`nav-link ${activeView === 'planner' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); onStartPlanning?.(); }}>Trips</a>
                     <a href="#" className="nav-link">Bookings</a>
                 </div>
 
