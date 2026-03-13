@@ -420,7 +420,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onStartPlanning }) => 
     const [searchDestination, setSearchDestination] = useState('');
     const [checkInDate, setCheckInDate] = useState('');
     const [checkOutDate, setCheckOutDate] = useState('');
-    const [adults, setAdults] = useState(2);
+    const [adults, setAdults] = useState(0);
     const [children, setChildren] = useState(0);
     const [isDestinationOpen, setIsDestinationOpen] = useState(false);
     const [isDatesOpen, setIsDatesOpen] = useState(false);
@@ -491,7 +491,10 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onStartPlanning }) => 
             return '';
         }
 
-        const parts = [`${adults} adult${adults === 1 ? '' : 's'}`];
+        const parts: string[] = [];
+        if (adults > 0) {
+            parts.push(`${adults} adult${adults === 1 ? '' : 's'}`);
+        }
         if (children > 0) {
             parts.push(`${children} child${children === 1 ? '' : 'ren'}`);
         }
@@ -513,7 +516,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onStartPlanning }) => 
         delta: number,
     ) => {
         if (type === 'adults') {
-            setAdults((current) => Math.max(1, current + delta));
+            setAdults((current) => Math.max(0, current + delta));
             return;
         }
 
@@ -581,7 +584,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onStartPlanning }) => 
                                 onClick={() => setIsDatesOpen((current) => !current)}
                                 aria-label="Choose dates"
                             >
-                                {formattedDateRange || 'When to When'}
+                                {formattedDateRange || 'When are you going?'}
                             </button>
                             {isDatesOpen && (
                                 <div className="ep-search-popover">
@@ -626,7 +629,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onStartPlanning }) => 
                                 onClick={() => setIsGuestsOpen((current) => !current)}
                                 aria-label="Choose guests"
                             >
-                                {guestSummary || 'Add guests'}
+                                {guestSummary || 'How many are going?'}
                             </button>
                             {isGuestsOpen && (
                                 <div className="ep-search-popover">
@@ -636,7 +639,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onStartPlanning }) => 
                                             <div className="ep-guest-sub">Ages 13+</div>
                                         </div>
                                         <div className="ep-stepper">
-                                            <button type="button" onClick={() => adjustGuestCount('adults', -1)} disabled={adults <= 1}>-</button>
+                                            <button type="button" onClick={() => adjustGuestCount('adults', -1)} disabled={adults <= 0}>-</button>
                                             <span>{adults}</span>
                                             <button type="button" onClick={() => adjustGuestCount('adults', 1)}>+</button>
                                         </div>
