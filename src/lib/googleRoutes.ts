@@ -28,7 +28,7 @@ export const computeDrivingRoute = async (
     const response = await RouteApi.computeRoutes({
         origin,
         destination,
-        travelMode: 'DRIVE',
+        travelMode: google.maps.TravelMode.DRIVING,
         fields: ['path', 'legs'],
     });
 

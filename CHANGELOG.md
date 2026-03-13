@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Trip planner map pins now match the color of each stop marker dot in the timeline, including origin, destination, suggested pitstops, and manual stops.
 - Migrated Google Maps routing and marker rendering away from deprecated `DirectionsRenderer`, `DirectionsService`, `DistanceMatrixService`, and legacy `Marker` usage, while removing insecure marker asset URLs and stabilizing place identifiers.
+- Fixed the auto-pitstop routing flow to use a valid Google Maps travel mode, refresh suggested stops when trip endpoints change, and avoid stale suggestions while aligning `mapId` usage with cloud-styled map requirements.
 
 ## [0.1.0] - 2026-03-08
 

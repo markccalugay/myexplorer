@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Map from './Map';
 import { Timeline } from './Timeline';
 import { StopCard } from './StopCard';
@@ -59,22 +59,53 @@ const interpolatePath = (
 const formatTime = (date: Date) =>
     date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+const hasJourneyDetailsChanged = (previousStops: Stop[], nextStops: Stop[]) =>
+    previousStops.length !== nextStops.length ||
+    previousStops.some((stop, index) => {
+        const nextStop = nextStops[index];
+        return (
+            stop.distanceFromPrevious !== nextStop.distanceFromPrevious ||
+            stop.durationFromPrevious !== nextStop.durationFromPrevious ||
+            stop.arrivalTime !== nextStop.arrivalTime
+        );
+    });
+
 export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onClose }) => {
     const [trip, setTrip] = useState<Trip>(initialTrip);
     const [isAddingStop, setIsAddingStop] = useState(false);
     const [isNavigating, setIsNavigating] = useState(false);
     const [editingStopId, setEditingStopId] = useState<string | null>(null);
     const { google } = useGoogleMaps();
+    const autoPitstopRouteKeyRef = useRef<string | null>(null);
 
     // ── Retype stops so first=start, last=destination ─────────────────────────
-    const retypeStops = (stops: Stop[]): Stop[] => {
+    const retypeStops = useCallback((stops: Stop[]): Stop[] => {
         if (stops.length === 0) return stops;
         return stops.map((s, i) => {
             if (i === 0) return { ...s, type: 'start' };
             if (i === stops.length - 1) return { ...s, type: 'destination' };
             return { ...s, type: 'stop' };
         });
-    };
+    }, []);
+
+    const stripAutoSuggestedStops = useCallback((stops: Stop[]) => (
+        stops.filter((stop) => !stop.isAutoSuggested)
+    ), []);
+
+    const getEndpointRouteKey = useCallback((stops: Stop[]) => {
+        if (stops.length < 2) return null;
+
+        const start = stops[0]?.location;
+        const destination = stops[stops.length - 1]?.location;
+        if (!start || !destination) return null;
+
+        return [
+            start.lat.toFixed(6),
+            start.lng.toFixed(6),
+            destination.lat.toFixed(6),
+            destination.lng.toFixed(6),
+        ].join(':');
+    }, []);
 
     // ── Recalculate journey times + distances ──────────────────────────────────
     const calculateJourneyDetails = useCallback((stops: Stop[]) => {
@@ -100,7 +131,11 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                     newStops[index + 1].arrivalTime = formatTime(currentTime);
                 });
 
-                setTrip(prev => ({ ...prev, stops: newStops }));
+                setTrip((prev) => (
+                    hasJourneyDetailsChanged(prev.stops, newStops)
+                        ? { ...prev, stops: newStops }
+                        : prev
+                ));
             })
             .catch((error) => {
                 console.error('Failed to calculate trip segment details:', error);
@@ -113,16 +148,26 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
 
         const start = stops[0];
         const dest = stops[stops.length - 1];
+        const routeKey = getEndpointRouteKey(stops);
 
         computeDrivingRoute(google, start.location, dest.location)
             .then((route) => {
                 const durationMins = getRouteDurationMinutes(route);
+                const baseStops = stripAutoSuggestedStops(stops);
 
                 // Only insert pitstops for trips > 90 minutes
-                if (durationMins < 90) return;
+                if (durationMins < 90) {
+                    autoPitstopRouteKeyRef.current = routeKey;
+                    setTrip((prev) => ({ ...prev, stops: retypeStops(baseStops) }));
+                    return;
+                }
 
                 const path = getRoutePath(route).map((point) => new google.maps.LatLng(point));
-                if (!path.length) return;
+                if (!path.length) {
+                    autoPitstopRouteKeyRef.current = routeKey;
+                    setTrip((prev) => ({ ...prev, stops: retypeStops(baseStops) }));
+                    return;
+                }
 
                 const fractions = durationMins >= 180 ? [1 / 3, 2 / 3] : [1 / 2];
 
@@ -169,22 +214,28 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                 );
 
                 Promise.all(pitstopPromises).then((pitstops) => {
-                    const valid = pitstops.filter(Boolean) as Stop[];
-                    if (valid.length === 0) return;
+                    const valid = pitstops
+                        .filter((pitstop): pitstop is Stop => Boolean(pitstop))
+                        .filter(
+                            (pitstop, index, list) =>
+                                list.findIndex(
+                                    (candidate) =>
+                                        candidate.location.lat === pitstop.location.lat &&
+                                        candidate.location.lng === pitstop.location.lng
+                                ) === index
+                        );
 
                     setTrip(prev => {
-                        // Insert pitstops between start and destination, preserving any manually-added stops
-                        const manualStops = prev.stops.filter(
-                            s => !s.isAutoSuggested && s.type === 'stop'
-                        );
+                        // Insert pitstops between start and destination, preserving any manually-added stops.
+                        const manualStops = baseStops.filter((s) => s.type === 'stop');
                         const newStops = [
-                            prev.stops[0],           // start
-                            ...manualStops,           // manually added
-                            ...valid,                 // auto-suggested
-                            prev.stops[prev.stops.length - 1], // destination
+                            baseStops[0],
+                            ...manualStops,
+                            ...valid,
+                            baseStops[baseStops.length - 1],
                         ];
                         const retyped = retypeStops(newStops);
-                        calculateJourneyDetails(retyped);
+                        autoPitstopRouteKeyRef.current = routeKey;
                         return { ...prev, stops: retyped };
                     });
                 });
@@ -192,24 +243,29 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
             .catch((error) => {
                 console.error('Failed to compute auto-pitstop route:', error);
             });
-    }, [google, calculateJourneyDetails]);
+    }, [google, getEndpointRouteKey, retypeStops, stripAutoSuggestedStops]);
 
     // Trigger calculations whenever stops change (≥ 2)
     useEffect(() => {
         if (!google || trip.stops.length < 2) return;
         calculateJourneyDetails(trip.stops);
-    }, [google, trip.stops.length]);
+    }, [google, trip.stops, calculateJourneyDetails]);
 
     // Trigger auto-pitstop insertion when we have exactly start + destination
     useEffect(() => {
-        if (!google || trip.stops.length < 2) return;
+        if (!google || trip.stops.length < 2) {
+            autoPitstopRouteKeyRef.current = null;
+            return;
+        }
+
         const hasStart = trip.stops[0]?.type === 'start';
         const hasDest = trip.stops[trip.stops.length - 1]?.type === 'destination';
-        const hasAutoStop = trip.stops.some(s => s.isAutoSuggested);
-        if (hasStart && hasDest && !hasAutoStop) {
+        const routeKey = getEndpointRouteKey(trip.stops);
+        const shouldRefreshAutoPitstops = routeKey !== autoPitstopRouteKeyRef.current;
+        if (hasStart && hasDest && shouldRefreshAutoPitstops) {
             autoInsertPitstops(trip.stops);
         }
-    }, [google, trip.stops.length]);
+    }, [google, trip.stops, autoInsertPitstops, getEndpointRouteKey]);
 
     // ── Handlers ──────────────────────────────────────────────────────────────
     const handleRemoveStop = (id: string) => {

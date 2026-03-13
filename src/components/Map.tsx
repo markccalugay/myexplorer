@@ -31,6 +31,13 @@ const Map: React.FC<MapProps> = ({
     const routePolylineRef = useRef<google.maps.Polyline | null>(null);
     const { google } = useGoogleMaps();
     const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
+    const inlineStyles = [
+        {
+            featureType: 'poi',
+            elementType: 'labels',
+            stylers: [{ visibility: 'off' }]
+        }
+    ];
 
     useEffect(() => {
         if (google && mapRef.current && !googleMapRef.current) {
@@ -38,18 +45,22 @@ const Map: React.FC<MapProps> = ({
                 center,
                 zoom,
                 mapId,
-                styles: [
-                    {
-                        "featureType": "poi",
-                        "elementType": "labels",
-                        "stylers": [{ "visibility": "off" }]
-                    }
-                ],
                 disableDefaultUI: false,
                 zoomControl: true,
             });
         }
-    }, [google, center, zoom]);
+    }, [google, center, zoom, mapId]);
+
+    useEffect(() => {
+        if (!googleMapRef.current) return;
+
+        if (mapId) {
+            googleMapRef.current.setOptions({ styles: null });
+            return;
+        }
+
+        googleMapRef.current.setOptions({ styles: inlineStyles });
+    }, [mapId]);
 
     useEffect(() => {
         if (!google || !googleMapRef.current) return;
