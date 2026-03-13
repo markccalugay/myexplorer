@@ -16,7 +16,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ onPlaceSelect }) => {
                 <PlaceAutocompleteInput
                     className="search-input"
                     placeholder="Where are you going?"
-                    types={['(regions)']}
+                    includedPrimaryTypes={['(regions)']}
                     onSelect={async (prediction) => {
                         const place = await fetchPlaceFromPrediction(prediction);
                         if (place && onPlaceSelect) {

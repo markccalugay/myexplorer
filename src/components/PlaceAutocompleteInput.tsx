@@ -7,7 +7,7 @@ interface PlaceAutocompleteInputProps {
     placeholder?: string;
     requestedLanguage?: string;
     requestedRegion?: string;
-    types?: string[];
+    includedPrimaryTypes?: string[];
 }
 
 export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
@@ -17,7 +17,7 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
     placeholder,
     requestedLanguage = 'en',
     requestedRegion = 'ph',
-    types,
+    includedPrimaryTypes,
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -29,18 +29,28 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
             if (!window.google?.maps?.places || !containerRef.current) return;
 
             autocomplete = new google.maps.places.PlaceAutocompleteElement({
-                componentRestrictions: { country },
                 requestedLanguage,
                 requestedRegion,
-                types: types ?? null,
             });
             if (className) {
                 autocomplete.className = className;
             }
 
             if (placeholder) {
-                autocomplete.setAttribute('placeholder', placeholder);
+                (autocomplete as HTMLElement & { placeholder?: string }).placeholder = placeholder;
                 autocomplete.setAttribute('aria-label', placeholder);
+            }
+
+            // The new widget uses includedRegionCodes / includedPrimaryTypes.
+            (autocomplete as google.maps.places.PlaceAutocompleteElement & {
+                includedRegionCodes?: string[];
+                includedPrimaryTypes?: string[];
+            }).includedRegionCodes = country ? [country] : undefined;
+
+            if (includedPrimaryTypes?.length) {
+                (autocomplete as google.maps.places.PlaceAutocompleteElement & {
+                    includedPrimaryTypes?: string[];
+                }).includedPrimaryTypes = includedPrimaryTypes;
             }
 
             const handleSelect = async (event: Event) => {
@@ -73,7 +83,7 @@ export const PlaceAutocompleteInput: React.FC<PlaceAutocompleteInputProps> = ({
                 containerRef.current.innerHTML = '';
             }
         };
-    }, [country, onSelect, placeholder, requestedLanguage, requestedRegion, types]);
+    }, [country, includedPrimaryTypes, onSelect, placeholder, requestedLanguage, requestedRegion]);
 
     return <div ref={containerRef} />;
 };
