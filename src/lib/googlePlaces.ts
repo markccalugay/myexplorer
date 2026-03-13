@@ -1,7 +1,6 @@
 import { AppPlace } from '../types/place';
 
 export const APP_PLACE_FIELDS = [
-    'id',
     'displayName',
     'formattedAddress',
     'location',
@@ -16,10 +15,10 @@ export const APP_PLACE_FIELDS = [
 ] as const;
 
 export const BASIC_PLACE_FIELDS = [
-    'id',
     'displayName',
     'formattedAddress',
     'location',
+    'googleMapsURI',
 ] as const;
 
 const toLatLngLiteral = (
@@ -41,10 +40,16 @@ const toLatLngLiteral = (
 
 export const toAppPlace = (place: google.maps.places.Place): AppPlace | null => {
     const location = toLatLngLiteral(place.location);
-    if (!place.id || !location) return null;
+    if (!location) return null;
+
+    const fallbackId = [
+        place.displayName || place.formattedAddress || 'unknown-place',
+        location.lat.toFixed(6),
+        location.lng.toFixed(6),
+    ].join('::');
 
     return {
-        id: place.id,
+        id: place.googleMapsURI || fallbackId,
         name: place.displayName || place.formattedAddress || 'Unknown place',
         location,
         formattedAddress: place.formattedAddress || undefined,

@@ -2,21 +2,26 @@ import { useState, useEffect } from 'react';
 import { useGoogleMaps } from './useGoogleMaps';
 import { AppPlace } from '../types/place';
 import { BASIC_PLACE_FIELDS, toAppPlace } from '../lib/googlePlaces';
+import { AppRoute, getRoutePath } from '../lib/googleRoutes';
 
-export const usePitstops = (directions: google.maps.DirectionsResult | null) => {
+export const usePitstops = (route: AppRoute | null) => {
     const [pitstops, setPitstops] = useState<AppPlace[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const { google } = useGoogleMaps();
 
     useEffect(() => {
-        if (!google || !directions) return;
+        if (!google || !route) return;
 
         let cancelled = false;
 
         const loadPitstops = async () => {
             setIsLoading(true);
-            const route = directions.routes[0];
-            const path = route.overview_path;
+            const path = getRoutePath(route);
+            if (path.length < 4) {
+                setPitstops([]);
+                setIsLoading(false);
+                return;
+            }
 
             const samplePoints = [
                 path[Math.floor(path.length * 0.25)],
@@ -71,7 +76,7 @@ export const usePitstops = (directions: google.maps.DirectionsResult | null) => 
         return () => {
             cancelled = true;
         };
-    }, [google, directions]);
+    }, [google, route]);
 
     return { pitstops, isLoading };
 };

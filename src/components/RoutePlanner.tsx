@@ -4,11 +4,12 @@ import './RoutePlanner.css';
 import { AppPlace } from '../types/place';
 import { BASIC_PLACE_FIELDS, fetchPlaceFromPrediction } from '../lib/googlePlaces';
 import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
+import { AppRoute, computeDrivingRoute } from '../lib/googleRoutes';
 
 interface RoutePlannerProps {
     destination: AppPlace;
     onClose: () => void;
-    onRouteFound: (result: google.maps.DirectionsResult) => void;
+    onRouteFound: (result: AppRoute) => void;
 }
 
 const COMMON_ORIGINS = [
@@ -34,21 +35,17 @@ export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initial
     const calculateRoute = (start: google.maps.LatLng | google.maps.LatLngLiteral, end: google.maps.LatLng | google.maps.LatLngLiteral) => {
         if (!google) return;
 
-        const directionsService = new google.maps.DirectionsService();
-        directionsService.route(
-            {
-                origin: start,
-                destination: end,
-                travelMode: google.maps.TravelMode.DRIVING,
-            },
-            (result: google.maps.DirectionsResult | null, status: google.maps.DirectionsStatus) => {
-                if (status === google.maps.DirectionsStatus.OK && result) {
-                    onRouteFound(result);
+        computeDrivingRoute(google, start, end)
+            .then((route) => {
+                if (route) {
+                    onRouteFound(route);
                 } else {
-                    console.error("Directions request failed due to " + status);
+                    console.error('Routes API returned no route.');
                 }
-            }
-        );
+            })
+            .catch((error) => {
+                console.error('Routes request failed:', error);
+            });
     };
 
     const handleQuickOrigin = (e: React.ChangeEvent<HTMLSelectElement>) => {

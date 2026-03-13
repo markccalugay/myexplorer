@@ -1,13 +1,21 @@
 import React, { useRef, useEffect } from 'react';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
+import { AppRoute, getRoutePath } from '../lib/googleRoutes';
 import './SearchBar.css';
+
+interface MapMarker {
+    position: google.maps.LatLngLiteral;
+    title?: string;
+    placeId?: string;
+    color?: string;
+}
 
 interface MapProps {
     center?: google.maps.LatLngLiteral;
     zoom?: number;
-    markers?: google.maps.MarkerOptions[];
-    onMarkerClick?: (marker: google.maps.Marker) => void;
-    directions?: google.maps.DirectionsResult | null;
+    markers?: MapMarker[];
+    onMarkerClick?: (marker: MapMarker) => void;
+    directions?: AppRoute | null;
 }
 
 const Map: React.FC<MapProps> = ({
@@ -19,7 +27,8 @@ const Map: React.FC<MapProps> = ({
 }) => {
     const mapRef = useRef<HTMLDivElement>(null);
     const googleMapRef = useRef<google.maps.Map | null>(null);
-    const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+    const markerRefs = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+    const routePolylineRef = useRef<google.maps.Polyline | null>(null);
     const { google } = useGoogleMaps();
 
     useEffect(() => {
@@ -27,6 +36,7 @@ const Map: React.FC<MapProps> = ({
             googleMapRef.current = new google.maps.Map(mapRef.current, {
                 center,
                 zoom,
+                mapId: google.maps.Map.DEMO_MAP_ID,
                 styles: [
                     {
                         "featureType": "poi",
@@ -37,32 +47,61 @@ const Map: React.FC<MapProps> = ({
                 disableDefaultUI: false,
                 zoomControl: true,
             });
-
-            directionsRendererRef.current = new google.maps.DirectionsRenderer({
-                map: googleMapRef.current,
-                suppressMarkers: false,
-            });
         }
     }, [google, center, zoom]);
 
     useEffect(() => {
-        if (directionsRendererRef.current) {
-            directionsRendererRef.current.setDirections(directions || null);
+        if (!google || !googleMapRef.current) return;
+
+        if (routePolylineRef.current) {
+            routePolylineRef.current.setMap(null);
+            routePolylineRef.current = null;
+        }
+
+        const path = getRoutePath(directions);
+        if (!path.length) return;
+
+        routePolylineRef.current = new google.maps.Polyline({
+            path,
+            geodesic: true,
+            strokeColor: '#1a73e8',
+            strokeOpacity: 0.85,
+            strokeWeight: 5,
+            map: googleMapRef.current,
+        });
+
+        const bounds = new google.maps.LatLngBounds();
+        path.forEach((point) => bounds.extend(point));
+        if (!bounds.isEmpty()) {
+            googleMapRef.current.fitBounds(bounds, 64);
         }
     }, [directions]);
 
     useEffect(() => {
         if (google && googleMapRef.current) {
-            // Add markers logic
-            markers.forEach((options: google.maps.MarkerOptions) => {
-                const marker = new google.maps.Marker({
-                    ...options,
+            markerRefs.current.forEach((marker) => {
+                marker.map = null;
+            });
+            markerRefs.current = [];
+
+            markers.forEach((options) => {
+                const pin = new google.maps.marker.PinElement({
+                    background: options.color || '#d93025',
+                    borderColor: '#1f1f1f',
+                    glyphColor: '#ffffff',
+                });
+
+                const marker = new google.maps.marker.AdvancedMarkerElement({
+                    position: options.position,
+                    title: options.title,
+                    content: pin.element,
                     map: googleMapRef.current
                 });
+                markerRefs.current.push(marker);
 
                 if (onMarkerClick) {
                     marker.addListener('click', () => {
-                        onMarkerClick(marker);
+                        onMarkerClick(options);
                     });
                 }
             });
@@ -75,6 +114,17 @@ const Map: React.FC<MapProps> = ({
             googleMapRef.current.setZoom(zoom);
         }
     }, [center, zoom]);
+
+    useEffect(() => {
+        return () => {
+            markerRefs.current.forEach((marker) => {
+                marker.map = null;
+            });
+            if (routePolylineRef.current) {
+                routePolylineRef.current.setMap(null);
+            }
+        };
+    }, []);
 
     return (
         <div style={{ width: '100%', height: '100%', position: 'relative' }}>

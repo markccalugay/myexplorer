@@ -11,6 +11,7 @@ import { usePlaces } from './hooks/usePlaces';
 import { usePitstops } from './hooks/usePitstops';
 import { Trip } from './types/trip';
 import { AppPlace } from './types/place';
+import { AppRoute } from './lib/googleRoutes';
 import './App.css';
 
 // Import images
@@ -23,7 +24,7 @@ const App = () => {
     const [zoom, setZoom] = useState(12);
     const [selectedPlace, setSelectedPlace] = useState<AppPlace | null>(null);
     const [isPlanning, setIsPlanning] = useState(false);
-    const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
+    const [route, setRoute] = useState<AppRoute | null>(null);
     const [view, setView] = useState<'explore' | 'discovery' | 'planner'>('explore');
     const [currentTrip] = useState<Trip>({
         id: '1',
@@ -32,7 +33,7 @@ const App = () => {
     });
 
     const { places, isLoading: placesLoading } = usePlaces(center);
-    const { pitstops } = usePitstops(directions);
+    const { pitstops } = usePitstops(route);
 
     const handlePlaceSelect = (place: AppPlace) => {
         setCenter(place.location);
@@ -40,8 +41,8 @@ const App = () => {
         setSelectedPlace(place);
     };
 
-    const handleMarkerClick = (marker: google.maps.Marker) => {
-        const placeId = (marker as any).placeId;
+    const handleMarkerClick = (marker: { placeId?: string }) => {
+        const placeId = marker.placeId;
         if (placeId) {
             const place = places.find(p => p.id === placeId);
             if (place) setSelectedPlace(place);
@@ -52,8 +53,8 @@ const App = () => {
         setIsPlanning(true);
     };
 
-    const handleRouteFound = (result: google.maps.DirectionsResult) => {
-        setDirections(result);
+    const handleRouteFound = (result: AppRoute) => {
+        setRoute(result);
     };
 
     const handleStartPlanning = () => {
@@ -68,17 +69,13 @@ const App = () => {
         position: place.location,
         title: place.name,
         placeId: place.id,
-        icon: {
-            url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
-        }
+        color: '#d93025',
     }));
 
     const pitstopMarkers = pitstops.map((stop: any) => ({
         position: stop.location,
         title: stop.name,
-        icon: {
-            url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png'
-        }
+        color: '#1a73e8',
     }));
 
     const allMarkers = [...lodgingMarkers, ...pitstopMarkers];
@@ -132,7 +129,7 @@ const App = () => {
                             zoom={zoom}
                             markers={allMarkers}
                             onMarkerClick={handleMarkerClick}
-                            directions={directions}
+                            directions={route}
                         />
                     </div>
 
