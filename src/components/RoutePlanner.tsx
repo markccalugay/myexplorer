@@ -85,6 +85,7 @@ export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initial
                     <PlaceAutocompleteInput
                         className="route-input"
                         placeholder="Search for start location"
+                        defaultValue=""
                         onSelect={async (prediction) => {
                             const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
                             if (place) {
@@ -104,7 +105,8 @@ export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initial
                     <label>Destination</label>
                     <PlaceAutocompleteInput
                         className="route-input"
-                        placeholder={destination.name || 'Search for destination'}
+                        placeholder="Search for destination"
+                        defaultValue={destination.name}
                         onSelect={async (prediction) => {
                             const place = await fetchPlaceFromPrediction(prediction);
                             if (place) {

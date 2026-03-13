@@ -113,6 +113,7 @@ export const StopCard: React.FC<StopCardProps> = ({
                             <PlaceAutocompleteInput
                                 className="stop-edit-input"
                                 placeholder="Search for a new location..."
+                                defaultValue={stop.name}
                                 onSelect={async (prediction) => {
                                     const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
                                     if (place && onStopEdited) {
