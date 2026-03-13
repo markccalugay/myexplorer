@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './ExplorePage.css';
 
 // ─────────────────────────────────────────────
@@ -293,6 +293,25 @@ const CATEGORIES = [
     { id: 'islands', label: 'Islands', emoji: '🏝️' },
 ];
 
+const DESTINATION_SUGGESTIONS = [
+    'Batangas',
+    'Boracay Island, Aklan',
+    'El Nido, Palawan',
+    'Coron, Palawan',
+    'Bohol, Visayas',
+    'Siargao, Surigao del Norte',
+    'Banaue, Ifugao',
+    'Sagada, Mountain Province',
+    'Cebu City, Cebu',
+    'Oslob, Cebu',
+    'Baguio, Benguet',
+    'Vigan, Ilocos Sur',
+    'La Union',
+    'Camiguin',
+    'Davao City, Davao del Sur',
+    'Baler, Aurora',
+];
+
 // ─────────────────────────────────────────────
 // Sub-components
 // ─────────────────────────────────────────────
@@ -399,12 +418,106 @@ interface ExplorePageProps {
 export const ExplorePage: React.FC<ExplorePageProps> = ({ onStartPlanning }) => {
     const [activeCategory, setActiveCategory] = useState('all');
     const [searchDestination, setSearchDestination] = useState('');
-    const [searchDates, setSearchDates] = useState('');
-    const [searchGuests, setSearchGuests] = useState('');
+    const [checkInDate, setCheckInDate] = useState('');
+    const [checkOutDate, setCheckOutDate] = useState('');
+    const [adults, setAdults] = useState(2);
+    const [children, setChildren] = useState(0);
+    const [isDestinationOpen, setIsDestinationOpen] = useState(false);
+    const [isDatesOpen, setIsDatesOpen] = useState(false);
+    const [isGuestsOpen, setIsGuestsOpen] = useState(false);
+    const destinationFieldRef = useRef<HTMLDivElement>(null);
+    const datesFieldRef = useRef<HTMLDivElement>(null);
+    const guestsFieldRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handlePointerDown = (event: MouseEvent) => {
+            const target = event.target as Node;
+
+            if (destinationFieldRef.current && !destinationFieldRef.current.contains(target)) {
+                setIsDestinationOpen(false);
+            }
+
+            if (datesFieldRef.current && !datesFieldRef.current.contains(target)) {
+                setIsDatesOpen(false);
+            }
+
+            if (guestsFieldRef.current && !guestsFieldRef.current.contains(target)) {
+                setIsGuestsOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        return () => document.removeEventListener('mousedown', handlePointerDown);
+    }, []);
+
+    const filteredDestinations = useMemo(() => {
+        const query = searchDestination.trim().toLowerCase();
+
+        if (!query) {
+            return DESTINATION_SUGGESTIONS.slice(0, 6);
+        }
+
+        return DESTINATION_SUGGESTIONS.filter((destination) =>
+            destination.toLowerCase().includes(query)
+        ).slice(0, 6);
+    }, [searchDestination]);
+
+    const formattedDateRange = useMemo(() => {
+        if (!checkInDate && !checkOutDate) {
+            return '';
+        }
+
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            month: 'short',
+            day: 'numeric',
+        });
+
+        const formatValue = (value: string) => formatter.format(new Date(`${value}T00:00:00`));
+
+        if (checkInDate && checkOutDate) {
+            return `${formatValue(checkInDate)} to ${formatValue(checkOutDate)}`;
+        }
+
+        if (checkInDate) {
+            return `${formatValue(checkInDate)} to When`;
+        }
+
+        return `When to ${formatValue(checkOutDate)}`;
+    }, [checkInDate, checkOutDate]);
+
+    const guestSummary = useMemo(() => {
+        const totalGuests = adults + children;
+        if (totalGuests === 0) {
+            return '';
+        }
+
+        const parts = [`${adults} adult${adults === 1 ? '' : 's'}`];
+        if (children > 0) {
+            parts.push(`${children} child${children === 1 ? '' : 'ren'}`);
+        }
+        return parts.join(', ');
+    }, [adults, children]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         onStartPlanning?.();
+    };
+
+    const handleDestinationSelect = (destination: string) => {
+        setSearchDestination(destination);
+        setIsDestinationOpen(false);
+    };
+
+    const adjustGuestCount = (
+        type: 'adults' | 'children',
+        delta: number,
+    ) => {
+        if (type === 'adults') {
+            setAdults((current) => Math.max(1, current + delta));
+            return;
+        }
+
+        setChildren((current) => Math.max(0, current + delta));
     };
 
     return (
@@ -419,34 +532,128 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onStartPlanning }) => 
                     <p className="ep-hero-sub">Book stays, plan activities, rent a van, and share the adventure — all in one place.</p>
 
                     <form className="ep-search-bar" onSubmit={handleSearch}>
-                        <div className="ep-search-field">
+                        <div
+                            className={`ep-search-field ep-search-field--interactive ${isDestinationOpen ? 'ep-search-field--open' : ''}`}
+                            ref={destinationFieldRef}
+                        >
                             <label>Destination</label>
                             <input
                                 type="text"
                                 placeholder="Where are you going?"
                                 value={searchDestination}
-                                onChange={e => setSearchDestination(e.target.value)}
+                                onChange={e => {
+                                    setSearchDestination(e.target.value);
+                                    setIsDestinationOpen(true);
+                                }}
+                                onFocus={() => setIsDestinationOpen(true)}
+                                aria-label="Destination"
+                                autoComplete="off"
                             />
+                            {isDestinationOpen && (
+                                <div className="ep-search-popover ep-search-popover--suggestions">
+                                    {filteredDestinations.length > 0 ? (
+                                        filteredDestinations.map((destination) => (
+                                            <button
+                                                key={destination}
+                                                type="button"
+                                                className="ep-suggestion-item"
+                                                onClick={() => handleDestinationSelect(destination)}
+                                            >
+                                                <span className="ep-suggestion-icon">📍</span>
+                                                <span>{destination}</span>
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <div className="ep-empty-state">No destinations match that search yet.</div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         <div className="ep-search-divider" />
-                        <div className="ep-search-field">
+                        <div
+                            className={`ep-search-field ep-search-field--interactive ${isDatesOpen ? 'ep-search-field--open' : ''}`}
+                            ref={datesFieldRef}
+                        >
                             <label>Dates</label>
-                            <input
-                                type="text"
-                                placeholder="Add dates"
-                                value={searchDates}
-                                onChange={e => setSearchDates(e.target.value)}
-                            />
+                            <button
+                                type="button"
+                                className={`ep-search-trigger ${formattedDateRange ? 'ep-search-trigger--filled' : ''}`}
+                                onClick={() => setIsDatesOpen((current) => !current)}
+                                aria-label="Choose dates"
+                            >
+                                {formattedDateRange || 'When to When'}
+                            </button>
+                            {isDatesOpen && (
+                                <div className="ep-search-popover">
+                                    <div className="ep-date-grid">
+                                        <label className="ep-date-field">
+                                            <span>From</span>
+                                            <input
+                                                type="date"
+                                                value={checkInDate}
+                                                min={new Date().toISOString().split('T')[0]}
+                                                onChange={(e) => {
+                                                    const nextCheckIn = e.target.value;
+                                                    setCheckInDate(nextCheckIn);
+                                                    if (checkOutDate && nextCheckIn > checkOutDate) {
+                                                        setCheckOutDate(nextCheckIn);
+                                                    }
+                                                }}
+                                            />
+                                        </label>
+                                        <label className="ep-date-field">
+                                            <span>To</span>
+                                            <input
+                                                type="date"
+                                                value={checkOutDate}
+                                                min={checkInDate || new Date().toISOString().split('T')[0]}
+                                                onChange={(e) => setCheckOutDate(e.target.value)}
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <div className="ep-search-divider" />
-                        <div className="ep-search-field">
+                        <div
+                            className={`ep-search-field ep-search-field--interactive ${isGuestsOpen ? 'ep-search-field--open' : ''}`}
+                            ref={guestsFieldRef}
+                        >
                             <label>Guests</label>
-                            <input
-                                type="text"
-                                placeholder="Add guests"
-                                value={searchGuests}
-                                onChange={e => setSearchGuests(e.target.value)}
-                            />
+                            <button
+                                type="button"
+                                className={`ep-search-trigger ${guestSummary ? 'ep-search-trigger--filled' : ''}`}
+                                onClick={() => setIsGuestsOpen((current) => !current)}
+                                aria-label="Choose guests"
+                            >
+                                {guestSummary || 'Add guests'}
+                            </button>
+                            {isGuestsOpen && (
+                                <div className="ep-search-popover">
+                                    <div className="ep-guest-row">
+                                        <div>
+                                            <div className="ep-guest-label">Adults</div>
+                                            <div className="ep-guest-sub">Ages 13+</div>
+                                        </div>
+                                        <div className="ep-stepper">
+                                            <button type="button" onClick={() => adjustGuestCount('adults', -1)} disabled={adults <= 1}>-</button>
+                                            <span>{adults}</span>
+                                            <button type="button" onClick={() => adjustGuestCount('adults', 1)}>+</button>
+                                        </div>
+                                    </div>
+                                    <div className="ep-guest-row">
+                                        <div>
+                                            <div className="ep-guest-label">Children</div>
+                                            <div className="ep-guest-sub">Ages 0-12</div>
+                                        </div>
+                                        <div className="ep-stepper">
+                                            <button type="button" onClick={() => adjustGuestCount('children', -1)} disabled={children <= 0}>-</button>
+                                            <span>{children}</span>
+                                            <button type="button" onClick={() => adjustGuestCount('children', 1)}>+</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <button type="submit" className="ep-search-btn">
                             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5">

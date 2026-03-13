@@ -88,6 +88,7 @@
     flex: 1;
     padding: 4px 16px;
     text-align: left;
+    position: relative;
 }
 
 .ep-search-field label {
@@ -109,6 +110,29 @@
 
 .ep-search-field input::placeholder {
     color: #b0bec5;
+}
+
+.ep-search-field--interactive {
+    min-height: 64px;
+}
+
+.ep-search-field--open {
+    z-index: 5;
+}
+
+.ep-search-trigger {
+    border: none;
+    outline: none;
+    background: transparent;
+    padding: 2px 0;
+    font-size: 14px;
+    color: #b0bec5;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ep-search-trigger--filled {
+    color: #546e7a;
 }
 
 .ep-search-divider {
@@ -136,6 +160,138 @@
 .ep-search-btn:hover {
     transform: scale(1.06);
     box-shadow: 0 4px 16px rgba(30, 136, 229, 0.5);
+}
+
+.ep-search-popover {
+    position: absolute;
+    top: calc(100% + 14px);
+    left: 0;
+    width: min(320px, 90vw);
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 24px 64px rgba(7, 28, 60, 0.2);
+    border: 1px solid rgba(13, 71, 161, 0.08);
+    padding: 14px;
+}
+
+.ep-search-popover--suggestions {
+    padding: 10px;
+}
+
+.ep-suggestion-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: none;
+    background: transparent;
+    padding: 12px;
+    border-radius: 14px;
+    text-align: left;
+    font-size: 14px;
+    color: #263238;
+    cursor: pointer;
+}
+
+.ep-suggestion-item:hover {
+    background: #f5f9ff;
+}
+
+.ep-suggestion-icon {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #e3f2fd;
+}
+
+.ep-empty-state {
+    padding: 12px;
+    color: #78909c;
+    font-size: 14px;
+}
+
+.ep-date-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.ep-date-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 13px;
+    color: #455a64;
+}
+
+.ep-date-field span {
+    font-weight: 700;
+}
+
+.ep-date-field input {
+    border: 1px solid #d7e3f5;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: #263238;
+    background: #f8fbff;
+}
+
+.ep-guest-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 4px;
+}
+
+.ep-guest-row + .ep-guest-row {
+    border-top: 1px solid #eef3f8;
+}
+
+.ep-guest-label {
+    font-size: 15px;
+    font-weight: 700;
+    color: #263238;
+}
+
+.ep-guest-sub {
+    font-size: 13px;
+    color: #78909c;
+}
+
+.ep-stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ep-stepper button {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid #c5d4e8;
+    background: #fff;
+    color: #0D47A1;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.ep-stepper button:disabled {
+    cursor: not-allowed;
+    color: #b0bec5;
+    border-color: #e0e0e0;
+}
+
+.ep-stepper span {
+    min-width: 16px;
+    text-align: center;
+    font-weight: 700;
+    color: #263238;
 }
 
 /* ─────────────────────────────────────────────
@@ -858,6 +1014,8 @@
     .ep-search-divider { display: none; }
     .ep-search-field { padding: 0; }
     .ep-search-btn { width: 100%; border-radius: 12px; height: 48px; }
+    .ep-search-popover { position: static; width: 100%; margin-top: 12px; }
+    .ep-date-grid { grid-template-columns: 1fr; }
     .ep-section-inner { padding: 0 20px; }
     .ep-section { padding: 44px 0; }
     .ep-why-grid { grid-template-columns: 1fr; }
