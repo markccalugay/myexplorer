@@ -1,7 +1,8 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Stop } from '../types/trip';
-import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import './StopCard.css';
+import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
+import { BASIC_PLACE_FIELDS, fetchPlaceFromPrediction } from '../lib/googlePlaces';
 
 interface StopCardProps {
     stop: Stop;
@@ -31,41 +32,6 @@ export const StopCard: React.FC<StopCardProps> = ({
     onDragEnd,
 }) => {
     const [showConfirm, setShowConfirm] = useState(false);
-    const editInputRef = useRef<HTMLInputElement>(null);
-    const { google } = useGoogleMaps();
-
-    // Bind Places Autocomplete to the inline edit input when editing
-    useEffect(() => {
-        if (!isEditing || !google || !editInputRef.current) return;
-
-        const autocomplete = new google.maps.places.Autocomplete(editInputRef.current, {
-            componentRestrictions: { country: 'ph' },
-            fields: ['geometry', 'name', 'place_id', 'formatted_address'],
-        });
-
-        const listener = autocomplete.addListener('place_changed', () => {
-            const place = autocomplete.getPlace();
-            if (place.geometry?.location && onStopEdited) {
-                const updated: Stop = {
-                    ...stop,
-                    name: place.name || place.formatted_address || 'Unknown',
-                    formattedAddress: place.formatted_address,
-                    location: {
-                        lat: place.geometry.location.lat(),
-                        lng: place.geometry.location.lng(),
-                    },
-                };
-                onStopEdited(stop.id, updated);
-            }
-        });
-
-        // Focus so user can start typing immediately
-        editInputRef.current.focus();
-
-        return () => {
-            google.maps.event.removeListener(listener);
-        };
-    }, [isEditing, google]);
 
     const handleCardClick = () => {
         if (!isEditing && onEdit) {
@@ -143,13 +109,24 @@ export const StopCard: React.FC<StopCardProps> = ({
 
                 {isEditing ? (
                     <div className="edit-input-wrap">
-                        <input
-                            ref={editInputRef}
-                            type="text"
-                            className="stop-edit-input"
-                            placeholder="Search for a new location…"
-                            onClick={(e) => e.stopPropagation()}
-                        />
+                        <div onClick={(e) => e.stopPropagation()}>
+                            <PlaceAutocompleteInput
+                                className="stop-edit-input"
+                                placeholder="Search for a new location..."
+                                onSelect={async (prediction) => {
+                                    const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
+                                    if (place && onStopEdited) {
+                                        const updated: Stop = {
+                                            ...stop,
+                                            name: place.name,
+                                            formattedAddress: place.formattedAddress,
+                                            location: place.location,
+                                        };
+                                        onStopEdited(stop.id, updated);
+                                    }
+                                }}
+                            />
+                        </div>
                         <button
                             className="cancel-edit"
                             onClick={(e) => { e.stopPropagation(); onStopEdited && onStopEdited(stop.id, stop); }}

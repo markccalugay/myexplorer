@@ -10,6 +10,7 @@ import { ExplorePage } from './components/ExplorePage';
 import { usePlaces } from './hooks/usePlaces';
 import { usePitstops } from './hooks/usePitstops';
 import { Trip } from './types/trip';
+import { AppPlace } from './types/place';
 import './App.css';
 
 // Import images
@@ -20,7 +21,7 @@ const MOCK_LODGING_IMAGE = hotelImg;
 const App = () => {
     const [center, setCenter] = useState({ lat: 14.5995, lng: 120.9842 });
     const [zoom, setZoom] = useState(12);
-    const [selectedPlace, setSelectedPlace] = useState<google.maps.places.PlaceResult | null>(null);
+    const [selectedPlace, setSelectedPlace] = useState<AppPlace | null>(null);
     const [isPlanning, setIsPlanning] = useState(false);
     const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
     const [view, setView] = useState<'explore' | 'discovery' | 'planner'>('explore');
@@ -33,21 +34,16 @@ const App = () => {
     const { places, isLoading: placesLoading } = usePlaces(center);
     const { pitstops } = usePitstops(directions);
 
-    const handlePlaceSelect = (place: google.maps.places.PlaceResult) => {
-        if (place.geometry?.location) {
-            const loc = {
-                lat: place.geometry.location.lat(),
-                lng: place.geometry.location.lng()
-            };
-            setCenter(loc);
-            setZoom(14);
-        }
+    const handlePlaceSelect = (place: AppPlace) => {
+        setCenter(place.location);
+        setZoom(14);
+        setSelectedPlace(place);
     };
 
     const handleMarkerClick = (marker: google.maps.Marker) => {
         const placeId = (marker as any).placeId;
         if (placeId) {
-            const place = places.find(p => p.place_id === placeId);
+            const place = places.find(p => p.id === placeId);
             if (place) setSelectedPlace(place);
         }
     };
@@ -69,16 +65,16 @@ const App = () => {
     };
 
     const lodgingMarkers = places.map((place: any) => ({
-        position: place.geometry.location,
+        position: place.location,
         title: place.name,
-        placeId: place.place_id,
+        placeId: place.id,
         icon: {
             url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
         }
     }));
 
     const pitstopMarkers = pitstops.map((stop: any) => ({
-        position: stop.geometry.location,
+        position: stop.location,
         title: stop.name,
         icon: {
             url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png'
@@ -115,14 +111,14 @@ const App = () => {
                             {placesLoading ? (
                                 <p>Loading stays...</p>
                             ) : (
-                                places.map((place: any) => (
+                                places.map((place) => (
                                     <DestinationCard
-                                        key={place.place_id}
+                                        key={place.id}
                                         title={place.name}
-                                        location={place.vicinity || "Philippines"}
+                                        location={place.formattedAddress || "Philippines"}
                                         price="₱ - / night"
-                                        rating={place.rating}
-                                        image={place.photos?.[0]?.getUrl() || MOCK_LODGING_IMAGE}
+                                        rating={place.rating || 0}
+                                        image={place.photoUrl || MOCK_LODGING_IMAGE}
                                         onClick={() => setSelectedPlace(place)}
                                     />
                                 ))

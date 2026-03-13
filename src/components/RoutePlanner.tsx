@@ -1,9 +1,12 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import './RoutePlanner.css';
+import { AppPlace } from '../types/place';
+import { BASIC_PLACE_FIELDS, fetchPlaceFromPrediction } from '../lib/googlePlaces';
+import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
 
 interface RoutePlannerProps {
-    destination: google.maps.places.PlaceResult;
+    destination: AppPlace;
     onClose: () => void;
     onRouteFound: (result: google.maps.DirectionsResult) => void;
 }
@@ -17,44 +20,14 @@ const COMMON_ORIGINS = [
 ];
 
 export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initialDestination, onClose, onRouteFound }) => {
-    const originInputRef = useRef<HTMLInputElement>(null);
-    const destInputRef = useRef<HTMLInputElement>(null);
     const { google } = useGoogleMaps();
 
     const [origin, setOrigin] = useState<google.maps.LatLng | google.maps.LatLngLiteral | null>(null);
-    const [destination, setDestination] = useState<google.maps.places.PlaceResult>(initialDestination);
+    const [destination, setDestination] = useState<AppPlace>(initialDestination);
 
     useEffect(() => {
-        if (google && originInputRef.current && destInputRef.current) {
-            const originAutocomplete = new google.maps.places.Autocomplete(originInputRef.current, {
-                componentRestrictions: { country: "ph" },
-                fields: ["geometry", "name"]
-            });
-
-            const destAutocomplete = new google.maps.places.Autocomplete(destInputRef.current, {
-                componentRestrictions: { country: "ph" },
-                fields: ["geometry", "name", "place_id", "formatted_address", "photos", "rating", "vicinity"]
-            });
-
-            originAutocomplete.addListener("place_changed", () => {
-                const place = originAutocomplete.getPlace();
-                if (place.geometry?.location) {
-                    setOrigin(place.geometry.location);
-                }
-            });
-
-            destAutocomplete.addListener("place_changed", () => {
-                const place = destAutocomplete.getPlace();
-                if (place.geometry?.location) {
-                    setDestination(place);
-                }
-            });
-        }
-    }, [google]);
-
-    useEffect(() => {
-        if (origin && destination.geometry?.location) {
-            calculateRoute(origin, destination.geometry.location);
+        if (origin) {
+            calculateRoute(origin, destination.location);
         }
     }, [origin, destination]);
 
@@ -85,7 +58,6 @@ export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initial
             if (selected) {
                 const loc = { lat: selected.lat, lng: selected.lng };
                 setOrigin(loc);
-                if (originInputRef.current) originInputRef.current.value = selected.label;
             }
         }
     };
@@ -110,11 +82,15 @@ export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initial
 
                 <div className="input-group">
                     <label>Starting Point</label>
-                    <input
-                        ref={originInputRef}
-                        type="text"
-                        placeholder="Search for start location"
+                    <PlaceAutocompleteInput
                         className="route-input"
+                        placeholder="Search for start location"
+                        onSelect={async (prediction) => {
+                            const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
+                            if (place) {
+                                setOrigin(place.location);
+                            }
+                        }}
                     />
                 </div>
 
@@ -126,12 +102,15 @@ export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initial
 
                 <div className="input-group">
                     <label>Destination</label>
-                    <input
-                        ref={destInputRef}
-                        type="text"
-                        placeholder="Search for destination"
-                        defaultValue={destination.name}
+                    <PlaceAutocompleteInput
                         className="route-input"
+                        placeholder={destination.name || 'Search for destination'}
+                        onSelect={async (prediction) => {
+                            const place = await fetchPlaceFromPrediction(prediction);
+                            if (place) {
+                                setDestination(place);
+                            }
+                        }}
                     />
                 </div>
             </div>

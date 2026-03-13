@@ -1,11 +1,12 @@
 import React from 'react';
 import { Button } from './Button';
 import './LocationDetail.css';
+import { AppPlace } from '../types/place';
 
 interface LocationDetailProps {
-    place: google.maps.places.PlaceResult;
+    place: AppPlace;
     onClose: () => void;
-    onPlanTrip: (place: google.maps.places.PlaceResult) => void;
+    onPlanTrip: (place: AppPlace) => void;
 }
 
 export const LocationDetail: React.FC<LocationDetailProps> = ({ place, onClose, onPlanTrip }) => {
@@ -16,7 +17,7 @@ export const LocationDetail: React.FC<LocationDetailProps> = ({ place, onClose, 
 
                 <div className="detail-hero">
                     <img
-                        src={place.photos?.[0]?.getUrl({ maxWidth: 800 }) || ''}
+                        src={place.photoUrl || ''}
                         alt={place.name}
                         className="detail-main-image"
                     />
@@ -26,18 +27,18 @@ export const LocationDetail: React.FC<LocationDetailProps> = ({ place, onClose, 
                     <h1 className="detail-title">{place.name}</h1>
                     <div className="detail-meta">
                         <span className="detail-rating">★ {place.rating}</span>
-                        <span className="detail-address">{place.formatted_address || place.vicinity}</span>
+                        <span className="detail-address">{place.formattedAddress}</span>
                     </div>
 
                     <div className="detail-section">
                         <h3>About</h3>
-                        <p>{(place as any).editorial_summary?.overview || "Experience comfort and local charm at this beautiful location in the heart of the Philippines."}</p>
+                        <p>{place.summary || "Experience comfort and local charm at this beautiful location in the heart of the Philippines."}</p>
                     </div>
 
                     <div className="detail-section">
                         <h3>Contact Information</h3>
-                        {place.formatted_phone_number && <p><strong>Phone:</strong> {place.formatted_phone_number}</p>}
-                        {place.website && <p><strong>Website:</strong> <a href={place.website} target="_blank" rel="noreferrer">Visit website</a></p>}
+                        {place.nationalPhoneNumber && <p><strong>Phone:</strong> {place.nationalPhoneNumber}</p>}
+                        {place.websiteUri && <p><strong>Website:</strong> <a href={place.websiteUri} target="_blank" rel="noreferrer">Visit website</a></p>}
                     </div>
 
                     <div className="detail-actions">

@@ -1,10 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Map from './Map';
 import { Timeline } from './Timeline';
 import { StopCard } from './StopCard';
 import { FilterPanel } from './FilterPanel';
 import { Trip, Stop } from '../types/trip';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
+import { BASIC_PLACE_FIELDS, toAppPlace, fetchPlaceFromPrediction } from '../lib/googlePlaces';
+import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
 import './TripPlanner.css';
 
 interface TripPlannerProps {
@@ -60,49 +62,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
     const [isAddingStop, setIsAddingStop] = useState(false);
     const [isNavigating, setIsNavigating] = useState(false);
     const [editingStopId, setEditingStopId] = useState<string | null>(null);
-    const searchInputRef = useRef<HTMLInputElement>(null);
     const { google } = useGoogleMaps();
-
-    // ── Add stop Autocomplete ──────────────────────────────────────────────────
-    useEffect(() => {
-        if (!google || !isAddingStop || !searchInputRef.current) return;
-
-        const autocomplete = new google.maps.places.Autocomplete(searchInputRef.current, {
-            componentRestrictions: { country: 'ph' },
-            fields: ['geometry', 'name', 'place_id', 'formatted_address'],
-        });
-
-        const listener = autocomplete.addListener('place_changed', () => {
-            const place = autocomplete.getPlace();
-            if (place.geometry?.location) {
-                const isFirst = trip.stops.length === 0;
-                // Determine type: first stop = start, subsequent = stop until destination assigned
-                const stopType: Stop['type'] = isFirst ? 'start' : 'stop';
-
-                const newStop: Stop = {
-                    id: Math.random().toString(36).substr(2, 9),
-                    name: place.name || place.formatted_address || 'Unknown',
-                    formattedAddress: place.formatted_address,
-                    location: {
-                        lat: place.geometry.location.lat(),
-                        lng: place.geometry.location.lng(),
-                    },
-                    type: stopType,
-                };
-
-                setTrip(prev => {
-                    const updated = [...prev.stops, newStop];
-                    // Always mark last stop as destination when there are ≥ 2 stops
-                    const retyped = retypeStops(updated);
-                    return { ...prev, stops: retyped };
-                });
-                setIsAddingStop(false);
-            }
-        });
-
-        searchInputRef.current.focus();
-        return () => { google.maps.event.removeListener(listener); };
-    }, [google, isAddingStop]);
 
     // ── Retype stops so first=start, last=destination ─────────────────────────
     const retypeStops = (stops: Stop[]): Stop[] => {
@@ -174,65 +134,45 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                 const path = result.routes[0].overview_path;
                 const fractions = durationMins >= 180 ? [1 / 3, 2 / 3] : [1 / 2];
 
-                const placesService = new google.maps.places.PlacesService(
-                    document.createElement('div')
-                );
-
                 const pitstopPromises = fractions.map(
                     (fraction) =>
-                        new Promise<Stop | null>((resolve) => {
+                        new Promise<Stop | null>(async (resolve) => {
                             const midpoint = interpolatePath(path, fraction);
-                            placesService.nearbySearch(
-                                {
-                                    location: midpoint,
-                                    radius: 5000,
-                                    type: 'gas_station',
-                                    rankBy: google.maps.places.RankBy.DISTANCE,
-                                },
-                                (results: google.maps.places.PlaceResult[] | null, psStatus: google.maps.places.PlacesServiceStatus) => {
-                                    if (
-                                        psStatus === google.maps.places.PlacesServiceStatus.OK &&
-                                        results &&
-                                        results.length > 0
-                                    ) {
-                                        const place = results[0];
-                                        const loc = place.geometry?.location;
-                                        if (!loc) { resolve(null); return; }
+                            try {
+                                const response = await google.maps.places.Place.searchNearby({
+                                    fields: [...BASIC_PLACE_FIELDS, 'primaryType'],
+                                    includedPrimaryTypes: ['gas_station'],
+                                    locationRestriction: {
+                                        center: midpoint,
+                                        radius: 5000,
+                                    },
+                                    maxResultCount: 1,
+                                    rankPreference: google.maps.places.SearchNearbyRankPreference.DISTANCE,
+                                    language: 'en',
+                                    region: 'ph',
+                                });
 
-                                        // Fetch full details to get formatted_address
-                                        placesService.getDetails(
-                                            {
-                                                placeId: place.place_id!,
-                                                fields: ['name', 'geometry', 'formatted_address', 'place_id'],
-                                            },
-                                            (detail: google.maps.places.PlaceResult | null, detailStatus: google.maps.places.PlacesServiceStatus) => {
-                                                if (
-                                                    detailStatus === google.maps.places.PlacesServiceStatus.OK &&
-                                                    detail
-                                                ) {
-                                                    const pitstop: Stop = {
-                                                        id: Math.random().toString(36).substr(2, 9),
-                                                        name: detail.name || place.name || 'Pitstop',
-                                                        formattedAddress: detail.formatted_address,
-                                                        location: {
-                                                            lat: detail.geometry!.location!.lat(),
-                                                            lng: detail.geometry!.location!.lng(),
-                                                        },
-                                                        type: 'stop',
-                                                        isAutoSuggested: true,
-                                                        category: 'Gas Station',
-                                                    };
-                                                    resolve(pitstop);
-                                                } else {
-                                                    resolve(null);
-                                                }
-                                            }
-                                        );
-                                    } else {
-                                        resolve(null);
-                                    }
+                                const place = response.places?.[0];
+                                const appPlace = place ? toAppPlace(place) : null;
+                                if (!appPlace) {
+                                    resolve(null);
+                                    return;
                                 }
-                            );
+
+                                const pitstop: Stop = {
+                                    id: Math.random().toString(36).substr(2, 9),
+                                    name: appPlace.name,
+                                    formattedAddress: appPlace.formattedAddress,
+                                    location: appPlace.location,
+                                    type: 'stop',
+                                    isAutoSuggested: true,
+                                    category: 'Gas Station',
+                                };
+                                resolve(pitstop);
+                            } catch (error) {
+                                console.error('Failed to load an auto-suggested pitstop:', error);
+                                resolve(null);
+                            }
                         })
                 );
 
@@ -376,12 +316,31 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                                         />
                                         {isAddingStop ? (
                                             <div className="add-stop-input-container">
-                                                <input
-                                                    ref={searchInputRef}
-                                                    type="text"
-                                                    placeholder="Where to next?"
+                                                <PlaceAutocompleteInput
                                                     className="add-stop-input"
-                                                    autoFocus
+                                                    placeholder="Where to next?"
+                                                    onSelect={async (prediction) => {
+                                                        const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
+                                                        if (!place) return;
+
+                                                        const isFirst = trip.stops.length === 0;
+                                                        const stopType: Stop['type'] = isFirst ? 'start' : 'stop';
+
+                                                        const newStop: Stop = {
+                                                            id: Math.random().toString(36).substr(2, 9),
+                                                            name: place.name,
+                                                            formattedAddress: place.formattedAddress,
+                                                            location: place.location,
+                                                            type: stopType,
+                                                        };
+
+                                                        setTrip(prev => {
+                                                            const updated = [...prev.stops, newStop];
+                                                            const retyped = retypeStops(updated);
+                                                            return { ...prev, stops: retyped };
+                                                        });
+                                                        setIsAddingStop(false);
+                                                    }}
                                                 />
                                                 <button className="cancel-add" onClick={() => setIsAddingStop(false)}>
                                                     Cancel
