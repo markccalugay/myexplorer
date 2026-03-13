@@ -30,13 +30,14 @@ const Map: React.FC<MapProps> = ({
     const markerRefs = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
     const routePolylineRef = useRef<google.maps.Polyline | null>(null);
     const { google } = useGoogleMaps();
+    const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
 
     useEffect(() => {
         if (google && mapRef.current && !googleMapRef.current) {
             googleMapRef.current = new google.maps.Map(mapRef.current, {
                 center,
                 zoom,
-                mapId: google.maps.Map.DEMO_MAP_ID,
+                mapId,
                 styles: [
                     {
                         "featureType": "poi",
@@ -94,7 +95,7 @@ const Map: React.FC<MapProps> = ({
                 const marker = new google.maps.marker.AdvancedMarkerElement({
                     position: options.position,
                     title: options.title,
-                    content: pin.element,
+                    content: pin,
                     map: googleMapRef.current
                 });
                 markerRefs.current.push(marker);
