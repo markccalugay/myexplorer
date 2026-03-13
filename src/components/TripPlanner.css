@@ -98,6 +98,14 @@
     min-width: 0;
 }
 
+.summary-note {
+    width: 100%;
+    font-size: 12px;
+    color: rgba(13, 71, 161, 0.78);
+    padding-top: 6px;
+    border-top: 1px solid rgba(13, 71, 161, 0.08);
+}
+
 .summary-item .label {
     font-size: 10px;
     font-weight: 800;
@@ -168,6 +176,19 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+}
+
+.add-stop-copy h4 {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+    color: var(--deep-ocean);
+}
+
+.add-stop-copy p {
+    margin: 0;
+    font-size: 13px;
+    color: #6b7b86;
+    line-height: 1.5;
 }
 
 .add-stop-input {

@@ -259,6 +259,24 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
         ? (totalDistanceKm / FUEL_EFFICIENCY_KM_PER_L).toFixed(1)
         : null;
     const needsBathroomBreak = totalDurationMins >= 180;
+    const canRecommendPitstops = trip.stops.length >= 2;
+    const addStopPrompt = trip.stops.length === 0
+        ? {
+            title: 'Add your origin',
+            description: 'Your first stop becomes the starting point for the trip.',
+            placeholder: 'Enter your origin',
+        }
+        : trip.stops.length === 1
+        ? {
+            title: 'Add your final destination',
+            description: 'Your second stop becomes the final destination. Once both ends are set, we can recommend pitstops along the drive.',
+            placeholder: 'Enter your final destination',
+        }
+        : {
+            title: 'Add a stop between the route',
+            description: 'Add optional stops between your origin and destination. We will also recommend pitstops for longer drives.',
+            placeholder: 'Add another stop or pitstop',
+        };
 
     // ── Markers ───────────────────────────────────────────────────────────────
     const tripMarkers = trip.stops.map(s => ({
@@ -316,9 +334,13 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                                         />
                                         {isAddingStop ? (
                                             <div className="add-stop-input-container">
+                                                <div className="add-stop-copy">
+                                                    <h4>{addStopPrompt.title}</h4>
+                                                    <p>{addStopPrompt.description}</p>
+                                                </div>
                                                 <PlaceAutocompleteInput
                                                     className="add-stop-input"
-                                                    placeholder="Where to next?"
+                                                    placeholder={addStopPrompt.placeholder}
                                                     onSelect={async (prediction) => {
                                                         const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
                                                         if (!place) return;
@@ -354,7 +376,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                                     </>
                                 ) : (
                                     <div className="timeline-placeholder">
-                                        <p>Your journey starts here.</p>
+                                        <p>Set your origin first, then add your final destination.</p>
                                         <button className="add-stop-btn" onClick={() => setIsAddingStop(true)}>
                                             + Add Stop
                                         </button>
@@ -363,8 +385,12 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                             </div>
 
                             <div className="suggestions-teaser">
-                                <h3>Pitstop Suggestions</h3>
-                                <p>Refine your journey experience along the route.</p>
+                                <h3>Route Recommendations</h3>
+                                <p>
+                                    {canRecommendPitstops
+                                        ? 'With an origin and final destination in place, we can recommend pitstops along the drive.'
+                                        : 'Set your origin and final destination first, then we will recommend pitstops between them.'}
+                                </p>
                             </div>
 
                             <FilterPanel onFilterChange={handleFilterChange} />
@@ -390,6 +416,9 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                                         <span className="value">~{gasEstimateL} L</span>
                                     </div>
                                 )}
+                                <div className="summary-note">
+                                    Pitstop recommendations appear automatically on longer drives.
+                                </div>
                             </div>
                         )}
 

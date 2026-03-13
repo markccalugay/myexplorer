@@ -67,7 +67,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     if (trip.stops.length === 0) {
         return (
             <div className="timeline-empty">
-                <p>Start by adding your home or a starting location.</p>
+                <p>Add your origin to start building the route.</p>
             </div>
         );
     }

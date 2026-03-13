@@ -50,9 +50,11 @@ export const StopCard: React.FC<StopCardProps> = ({
 
     const stopLabel =
         stop.type === 'start'
-            ? 'START'
+            ? 'ORIGIN'
             : stop.type === 'destination'
             ? 'DESTINATION'
+            : stop.isAutoSuggested
+            ? `PITSTOP ${index}`
             : `STOP ${index}`;
 
     return (
