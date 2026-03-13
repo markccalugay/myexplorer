@@ -3,6 +3,7 @@ import { Stop } from '../types/trip';
 import './StopCard.css';
 import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
 import { BASIC_PLACE_FIELDS, fetchPlaceFromPrediction } from '../lib/googlePlaces';
+import { getStopColor } from '../lib/stopColors';
 
 interface StopCardProps {
     stop: Stop;
@@ -32,6 +33,7 @@ export const StopCard: React.FC<StopCardProps> = ({
     onDragEnd,
 }) => {
     const [showConfirm, setShowConfirm] = useState(false);
+    const stopColor = getStopColor(stop);
 
     const handleCardClick = () => {
         if (!isEditing && onEdit) {
@@ -60,6 +62,7 @@ export const StopCard: React.FC<StopCardProps> = ({
     return (
         <div
             className={`stop-card ${stop.type}${isDragOver ? ' drag-over' : ''}`}
+            style={{ '--stop-accent-color': stopColor } as React.CSSProperties}
             draggable
             onDragStart={onDragStart}
             onDragOver={onDragOver}

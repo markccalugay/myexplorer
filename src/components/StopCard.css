@@ -28,7 +28,7 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #ccc;
+    background: var(--stop-accent-color, #ccc);
     z-index: 1;
     flex-shrink: 0;
 }
@@ -39,8 +39,6 @@
     background: #eee;
 }
 
-.stop-card.start .dot      { background: var(--explorer-blue); }
-.stop-card.destination .dot { background: #34a853; }
 .stop-card.destination .line { display: none; }
 
 /* Card body */

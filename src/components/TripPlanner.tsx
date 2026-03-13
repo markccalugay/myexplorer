@@ -7,6 +7,8 @@ import { Trip, Stop } from '../types/trip';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { BASIC_PLACE_FIELDS, toAppPlace, fetchPlaceFromPrediction } from '../lib/googlePlaces';
 import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
+import { getStopColor } from '../lib/stopColors';
+import { computeDrivingRoute, getRouteDistanceKm, getRouteDurationMinutes, getRoutePath } from '../lib/googleRoutes';
 import './TripPlanner.css';
 
 interface TripPlannerProps {
@@ -78,34 +80,31 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
     const calculateJourneyDetails = useCallback((stops: Stop[]) => {
         if (!google || stops.length < 2) return;
 
-        const service = new google.maps.DistanceMatrixService();
-        const origins = stops.slice(0, -1).map(s => s.location);
-        const destinations = stops.slice(1).map(s => s.location);
+        Promise.all(
+            stops.slice(0, -1).map((stop, index) =>
+                computeDrivingRoute(google, stop.location, stops[index + 1].location)
+            )
+        )
+            .then((routes) => {
+                const newStops = [...stops];
+                let currentTime = new Date();
+                currentTime.setHours(8, 0, 0, 0);
+                newStops[0].arrivalTime = formatTime(currentTime);
 
-        service.getDistanceMatrix(
-            { origins, destinations, travelMode: google.maps.TravelMode.DRIVING },
-        (response: google.maps.DistanceMatrixResponse | null, status: google.maps.DistanceMatrixStatus) => {
-                if (status === google.maps.DistanceMatrixStatus.OK && response) {
-                    const newStops = [...stops];
-                    let currentTime = new Date();
-                    currentTime.setHours(8, 0, 0, 0);
-                    newStops[0].arrivalTime = formatTime(currentTime);
+                routes.forEach((route, index) => {
+                    const distKm = getRouteDistanceKm(route);
+                    const durMins = getRouteDurationMinutes(route);
+                    newStops[index + 1].distanceFromPrevious = distKm;
+                    newStops[index + 1].durationFromPrevious = durMins;
+                    currentTime = new Date(currentTime.getTime() + (durMins + 30) * 60_000);
+                    newStops[index + 1].arrivalTime = formatTime(currentTime);
+                });
 
-                    for (let i = 0; i < response.rows.length; i++) {
-                        const el = response.rows[i].elements[i];
-                        if (el.status === 'OK') {
-                            const distKm = Math.round(el.distance.value / 1000);
-                            const durMins = Math.round(el.duration.value / 60);
-                            newStops[i + 1].distanceFromPrevious = distKm;
-                            newStops[i + 1].durationFromPrevious = durMins;
-                            currentTime = new Date(currentTime.getTime() + (durMins + 30) * 60_000);
-                            newStops[i + 1].arrivalTime = formatTime(currentTime);
-                        }
-                    }
-                    setTrip(prev => ({ ...prev, stops: newStops }));
-                }
-            }
-        );
+                setTrip(prev => ({ ...prev, stops: newStops }));
+            })
+            .catch((error) => {
+                console.error('Failed to calculate trip segment details:', error);
+            });
     }, [google]);
 
     // ── Auto-pitstop injection ─────────────────────────────────────────────────
@@ -115,23 +114,16 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
         const start = stops[0];
         const dest = stops[stops.length - 1];
 
-        const directionsService = new google.maps.DirectionsService();
-        directionsService.route(
-            {
-                origin: start.location,
-                destination: dest.location,
-                travelMode: google.maps.TravelMode.DRIVING,
-            },
-            (result: google.maps.DirectionsResult | null, status: google.maps.DirectionsStatus) => {
-                if (status !== google.maps.DirectionsStatus.OK || !result) return;
-
-                const leg = result.routes[0].legs[0];
-                const durationMins = Math.round(leg.duration!.value / 60);
+        computeDrivingRoute(google, start.location, dest.location)
+            .then((route) => {
+                const durationMins = getRouteDurationMinutes(route);
 
                 // Only insert pitstops for trips > 90 minutes
                 if (durationMins < 90) return;
 
-                const path = result.routes[0].overview_path;
+                const path = getRoutePath(route).map((point) => new google.maps.LatLng(point));
+                if (!path.length) return;
+
                 const fractions = durationMins >= 180 ? [1 / 3, 2 / 3] : [1 / 2];
 
                 const pitstopPromises = fractions.map(
@@ -196,8 +188,10 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                         return { ...prev, stops: retyped };
                     });
                 });
-            }
-        );
+            })
+            .catch((error) => {
+                console.error('Failed to compute auto-pitstop route:', error);
+            });
     }, [google, calculateJourneyDetails]);
 
     // Trigger calculations whenever stops change (≥ 2)
@@ -282,14 +276,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
     const tripMarkers = trip.stops.map(s => ({
         position: s.location,
         title: s.name,
-        icon:
-            s.type === 'start'
-                ? 'http://maps.google.com/mapfiles/ms/icons/green-dot.png'
-                : s.type === 'destination'
-                ? 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
-                : s.isAutoSuggested
-                ? 'http://maps.google.com/mapfiles/ms/icons/orange-dot.png'
-                : 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+        color: getStopColor(s),
     }));
 
     return (

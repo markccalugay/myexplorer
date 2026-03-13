@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Landing page hero search now suggests destinations while typing, supports date range selection with calendar inputs, and lets travelers choose adults and children from a guest dropdown.
 
+### Changed
+- Trip planner map pins now match the color of each stop marker dot in the timeline, including origin, destination, suggested pitstops, and manual stops.
+
 ## [0.1.0] - 2026-03-08
 
 ### Added
