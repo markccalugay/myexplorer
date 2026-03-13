@@ -299,9 +299,7 @@
    Category Pills
 ───────────────────────────────────────────── */
 .ep-categories-bar {
-    position: sticky;
-    top: 64px;
-    z-index: 50;
+    position: relative;
     background: #fff;
     border-bottom: 1px solid #f0f0f0;
     padding: 0 24px;
