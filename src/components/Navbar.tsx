@@ -30,7 +30,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onStartPlanning, onExplore, onOp
                 </div>
 
                 <div className="navbar-actions">
-                    <Button variant="secondary" className="nav-btn">Sign In</Button>
                     <Button variant="primary" className="nav-btn" onClick={onStartPlanning}>Start Planning</Button>
                     <div className="user-profile">
                         <div className="profile-placeholder"></div>
