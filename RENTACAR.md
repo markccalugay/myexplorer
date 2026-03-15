@@ -253,6 +253,233 @@ Suggested policy direction:
 - If no timely replacement is available, issue partial or full refund depending on trip stage
 - Consider recovery credits for major disruption
 
+## Monetization Model
+
+For this marketplace, the platform should be able to earn from both sides of the transaction:
+
+- a customer-facing service fee
+- a provider-facing platform fee
+
+This should be designed carefully so the business is sustainable without making pricing feel deceptive or unfair.
+
+### Monetization Goals
+
+- Earn revenue from every completed booking
+- Keep pricing easy to understand for travelers
+- Keep provider fees predictable enough that good drivers and vehicle owners stay on the platform
+- Avoid hidden charges that damage trust
+
+### Core Revenue Streams
+
+#### 1. Customer Service Fee
+
+Charge the traveler a percentage-based platform fee when they:
+
+- rent a vehicle
+- hire a driver
+- book vehicle + driver together
+
+This fee should appear clearly in the booking summary and checkout.
+
+Suggested structure:
+
+- `Base provider price`
+- `Platform service fee`
+- `Taxes or regulatory charges if applicable`
+- `Total paid by traveler`
+
+Example:
+
+- Provider sets vehicle rental price: `PHP 4,000`
+- Platform service fee to traveler: `10%`
+- Traveler pays: `PHP 4,400` before any other applicable fees
+
+This approach makes the platform’s customer-side revenue visible and easier to explain.
+
+#### 2. Provider Platform Fee
+
+Charge the provider a separate platform fee for using MyExplorer to acquire bookings.
+
+This can be structured as:
+
+- percentage of each completed booking
+- fixed booking fee
+- or a hybrid model
+
+Example percentage model:
+
+- Traveler books a `PHP 4,000` vehicle rental
+- Provider platform fee: `12%`
+- Provider receives `PHP 3,520` before payout adjustments
+
+For `driver-only` services, the same approach can apply:
+
+- Driver sets a service rate
+- Platform deducts a provider fee after booking completion
+
+#### 3. Combined Take Rate
+
+The business can ultimately earn from:
+
+- customer service fee
+- provider platform fee
+
+This creates a combined marketplace take rate.
+
+Example:
+
+- Provider base price: `PHP 4,000`
+- Traveler service fee: `10%` = `PHP 400`
+- Provider fee: `12%` = `PHP 480`
+- Total platform revenue on that booking: `PHP 880`
+
+This should be monitored carefully because if the combined take rate is too high, providers may leave the platform or try to move bookings off-platform.
+
+### Recommended Pricing Philosophy
+
+The platform should avoid treating all service types the same.
+
+Suggested direction:
+
+- `Self-drive rental`: lower provider fee, moderate traveler fee
+- `Vehicle + driver`: higher total take rate may be justified due to more support, trust, and risk handling
+- `Driver-only`: moderate fee, but only if the platform provides enough trust, insurance, and scheduling value
+- `Emergency replacement`: likely not a profit center and may function as an internal service-recovery cost
+
+### Recommended Early Model
+
+For initial planning, a simple model is best.
+
+Suggested MVP fee structure:
+
+- Traveler pays a service fee in the range of `8% to 12%`
+- Provider pays a platform fee in the range of `10% to 15%`
+
+This is only a planning range, not a final pricing decision.
+
+The final percentage should depend on:
+
+- legal/compliance cost
+- customer support cost
+- insurance and incident reserve cost
+- payment processing cost
+- fraud and cancellation risk
+- provider acquisition difficulty
+
+### Service-Type Monetization Notes
+
+#### Self-Drive Rental
+
+Possible pricing model:
+
+- traveler service fee
+- provider platform fee
+- optional security deposit handling fee if the platform processes deposits
+
+Important note:
+
+- security deposits should not be confused with platform revenue
+
+#### Vehicle + Driver
+
+Possible pricing model:
+
+- traveler service fee
+- provider platform fee
+- optional premium support or route-planning add-on
+
+This category may justify a higher monetization level because operations are more complex.
+
+#### Driver-Only / Chauffeur Service
+
+Possible pricing model:
+
+- traveler service fee
+- driver platform fee
+
+Because this is labor/service-heavy, drivers may be more sensitive to platform deductions. The provider fee may need to be lower unless the platform provides strong demand, trust, protection, and scheduling value.
+
+### Additional Monetization Opportunities
+
+These should be considered secondary, not primary, revenue streams:
+
+- listing boosts for providers
+- premium provider subscriptions
+- featured placement in search results
+- hotel + transport bundle upsells
+- itinerary add-ons
+- cancellation protection or trip protection products if legally allowed
+- corporate or event booking fees
+
+### Fee Transparency Rules
+
+To avoid the same trust problems seen in the market research, the platform should be explicit about:
+
+- what the traveler is paying to the provider
+- what the traveler is paying to MyExplorer
+- what fee the provider is paying MyExplorer
+- which extra charges are variable and conditional
+
+The traveler should always see:
+
+- base rate
+- platform fee
+- estimated extras
+- total due now
+- possible later charges with rules
+
+The provider should always see:
+
+- gross booking amount
+- provider fee
+- payout amount
+- payout timing
+
+### Payout Timing
+
+Provider fees should be tied to completed or substantially completed bookings, not only booking creation.
+
+Suggested payout planning:
+
+- collect customer payment at booking
+- hold funds until service milestone or trip completion
+- deduct provider fee before payout
+- delay payout if there is an active dispute, incident, or damage claim
+
+### Anti-Circumvention Planning
+
+If the platform charges both the traveler and provider, some users may try to take future trips off-platform.
+
+The product should plan for that risk:
+
+- in-app messaging controls during active negotiation
+- clear cancellation and dispute protection available only on-platform
+- trust, insurance, and support benefits that providers lose when going off-platform
+- repeat-booking tools that make staying on-platform easier than leaving
+
+### Important Risk
+
+Charging both sides is a valid marketplace model, but the combined fee burden must feel worth it.
+
+If travelers see high service fees and providers see heavy deductions, the likely outcomes are:
+
+- off-platform deals
+- lower provider retention
+- weaker price competitiveness
+- more disputes about value
+
+### Recommended Next Step
+
+Before launch, create a monetization decision matrix for each service type with:
+
+- target traveler fee
+- target provider fee
+- expected payment processing cost
+- expected support cost
+- expected insurance/risk reserve
+- estimated contribution margin
+- acceptable discounting or bundle strategy
+
 ## Suggested MVP Rollout
 
 ### Phase 1
