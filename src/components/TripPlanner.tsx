@@ -31,6 +31,12 @@ interface FavoritePlace {
     place: AppPlace;
 }
 
+interface RecommendationFilters {
+    fuel: string[];
+    dining: string[];
+    essentials: string[];
+}
+
 // Helper: interpolate a fraction (0–1) along an encoded polyline path
 const interpolatePath = (
     path: google.maps.LatLng[],
@@ -219,6 +225,11 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     const [favoriteInputKey, setFavoriteInputKey] = useState(0);
     const [isUsingCurrentLocation, setIsUsingCurrentLocation] = useState(false);
     const [originLocationError, setOriginLocationError] = useState<string | null>(null);
+    const [recommendationFilters, setRecommendationFilters] = useState<RecommendationFilters>({
+        fuel: [],
+        dining: [],
+        essentials: [],
+    });
     const { google } = useGoogleMaps();
     const autoPitstopRouteKeyRef = useRef<string | null>(null);
     const updateTrip = useCallback((updater: Trip | ((previousTrip: Trip) => Trip)) => {
@@ -267,6 +278,11 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         setElapsedTimeMs(0);
         setIsUsingCurrentLocation(false);
         setOriginLocationError(null);
+        setRecommendationFilters({
+            fuel: [],
+            dining: [],
+            essentials: [],
+        });
         autoPitstopRouteKeyRef.current = null;
     }, [initialTrip]);
 
@@ -500,8 +516,11 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         if (newStops.length >= 2) calculateJourneyDetails(newStops);
     };
 
-    const handleFilterChange = (category: string, value: string) => {
-        console.log(`Filter: ${category} = ${value}`);
+    const handleFilterChange = (category: keyof RecommendationFilters, values: string[]) => {
+        setRecommendationFilters((previous) => ({
+            ...previous,
+            [category]: values,
+        }));
     };
 
     const handleAddPlaceAsStop = useCallback((place: Pick<AppPlace, 'name' | 'formattedAddress' | 'location'>) => {
@@ -670,6 +689,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         : null;
     const needsBathroomBreak = totalDurationMins >= 180;
     const canRecommendPitstops = trip.stops.length >= 2;
+    const selectedRecommendationCount = Object.values(recommendationFilters)
+        .reduce((total, values) => total + values.length, 0);
     const addStopPrompt = trip.stops.length === 0
         ? {
             title: 'Use your current location',
@@ -965,7 +986,9 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                 <h3>Route Recommendations</h3>
                                 <p>
                                     {canRecommendPitstops
-                                        ? 'With an origin and final destination in place, we can recommend pitstops along the drive.'
+                                        ? selectedRecommendationCount > 0
+                                            ? `With ${selectedRecommendationCount} travel preference${selectedRecommendationCount === 1 ? '' : 's'} selected, we will bias pitstop recommendations toward those needs along the drive.`
+                                            : 'With an origin and final destination in place, we can recommend pitstops along the drive.'
                                         : 'Set your origin and final destination first, then we will recommend pitstops between them.'}
                                 </p>
                             </div>

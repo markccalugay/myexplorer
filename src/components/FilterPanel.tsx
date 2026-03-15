@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 interface FilterPanelProps {
-    onFilterChange: (category: string, value: string) => void;
+    onFilterChange: (category: string, values: string[]) => void;
 }
 
 interface FilterOption {
@@ -157,18 +157,14 @@ const FILTER_PANEL_STYLES = `
         min-width: 0;
     }
 
-    .filter-chip input:checked + span,
-    .filter-chip.is-selected > span {
-        background: #111827;
-        color: #ffffff;
-        border-color: #111827;
-        box-shadow: 0 10px 24px rgba(17, 24, 39, 0.16);
+    .filter-chip input:checked + span {
+        border-color: #94a3b8;
+        box-shadow: inset 0 0 0 1px #94a3b8;
     }
 
-    .filter-chip input:checked + span .filter-chip__icon,
-    .filter-chip.is-selected > span .filter-chip__icon {
-        background: rgba(255, 255, 255, 0.14);
-        color: #ffffff;
+    .filter-chip input:checked + span .filter-chip__icon {
+        background: #cbd5e1;
+        color: #334155;
     }
 
     .filter-chip:hover > span {
@@ -208,20 +204,38 @@ const FILTER_PANEL_STYLES = `
 `;
 
 export const FilterPanel: React.FC<FilterPanelProps> = ({ onFilterChange }) => {
-    const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
+    const [selectedFilters, setSelectedFilters] = useState<Record<string, string[]>>({
+        fuel: [],
+        dining: [],
+        essentials: [],
+    });
 
     const handleToggle = (categoryId: string, optionId: string, label: string) => {
-        setSelectedFilters((previous) => (
-            previous.includes(optionId)
-                ? previous.filter((id) => id !== optionId)
-                : [...previous, optionId]
-        ));
+        setSelectedFilters((previous) => {
+            const currentValues = previous[categoryId] || [];
+            const nextValues = currentValues.includes(label)
+                ? currentValues.filter((value) => value !== label)
+                : [...currentValues, label];
 
-        onFilterChange(categoryId, label);
+            onFilterChange(categoryId, nextValues);
+
+            return {
+                ...previous,
+                [categoryId]: nextValues,
+            };
+        });
     };
 
     const handleClearAll = () => {
-        setSelectedFilters([]);
+        setSelectedFilters({
+            fuel: [],
+            dining: [],
+            essentials: [],
+        });
+
+        FILTER_CATEGORIES.forEach((category) => {
+            onFilterChange(category.id, []);
+        });
     };
 
     const renderSection = ({ id, title, iconLabel, options }: FilterCategory) => {
@@ -239,11 +253,11 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onFilterChange }) => {
                         option.label ? (
                             <label
                                 key={option.id}
-                                className={`filter-chip${selectedFilters.includes(option.id) ? ' is-selected' : ''}`}
+                                className="filter-chip"
                             >
                                 <input
                                     type="checkbox"
-                                    checked={selectedFilters.includes(option.id)}
+                                    checked={(selectedFilters[id] || []).includes(option.label)}
                                     onChange={() => handleToggle(id, option.id, option.label)}
                                 />
                                 <span>
@@ -273,7 +287,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onFilterChange }) => {
                     type="button"
                     className="filter-panel__clear-btn"
                     onClick={handleClearAll}
-                    disabled={selectedFilters.length === 0}
+                    disabled={Object.values(selectedFilters).every((values) => values.length === 0)}
                 >
                     Clear All
                 </button>
