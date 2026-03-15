@@ -8,7 +8,7 @@ import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { BASIC_PLACE_FIELDS, toAppPlace, fetchPlaceFromPrediction } from '../lib/googlePlaces';
 import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
 import { getStopColor } from '../lib/stopColors';
-import { computeDrivingRoute, getRouteDistanceKm, getRouteDurationMinutes, getRoutePath } from '../lib/googleRoutes';
+import { AppRoute, AppRouteStep, computeDrivingRoute, getRouteDistanceKm, getRouteDurationMinutes, getRoutePath, getRouteSteps } from '../lib/googleRoutes';
 import './TripPlanner.css';
 
 interface TripPlannerProps {
@@ -70,11 +70,71 @@ const hasJourneyDetailsChanged = (previousStops: Stop[], nextStops: Stop[]) =>
         );
     });
 
+const stripInstructionMarkup = (instruction?: string | null) => {
+    if (!instruction) return 'Continue on the current road';
+    return instruction.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
+const getInstructionDistance = (step?: AppRouteStep | null) => {
+    const localized = step?.localizedValues?.distance?.text?.trim();
+    if (localized) return localized;
+
+    const distanceMeters = step?.distanceMeters;
+    if (typeof distanceMeters !== 'number') return null;
+    if (distanceMeters >= 1000) return `${(distanceMeters / 1000).toFixed(1)} km`;
+    return `${Math.round(distanceMeters)} m`;
+};
+
+const getInstructionDuration = (step?: AppRouteStep | null) => {
+    const localized = step?.localizedValues?.staticDuration?.text?.trim();
+    if (localized) return localized;
+
+    const durationMillis = step?.durationMillis;
+    if (typeof durationMillis !== 'number') return null;
+
+    const totalMinutes = Math.max(1, Math.round(durationMillis / 60_000));
+    if (totalMinutes >= 60) {
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+    }
+
+    return `${totalMinutes} min`;
+};
+
+const getGeolocation = () =>
+    new Promise<google.maps.LatLngLiteral>((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('Geolocation is not available on this device.'));
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            ({ coords }) => {
+                resolve({
+                    lat: coords.latitude,
+                    lng: coords.longitude,
+                });
+            },
+            (error) => reject(new Error(error.message || 'Unable to access your current location.')),
+            {
+                enableHighAccuracy: true,
+                timeout: 8000,
+                maximumAge: 60_000,
+            }
+        );
+    });
+
 export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onClose }) => {
     const [trip, setTrip] = useState<Trip>(initialTrip);
     const [isAddingStop, setIsAddingStop] = useState(false);
     const [isNavigating, setIsNavigating] = useState(false);
+    const [isPreparingNavigation, setIsPreparingNavigation] = useState(false);
     const [editingStopId, setEditingStopId] = useState<string | null>(null);
+    const [navigationRoute, setNavigationRoute] = useState<AppRoute | null>(null);
+    const [currentStopIndex, setCurrentStopIndex] = useState(1);
+    const [currentLocation, setCurrentLocation] = useState<google.maps.LatLngLiteral | null>(null);
+    const [navigationNotice, setNavigationNotice] = useState<string | null>(null);
     const { google } = useGoogleMaps();
     const autoPitstopRouteKeyRef = useRef<string | null>(null);
 
@@ -300,6 +360,96 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
         console.log(`Filter: ${category} = ${value}`);
     };
 
+    const stopCount = trip.stops.length;
+    const hasTripRoute = stopCount >= 2;
+    const hasRemainingStop = currentStopIndex < stopCount;
+    const nextStop = hasRemainingStop ? trip.stops[currentStopIndex] : null;
+    const finalStop = stopCount > 0 ? trip.stops[stopCount - 1] : null;
+    const navigationOrigin = currentLocation ?? trip.stops[Math.max(0, currentStopIndex - 1)]?.location ?? null;
+    const currentLegDistanceKm = getRouteDistanceKm(navigationRoute, 0);
+    const currentLegDurationMinutes = getRouteDurationMinutes(navigationRoute, 0);
+    const currentLegSteps = getRouteSteps(navigationRoute, 0);
+    const nextStep = currentLegSteps[0] ?? null;
+
+    useEffect(() => {
+        if (!isNavigating || !google || !navigationOrigin || !nextStop || !finalStop) return;
+
+        let isCancelled = false;
+
+        const intermediateStops = trip.stops
+            .slice(currentStopIndex, Math.max(currentStopIndex, stopCount - 1))
+            .map((stop) => stop.location);
+
+        computeDrivingRoute(
+            google,
+            navigationOrigin,
+            finalStop.location,
+            intermediateStops
+        )
+            .then((route) => {
+                if (!isCancelled) {
+                    setNavigationRoute(route);
+                }
+            })
+            .catch((error) => {
+                if (!isCancelled) {
+                    console.error('Failed to compute navigation route:', error);
+                    setNavigationNotice('We could not refresh turn-by-turn guidance right now.');
+                }
+            });
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [currentStopIndex, finalStop, google, isNavigating, navigationOrigin, nextStop, stopCount, trip.stops]);
+
+    const handleStartTrip = async () => {
+        if (!hasTripRoute) return;
+
+        setIsPreparingNavigation(true);
+        setCurrentStopIndex(1);
+        setNavigationRoute(null);
+        setNavigationNotice(null);
+
+        try {
+            const liveLocation = await getGeolocation();
+            setCurrentLocation(liveLocation);
+            setNavigationNotice('Using your live location to guide you to the next stop.');
+        } catch (error) {
+            console.warn('Falling back to the planned trip origin for navigation:', error);
+            setCurrentLocation(null);
+            setNavigationNotice('Live location was unavailable, so navigation starts from your planned origin.');
+        } finally {
+            setIsNavigating(true);
+            setIsPreparingNavigation(false);
+        }
+    };
+
+    const handleExitNavigation = () => {
+        setIsNavigating(false);
+        setNavigationRoute(null);
+        setNavigationNotice(null);
+        setCurrentLocation(null);
+        setCurrentStopIndex(1);
+    };
+
+    const handleAdvanceToNextStop = () => {
+        if (!hasRemainingStop || !nextStop) return;
+
+        const nextIndex = currentStopIndex + 1;
+        setCurrentLocation(nextStop.location);
+
+        if (nextIndex >= stopCount) {
+            setNavigationNotice(`You have arrived at ${nextStop.name}.`);
+            setCurrentStopIndex(nextIndex);
+            setNavigationRoute(null);
+            return;
+        }
+
+        setCurrentStopIndex(nextIndex);
+        setNavigationNotice(`Marked ${nextStop.name} as completed. Routing you to the next stop.`);
+    };
+
     // ── Summary calculations ───────────────────────────────────────────────────
     const totalDistanceKm = trip.stops.reduce((acc, s) => acc + (s.distanceFromPrevious || 0), 0);
     const totalDurationMins = trip.stops.reduce((acc, s) => acc + (s.durationFromPrevious || 0), 0);
@@ -334,13 +484,23 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
         title: s.name,
         color: getStopColor(s),
     }));
+    const navigationMarkers = [
+        ...tripMarkers,
+        ...(currentLocation
+            ? [{
+                position: currentLocation,
+                title: 'Your location',
+                color: '#34a853',
+            }]
+            : []),
+    ];
 
     return (
         <div className="trip-planner-view">
             <div className="planner-sidebar">
                 <div className="sidebar-header">
                     <h2>{isNavigating ? 'Navigating…' : 'My Trip Planner'}</h2>
-                    <button className="close-btn" onClick={isNavigating ? () => setIsNavigating(false) : onClose}>
+                    <button className="close-btn" onClick={isNavigating ? handleExitNavigation : onClose}>
                         {isNavigating ? '←' : '×'}
                     </button>
                 </div>
@@ -348,17 +508,88 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                 <div className="planner-timeline-scroll">
                     {isNavigating ? (
                         <div className="navigation-instructions">
+                            {navigationNotice && (
+                                <div className="navigation-notice">{navigationNotice}</div>
+                            )}
                             <div className="next-turn">
-                                <span className="distance">500m</span>
-                                <span className="instruction">Turn right onto EDSA</span>
+                                <span className="distance">
+                                    {getInstructionDistance(nextStep) || `${currentLegDistanceKm} km`}
+                                </span>
+                                <span className="instruction">
+                                    {nextStop
+                                        ? stripInstructionMarkup(nextStep?.navigationInstruction?.instructions)
+                                        : 'Trip complete'}
+                                </span>
+                                {nextStop && (
+                                    <span className="instruction-meta">
+                                        {currentLegDurationMinutes > 0 ? `${currentLegDurationMinutes} min to ` : 'Next stop: '}
+                                        {nextStop.name}
+                                    </span>
+                                )}
                             </div>
+
+                            {nextStop && (
+                                <div className="navigation-summary-grid">
+                                    <div className="nav-summary-item">
+                                        <span className="label">Leg Distance</span>
+                                        <span className="value">{currentLegDistanceKm} km</span>
+                                    </div>
+                                    <div className="nav-summary-item">
+                                        <span className="label">Leg Time</span>
+                                        <span className="value">{currentLegDurationMinutes} min</span>
+                                    </div>
+                                    <div className="nav-summary-item">
+                                        <span className="label">Stops Left</span>
+                                        <span className="value">{stopCount - currentStopIndex}</span>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="upcoming-stops">
-                                <h4>Next Stop</h4>
-                                {trip.stops[1] && (
+                                <h4>{nextStop ? 'Next Stop' : 'Arrived'}</h4>
+                                {nextStop ? (
                                     <StopCard
-                                        stop={trip.stops[1]}
-                                        index={1}
+                                        stop={nextStop}
+                                        index={currentStopIndex}
                                     />
+                                ) : (
+                                    <div className="navigation-complete-card">
+                                        <strong>{finalStop?.name || 'Destination reached'}</strong>
+                                        <p>Your planned route is complete.</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {currentLegSteps.length > 0 && nextStop && (
+                                <div className="turn-list">
+                                    <h4>Recommended Turns</h4>
+                                    <div className="turn-list-items">
+                                        {currentLegSteps.slice(0, 6).map((step, index) => (
+                                            <div className="turn-list-item" key={`${currentStopIndex}-${index}`}>
+                                                <span className="turn-order">{index + 1}</span>
+                                                <div className="turn-copy">
+                                                    <span className="turn-instruction">
+                                                        {stripInstructionMarkup(step.navigationInstruction?.instructions)}
+                                                    </span>
+                                                    <span className="turn-meta">
+                                                        {[getInstructionDistance(step), getInstructionDuration(step)].filter(Boolean).join(' • ')}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="navigation-actions">
+                                {nextStop ? (
+                                    <button className="start-trip-btn" onClick={handleAdvanceToNextStop}>
+                                        Mark Stop as Reached
+                                    </button>
+                                ) : (
+                                    <button className="start-trip-btn" onClick={handleExitNavigation}>
+                                        Finish Trip
+                                    </button>
                                 )}
                             </div>
                         </div>
@@ -471,8 +702,16 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                             </div>
                         )}
 
-                        <button className="start-trip-btn" onClick={() => setIsNavigating(true)}>
-                            Start Trip
+                        <button
+                            className="start-trip-btn"
+                            onClick={handleStartTrip}
+                            disabled={!hasTripRoute || isPreparingNavigation}
+                        >
+                            {isPreparingNavigation
+                                ? 'Preparing Navigation...'
+                                : hasTripRoute
+                                ? 'Start Trip'
+                                : 'Add Destination to Start'}
                         </button>
                     </div>
                 )}
@@ -481,10 +720,13 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
             <div className="planner-map-container">
                 <Map
                     center={
-                        trip.stops[trip.stops.length - 1]?.location || { lat: 14.5995, lng: 120.9842 }
+                        currentLocation ||
+                        trip.stops[trip.stops.length - 1]?.location ||
+                        { lat: 14.5995, lng: 120.9842 }
                     }
                     zoom={12}
-                    markers={tripMarkers}
+                    markers={isNavigating ? navigationMarkers : tripMarkers}
+                    directions={isNavigating ? navigationRoute : null}
                 />
             </div>
         </div>

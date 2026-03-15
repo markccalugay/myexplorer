@@ -1,11 +1,31 @@
 export interface AppRouteLeg {
     distanceMeters?: number | null;
     durationMillis?: number | null;
+    steps?: AppRouteStep[] | null;
 }
 
 export interface AppRoute {
     path?: Array<google.maps.LatLng | google.maps.LatLngLiteral> | null;
     legs?: AppRouteLeg[] | null;
+}
+
+export interface AppRouteStep {
+    distanceMeters?: number | null;
+    durationMillis?: number | null;
+    navigationInstruction?: {
+        instructions?: string | null;
+        maneuver?: string | null;
+    } | null;
+    localizedValues?: {
+        distance?: {
+            text?: string | null;
+        } | null;
+        staticDuration?: {
+            text?: string | null;
+        } | null;
+    } | null;
+    startLocation?: google.maps.LatLng | google.maps.LatLngLiteral | null;
+    endLocation?: google.maps.LatLng | google.maps.LatLngLiteral | null;
 }
 
 type RouteRequestLocation = google.maps.LatLng | google.maps.LatLngLiteral;
@@ -18,7 +38,8 @@ const toTravelSeconds = (durationMillis?: number | null): number => {
 export const computeDrivingRoute = async (
     google: typeof window.google,
     origin: RouteRequestLocation,
-    destination: RouteRequestLocation
+    destination: RouteRequestLocation,
+    intermediates: RouteRequestLocation[] = []
 ): Promise<AppRoute | null> => {
     const RouteApi = (google.maps as any)?.routes?.Route;
     if (!RouteApi?.computeRoutes) {
@@ -28,8 +49,21 @@ export const computeDrivingRoute = async (
     const response = await RouteApi.computeRoutes({
         origin,
         destination,
+        intermediates: intermediates.map((location) => ({ location })),
         travelMode: google.maps.TravelMode.DRIVING,
-        fields: ['path', 'legs'],
+        fields: [
+            'path',
+            'legs',
+            'legs.distanceMeters',
+            'legs.durationMillis',
+            'legs.steps',
+            'legs.steps.distanceMeters',
+            'legs.steps.durationMillis',
+            'legs.steps.localizedValues',
+            'legs.steps.navigationInstruction',
+            'legs.steps.startLocation',
+            'legs.steps.endLocation',
+        ],
     });
 
     return response?.routes?.[0] ?? null;
@@ -57,6 +91,10 @@ export const getRoutePath = (route: AppRoute | null | undefined): google.maps.La
 
 export const getRouteLeg = (route: AppRoute | null | undefined, index = 0): AppRouteLeg | null => {
     return route?.legs?.[index] ?? null;
+};
+
+export const getRouteSteps = (route: AppRoute | null | undefined, index = 0): AppRouteStep[] => {
+    return getRouteLeg(route, index)?.steps ?? [];
 };
 
 export const getRouteDistanceKm = (route: AppRoute | null | undefined, index = 0): number => {

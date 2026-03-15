@@ -162,6 +162,13 @@
     box-shadow: 0 12px 30px rgba(0, 102, 204, 0.4);
 }
 
+.start-trip-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    transform: none;
+    box-shadow: none;
+}
+
 .planner-map-container {
     flex: 1;
     position: relative;
@@ -229,6 +236,19 @@
     display: flex;
     flex-direction: column;
     gap: 24px;
+    background:
+        radial-gradient(circle at top right, rgba(26, 115, 232, 0.08), transparent 35%),
+        linear-gradient(180deg, #f7fbff 0%, #ffffff 55%);
+}
+
+.navigation-notice {
+    padding: 14px 16px;
+    background: rgba(26, 115, 232, 0.08);
+    color: #0d47a1;
+    border: 1px solid rgba(26, 115, 232, 0.14);
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.5;
 }
 
 .next-turn {
@@ -252,10 +272,155 @@
     font-weight: 500;
 }
 
+.next-turn .instruction-meta {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.82);
+}
+
+.navigation-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.nav-summary-item {
+    padding: 14px;
+    border-radius: 14px;
+    background: #ffffff;
+    border: 1px solid rgba(13, 71, 161, 0.08);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.nav-summary-item .label {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #5f6f82;
+}
+
+.nav-summary-item .value {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--explorer-blue);
+}
+
 .upcoming-stops h4 {
     margin: 0 0 16px 0;
     font-size: 14px;
     color: #666;
     text-transform: uppercase;
     letter-spacing: 1px;
+}
+
+.navigation-complete-card {
+    padding: 20px;
+    background: #ffffff;
+    border: 1px solid rgba(52, 168, 83, 0.18);
+    border-radius: 16px;
+    box-shadow: 0 10px 24px rgba(52, 168, 83, 0.08);
+}
+
+.navigation-complete-card strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #1b5e20;
+}
+
+.navigation-complete-card p {
+    margin: 0;
+    color: #4f5f6f;
+    font-size: 14px;
+}
+
+.turn-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.turn-list h4 {
+    margin: 0;
+    font-size: 14px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.turn-list-items {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.turn-list-item {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.turn-order {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: rgba(26, 115, 232, 0.1);
+    color: var(--explorer-blue);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.turn-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.turn-instruction {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+    line-height: 1.45;
+}
+
+.turn-meta {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.navigation-actions {
+    position: sticky;
+    bottom: 0;
+    padding-top: 8px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0), #ffffff 28%);
+}
+
+@media (max-width: 960px) {
+    .trip-planner-view {
+        flex-direction: column;
+        height: auto;
+        min-height: calc(100vh - 80px);
+    }
+
+    .planner-sidebar {
+        width: 100%;
+    }
+
+    .planner-map-container {
+        min-height: 45vh;
+    }
+
+    .navigation-summary-grid {
+        grid-template-columns: 1fr;
+    }
 }
