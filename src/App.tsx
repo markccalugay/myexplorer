@@ -81,7 +81,7 @@ const App = () => {
     const allMarkers = [...lodgingMarkers, ...pitstopMarkers];
 
     return (
-        <div className="app">
+        <div className={`app app--${view}`}>
             <Navbar 
                 onStartPlanning={handleStartPlanning} 
                 onExplore={handleExplore} 
@@ -89,13 +89,13 @@ const App = () => {
             />
 
             {view === 'explore' && (
-                <main className="main-content" style={{ overflowY: 'auto' }}>
+                <main className="main-content main-content--explore">
                     <ExplorePage onStartPlanning={handleStartPlanning} />
                 </main>
             )}
 
             {view === 'discovery' && (
-                <main className="main-content">
+                <main className="main-content main-content--discovery">
                     <div className="results-panel">
                         <SearchBar onPlaceSelect={handlePlaceSelect} />
 

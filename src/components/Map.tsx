@@ -47,6 +47,11 @@ const Map: React.FC<MapProps> = ({
                 mapId,
                 disableDefaultUI: false,
                 zoomControl: true,
+                mapTypeControl: false,
+                streetViewControl: false,
+                fullscreenControl: false,
+                clickableIcons: false,
+                gestureHandling: 'cooperative',
             });
         }
     }, [google, center, zoom, mapId]);

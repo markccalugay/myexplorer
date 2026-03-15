@@ -11,8 +11,8 @@
   --dark-gray: #263238;
 
   /* Typography */
-  --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-brand: 'Playfair Display', serif;
+  --font-ui: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-brand: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   --size-display: 48px;
   --size-h1: 36px;
@@ -47,6 +47,12 @@
   padding: 0;
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   font-family: var(--font-ui);
   font-size: var(--size-body);
@@ -54,6 +60,18 @@ body {
   color: var(--dark-gray);
   background-color: var(--white);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+img {
+  max-width: 100%;
 }
 
 h1, h2, h3, h4, .font-brand {

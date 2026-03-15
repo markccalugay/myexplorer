@@ -3,6 +3,7 @@
     top: 100px;
     left: 24px;
     width: 380px;
+    max-width: calc(100vw - 48px);
     background: white;
     border-radius: 16px;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
@@ -91,4 +92,29 @@
 .route-select {
     cursor: pointer;
     color: #444;
+}
+
+@media (max-width: 768px) {
+    .route-planner-panel {
+        top: auto;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        max-width: none;
+        border-radius: 24px 24px 0 0;
+        max-height: min(72dvh, 620px);
+        box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.22);
+    }
+
+    .planner-header,
+    .planner-body {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    .planner-body {
+        padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+        overflow-y: auto;
+    }
 }
