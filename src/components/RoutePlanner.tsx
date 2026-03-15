@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import './RoutePlanner.css';
 import { AppPlace } from '../types/place';
@@ -26,13 +26,10 @@ export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initial
     const [origin, setOrigin] = useState<google.maps.LatLng | google.maps.LatLngLiteral | null>(null);
     const [destination, setDestination] = useState<AppPlace>(initialDestination);
 
-    useEffect(() => {
-        if (origin) {
-            calculateRoute(origin, destination.location);
-        }
-    }, [origin, destination]);
-
-    const calculateRoute = (start: google.maps.LatLng | google.maps.LatLngLiteral, end: google.maps.LatLng | google.maps.LatLngLiteral) => {
+    const calculateRoute = useCallback((
+        start: google.maps.LatLng | google.maps.LatLngLiteral,
+        end: google.maps.LatLng | google.maps.LatLngLiteral
+    ) => {
         if (!google) return;
 
         computeDrivingRoute(google, start, end)
@@ -46,7 +43,13 @@ export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initial
             .catch((error) => {
                 console.error('Routes request failed:', error);
             });
-    };
+    }, [google, onRouteFound]);
+
+    useEffect(() => {
+        if (origin) {
+            calculateRoute(origin, destination.location);
+        }
+    }, [calculateRoute, destination.location, origin]);
 
     const handleQuickOrigin = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const val = e.target.value;

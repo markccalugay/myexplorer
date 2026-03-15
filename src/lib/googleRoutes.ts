@@ -30,6 +30,22 @@ export interface AppRouteStep {
 
 type RouteRequestLocation = google.maps.LatLng | google.maps.LatLngLiteral;
 
+interface ComputeRoutesResponse {
+    routes?: AppRoute[] | null;
+}
+
+interface RoutesLibraryShape {
+    Route?: {
+        computeRoutes?: (request: {
+            origin: RouteRequestLocation;
+            destination: RouteRequestLocation;
+            intermediates: Array<{ location: RouteRequestLocation }>;
+            travelMode: google.maps.TravelMode;
+            fields: string[];
+        }) => Promise<ComputeRoutesResponse>;
+    };
+}
+
 const toTravelSeconds = (durationMillis?: number | null): number => {
     if (typeof durationMillis !== 'number') return 0;
     return Math.round(durationMillis / 1000);
@@ -41,7 +57,8 @@ export const computeDrivingRoute = async (
     destination: RouteRequestLocation,
     intermediates: RouteRequestLocation[] = []
 ): Promise<AppRoute | null> => {
-    const RouteApi = (google.maps as any)?.routes?.Route;
+    const routesLibrary = (google.maps as unknown as { routes?: RoutesLibraryShape }).routes;
+    const RouteApi = routesLibrary?.Route;
     if (!RouteApi?.computeRoutes) {
         throw new Error('Google Maps Routes library is unavailable.');
     }

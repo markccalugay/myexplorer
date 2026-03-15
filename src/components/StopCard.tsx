@@ -135,7 +135,12 @@ export const StopCard: React.FC<StopCardProps> = ({
                         </div>
                         <button
                             className="cancel-edit"
-                            onClick={(e) => { e.stopPropagation(); onStopEdited && onStopEdited(stop.id, stop); }}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (onStopEdited) {
+                                    onStopEdited(stop.id, stop);
+                                }
+                            }}
                         >
                             Keep current
                         </button>

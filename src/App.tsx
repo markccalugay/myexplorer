@@ -21,6 +21,10 @@ const MOCK_LODGING_IMAGE = hotelImg;
 const SAVED_TRIPS_STORAGE_KEY = 'myexplorer.saved-trips';
 
 type AppView = 'explore' | 'discovery' | 'planner' | 'bookings';
+interface TripState {
+    currentTrip: Trip;
+    tripBaselineSnapshot: string | null;
+}
 
 const createTripId = () => `trip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -29,6 +33,14 @@ const createEmptyTrip = (): Trip => ({
     name: 'New Adventure',
     stops: [],
 });
+
+const createInitialTripState = (): TripState => {
+    const trip = createEmptyTrip();
+    return {
+        currentTrip: trip,
+        tripBaselineSnapshot: normalizeTrip(trip),
+    };
+};
 
 const cloneTrip = (trip: Trip): Trip => JSON.parse(JSON.stringify(trip)) as Trip;
 
@@ -45,9 +57,36 @@ const App = () => {
     const [isPlanning, setIsPlanning] = useState(false);
     const [route, setRoute] = useState<AppRoute | null>(null);
     const [view, setView] = useState<AppView>('explore');
-    const [currentTrip, setCurrentTrip] = useState<Trip>(() => createEmptyTrip());
-    const [tripBaselineSnapshot, setTripBaselineSnapshot] = useState<string | null>(null);
-    const [savedTrips, setSavedTrips] = useState<Trip[]>([]);
+    const [tripState, setTripState] = useState(createInitialTripState);
+    const [savedTrips, setSavedTrips] = useState<Trip[]>(() => {
+        try {
+            const raw = window.localStorage.getItem(SAVED_TRIPS_STORAGE_KEY);
+            if (!raw) return [];
+
+            const parsed = JSON.parse(raw) as Trip[];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            console.error('Failed to load saved trips:', error);
+            return [];
+        }
+    });
+    const { currentTrip, tripBaselineSnapshot } = tripState;
+
+    const setCurrentTrip = (updater: Trip | ((previousTrip: Trip) => Trip)) => {
+        setTripState((previousState) => ({
+            ...previousState,
+            currentTrip: typeof updater === 'function'
+                ? (updater as (previousTrip: Trip) => Trip)(previousState.currentTrip)
+                : updater,
+        }));
+    };
+
+    const setTripBaselineSnapshot = (snapshot: string | null) => {
+        setTripState((previousState) => ({
+            ...previousState,
+            tripBaselineSnapshot: snapshot,
+        }));
+    };
 
     const { places, isLoading: placesLoading } = usePlaces(center);
     const { pitstops } = usePitstops(route);
@@ -56,26 +95,6 @@ const App = () => {
         if (tripBaselineSnapshot === null) return false;
         return normalizeTrip(currentTrip) !== tripBaselineSnapshot;
     }, [currentTrip, tripBaselineSnapshot]);
-
-    useEffect(() => {
-        if (tripBaselineSnapshot === null) {
-            setTripBaselineSnapshot(normalizeTrip(currentTrip));
-        }
-    }, [currentTrip, tripBaselineSnapshot]);
-
-    useEffect(() => {
-        try {
-            const raw = window.localStorage.getItem(SAVED_TRIPS_STORAGE_KEY);
-            if (!raw) return;
-
-            const parsed = JSON.parse(raw) as Trip[];
-            if (Array.isArray(parsed)) {
-                setSavedTrips(parsed);
-            }
-        } catch (error) {
-            console.error('Failed to load saved trips:', error);
-        }
-    }, []);
 
     useEffect(() => {
         try {

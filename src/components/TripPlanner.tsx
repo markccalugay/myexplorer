@@ -379,51 +379,47 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
                 const fractions = durationMins >= 180 ? [1 / 3, 2 / 3] : [1 / 2];
 
-                const pitstopPromises = fractions.map(
-                    (fraction) =>
-                        new Promise<Stop | null>(async (resolve) => {
-                            const midpoint = interpolatePath(path, fraction);
-                            try {
-                                const response = await google.maps.places.Place.searchNearby({
-                                    fields: [...BASIC_PLACE_FIELDS, 'primaryType'],
-                                    includedPrimaryTypes: ['gas_station'],
-                                    locationRestriction: {
-                                        center: midpoint,
-                                        radius: 5000,
-                                    },
-                                    maxResultCount: 1,
-                                    rankPreference: google.maps.places.SearchNearbyRankPreference.DISTANCE,
-                                    language: 'en',
-                                    region: 'ph',
-                                });
+                const pitstopPromises: Promise<Stop | null>[] = fractions.map(async (fraction) => {
+                    const midpoint = interpolatePath(path, fraction);
+                    try {
+                        const response = await google.maps.places.Place.searchNearby({
+                            fields: [...BASIC_PLACE_FIELDS, 'primaryType'],
+                            includedPrimaryTypes: ['gas_station'],
+                            locationRestriction: {
+                                center: midpoint,
+                                radius: 5000,
+                            },
+                            maxResultCount: 1,
+                            rankPreference: google.maps.places.SearchNearbyRankPreference.DISTANCE,
+                            language: 'en',
+                            region: 'ph',
+                        });
 
-                                const place = response.places?.[0];
-                                const appPlace = place ? toAppPlace(place) : null;
-                                if (!appPlace) {
-                                    resolve(null);
-                                    return;
-                                }
+                        const place = response.places?.[0];
+                        const appPlace = place ? toAppPlace(place) : null;
+                        if (!appPlace) {
+                            return null;
+                        }
 
-                                const pitstop: Stop = {
-                                    id: Math.random().toString(36).substr(2, 9),
-                                    name: appPlace.name,
-                                    formattedAddress: appPlace.formattedAddress,
-                                    location: appPlace.location,
-                                    type: 'stop',
-                                    isAutoSuggested: true,
-                                    category: 'Gas Station',
-                                };
-                                resolve(pitstop);
-                            } catch (error) {
-                                console.error('Failed to load an auto-suggested pitstop:', error);
-                                resolve(null);
-                            }
-                        })
-                );
+                        const pitstop: Stop = {
+                            id: Math.random().toString(36).substr(2, 9),
+                            name: appPlace.name,
+                            formattedAddress: appPlace.formattedAddress,
+                            location: appPlace.location,
+                            type: 'stop',
+                            isAutoSuggested: true,
+                            category: 'Gas Station',
+                        };
+                        return pitstop;
+                    } catch (error) {
+                        console.error('Failed to load an auto-suggested pitstop:', error);
+                        return null;
+                    }
+                });
 
                 Promise.all(pitstopPromises).then((pitstops) => {
                     const valid = pitstops
-                        .filter((pitstop): pitstop is Stop => Boolean(pitstop))
+                        .filter((pitstop): pitstop is Stop => pitstop !== null)
                         .filter(
                             (pitstop, index, list) =>
                                 list.findIndex(

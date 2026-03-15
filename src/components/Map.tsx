@@ -18,6 +18,14 @@ interface MapProps {
     directions?: AppRoute | null;
 }
 
+const MAP_INLINE_STYLES: google.maps.MapTypeStyle[] = [
+    {
+        featureType: 'poi',
+        elementType: 'labels',
+        stylers: [{ visibility: 'off' }]
+    }
+];
+
 const Map: React.FC<MapProps> = ({
     center = { lat: 14.5995, lng: 120.9842 }, // Manila
     zoom = 10,
@@ -31,13 +39,6 @@ const Map: React.FC<MapProps> = ({
     const routePolylineRef = useRef<google.maps.Polyline | null>(null);
     const { google } = useGoogleMaps();
     const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
-    const inlineStyles = [
-        {
-            featureType: 'poi',
-            elementType: 'labels',
-            stylers: [{ visibility: 'off' }]
-        }
-    ];
 
     useEffect(() => {
         if (google && mapRef.current && !googleMapRef.current) {
@@ -64,7 +65,7 @@ const Map: React.FC<MapProps> = ({
             return;
         }
 
-        googleMapRef.current.setOptions({ styles: inlineStyles });
+        googleMapRef.current.setOptions({ styles: MAP_INLINE_STYLES });
     }, [mapId]);
 
     useEffect(() => {
@@ -92,7 +93,7 @@ const Map: React.FC<MapProps> = ({
         if (!bounds.isEmpty()) {
             googleMapRef.current.fitBounds(bounds, 64);
         }
-    }, [directions]);
+    }, [directions, google]);
 
     useEffect(() => {
         if (google && googleMapRef.current) {

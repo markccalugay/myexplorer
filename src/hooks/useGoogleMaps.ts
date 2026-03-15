@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
 
+type GoogleMapsApi = typeof google;
+type GoogleMapsWindow = Window & typeof globalThis & {
+    google?: GoogleMapsApi;
+};
+
+const getGoogleMapsApi = () => (window as GoogleMapsWindow).google;
+
 const waitForGoogleMaps = (maxWaitMs = 5000, intervalMs = 100): Promise<void> => {
     return new Promise((resolve, reject) => {
         const start = Date.now();
         const check = () => {
-            // @ts-ignore
-            if (window.google?.maps?.importLibrary) {
+            if (typeof getGoogleMapsApi()?.maps?.importLibrary === 'function') {
                 resolve();
             } else if (Date.now() - start >= maxWaitMs) {
                 reject(new Error('Google Maps bootloader did not initialize within timeout.'));
@@ -18,7 +24,7 @@ const waitForGoogleMaps = (maxWaitMs = 5000, intervalMs = 100): Promise<void> =>
 };
 
 export const useGoogleMaps = () => {
-    const [google, setGoogle] = useState<any>(null);
+    const [googleMapsApi, setGoogleMapsApi] = useState<GoogleMapsApi | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
 
@@ -27,22 +33,24 @@ export const useGoogleMaps = () => {
             try {
                 // Wait until the bootloader in index.html has set up importLibrary
                 await waitForGoogleMaps();
+                const mapsApi = getGoogleMapsApi();
+                if (!mapsApi) {
+                    throw new Error('Google Maps bootloader is unavailable.');
+                }
 
-                // @ts-ignore
-                await window.google.maps.importLibrary("maps");
-                // @ts-ignore
-                await window.google.maps.importLibrary("places");
-                // @ts-ignore
-                await window.google.maps.importLibrary("marker");
-                // @ts-ignore
-                await window.google.maps.importLibrary("routes");
+                await mapsApi.maps.importLibrary('maps');
+                await mapsApi.maps.importLibrary('places');
+                await mapsApi.maps.importLibrary('marker');
+                await mapsApi.maps.importLibrary('routes');
 
-                // @ts-ignore
-                setGoogle(window.google);
+                setGoogleMapsApi(mapsApi);
                 setIsLoading(false);
-            } catch (e: any) {
-                console.error("Failed to load Google Maps:", e);
-                setError(e);
+            } catch (e: unknown) {
+                const nextError = e instanceof Error
+                    ? e
+                    : new Error('Failed to load Google Maps.');
+                console.error('Failed to load Google Maps:', nextError);
+                setError(nextError);
                 setIsLoading(false);
             }
         };
@@ -50,5 +58,5 @@ export const useGoogleMaps = () => {
         loadLibraries();
     }, []);
 
-    return { google, isLoading, error };
+    return { google: googleMapsApi, isLoading, error };
 };
