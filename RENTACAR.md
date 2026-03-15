@@ -845,6 +845,100 @@ Based on the sources above, these edge cases should be added to planning:
 - Reddit and Tripadvisor provide useful market signals, but they are anecdotal and should not replace legal, insurance, or compliance review
 - Where travelers made specific claims, the product implication is an inference from those patterns, not a verified legal conclusion
 
+## Stress-Test Questions and Additional Use Cases
+
+The following questions are intentionally difficult. They are meant to pressure-test the rent-a-car / driver marketplace before launch.
+
+These questions should be used in product planning, operations design, legal review, trust and safety review, and provider workflow design.
+
+### Operational Stress Cases
+
+- What if the renter books a self-drive van, but the actual driver on pickup day is a different family member than the verified one?
+- What if the customer says there are `7 passengers`, but they arrive with `7 passengers`, many large bags, a stroller, and balikbayan boxes?
+- What if the driver reaches the pickup point but the customer is delayed by immigration, baggage claim, or NAIA terminal transfer problems for 1 to 3 hours?
+- What if the trip route changes during the journey from a day trip into an overnight or multi-day trip?
+- What if the provider accepts a booking, then attempts to substitute a lower-quality vehicle on the day of service?
+- What if the provider’s toll RFID has insufficient balance and the customer is forced to cover tolls unexpectedly?
+- What if the customer requests multiple pickups across different barangays and the provider later claims those stops were not included?
+- What if the route enters an area with poor connectivity and in-app tracking or communication stops working?
+- What if the provider arrives on time, but the pickup location description is too vague to find the traveler?
+- What if the customer books a van that fits the headcount, but not the total luggage volume?
+
+### Safety and Trust Stress Cases
+
+- What if the assigned driver appears intoxicated, sleep-deprived, aggressive, or otherwise unsafe before the trip starts?
+- What if a solo traveler, parent, or foreign visitor feels unsafe but the incident does not yet rise to the level of a police report?
+- What if the driver pressures the customer to pay extra cash off-platform during the trip?
+- What if the customer accuses the driver of harassment, theft, or misconduct and there are no witnesses?
+- What if the provider claims the customer caused vehicle damage, but the customer says it was pre-existing?
+- What if there is a crash or serious incident in a remote area and neither side knows the correct insurer or emergency escalation process?
+- What if a shared or private transfer has repeated complaints about reckless overtaking or speeding?
+- What if a family books with children and the promised child seat is missing or unusable at pickup?
+
+### Legal and Liability Stress Cases
+
+- Who is liable if a `driver-only` booking ends in an accident caused by poor vehicle maintenance in the customer’s own car?
+- If a provider is treated as an independent user, how much responsibility still flows to the platform because the platform handled discovery, booking, and payment?
+- If a private vehicle is repeatedly used for paid passenger transport, does that create franchise, insurance, or compliance exposure for the platform?
+- What happens if provider documents were valid during onboarding but expired before the trip date?
+- What if a driver has a valid professional license but lacks the right authority for the actual service being performed?
+- What if the provider has insurance, but the insurer denies the claim because the vehicle was being used outside its covered purpose?
+- What if the customer misrepresents the trip in order to get a lower rate and the real route creates a different legal or risk profile?
+
+### Payments, Pricing, and Dispute Stress Cases
+
+- What if the customer asks to extend, the driver verbally agrees, but the extension was never approved in-app?
+- What if the customer ends the trip early and demands a refund, but the provider argues the full day was reserved and blocked?
+- What if the customer payment succeeds but payout to the provider is frozen because of a dispute, chargeback, or damage claim?
+- What if the customer uses the first trip to meet a provider and then moves all future bookings off-platform?
+- What if a provider repeatedly cancels only when they receive a higher-paying direct customer?
+- What if a provider adds hidden charges after the trip for tolls, parking, overtime, or lodging that were not disclosed properly in advance?
+- What if the customer refuses to pay valid extras because they did not read the booking details carefully?
+- What if a same-day cancellation happens after the driver has already traveled far to reach the pickup location?
+
+### Marketplace Design Stress Cases
+
+- Should the product support only pre-booked trips, or also urgent same-day requests?
+- Should the platform allow part-time private owners immediately, or start only with vetted fleets and highly verified providers?
+- Should `driver-only` be treated as chauffeur staffing, event staffing, personal mobility support, or something else entirely?
+- Should the platform support `shared vans` at all given the safety, overloading, and comfort risks?
+- Should family travel, weddings, airport transfers, corporate transport, and tourism routes live inside one marketplace or be split into sub-products?
+- Should self-drive rentals and vehicle-with-driver rentals share the same search results, or should they be separated early to reduce confusion?
+- Should the platform show the cheapest option first, or the safest and most verified option first?
+
+### Philippines-Specific Stress Cases
+
+- What happens during Holy Week, Christmas, New Year, fiestas, typhoon disruptions, or transport strikes after a booking is already confirmed?
+- What if the trip requires a combination of road travel, ferry schedules, or island transfers and the timing breaks down?
+- What if the vehicle breaks down in a province where the provider has no nearby replacement unit?
+- What if the customer books transport for a family reunion or province homecoming where the pickup or drop-off is a landmark rather than a formal address?
+- What if subdivision, village, airport, hotel, or resort access rules prevent the driver from reaching the exact pickup or drop-off point?
+- What if provincial roads, mountain routes, or flood conditions make the original route unsafe after the trip has started?
+- What if a traveler arriving from abroad does not have local SIM access and cannot coordinate by phone upon landing?
+
+### Hard Product Questions
+
+- How do we verify who is actually driving in a self-drive rental?
+- How do we prevent off-platform renegotiation after both sides have connected?
+- Which incidents justify instant refund, partial refund, provider suspension, or permanent ban?
+- What evidence should be required for damage claims, no-show claims, unsafe driving reports, and extension disputes?
+- When should customer protection override provider fairness, and when should provider protection override customer complaints?
+- Are we acting like a listing platform, a managed marketplace, or a transport-operations-adjacent service?
+- How much operational responsibility are we willing to own before the business model becomes too heavy?
+- Which service types should be deliberately excluded from MVP even if there is strong demand?
+
+### Why These Questions Matter
+
+These questions help expose where the platform needs:
+
+- stronger verification
+- clearer pricing rules
+- better incident handling
+- more explicit service-type separation
+- stricter provider onboarding
+- improved insurance and liability planning
+- tighter traveler communication flows
+
 ## Next Recommended Planning Documents
 
 After this document, the next useful planning outputs would be:
