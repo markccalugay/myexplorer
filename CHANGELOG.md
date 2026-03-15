@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extended the trip planner timeline panel height on desktop so the Route Recommendations area has more room before scrolling.
 - Made the Route Recommendations filter panel non-scrollable so it spans naturally inside the trip planner column, avoiding nested scroll behavior because `planner-timeline-scroll` already handles the full sidebar scrolling.
 - Refined the Route Recommendations filters into a two-column bento grid with fixed-height chips, balanced spacing, and a stronger selected state so travel preferences read more like a polished booking surface than inline tags.
+- Expanded the Route Recommendations filters with Philippine-specific fuel, dining, and roadside essentials options, plus multi-select chips, icon markers, and a clear-all action for faster trip preference setup.
 - Temporarily hid the navbar `Sign In` button until Google sign-in and sign-up integration is ready, while keeping the mobile header actions visible.
 - Migrated Google Maps routing and marker rendering away from deprecated `DirectionsRenderer`, `DirectionsService`, `DistanceMatrixService`, and legacy `Marker` usage, while removing insecure marker asset URLs and stabilizing place identifiers.
 - Fixed the auto-pitstop routing flow to use a valid Google Maps travel mode, refresh suggested stops when trip endpoints change, and avoid stale suggestions while aligning `mapId` usage with cloud-styled map requirements.
