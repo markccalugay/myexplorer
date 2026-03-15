@@ -150,6 +150,38 @@ const getGeolocation = () =>
         );
     });
 
+const reverseGeocodeLocation = async (
+    googleMaps: typeof google | null,
+    location: google.maps.LatLngLiteral
+): Promise<Pick<AppPlace, 'name' | 'formattedAddress' | 'location'>> => {
+    if (!googleMaps?.maps?.Geocoder) {
+        return {
+            name: 'Current location',
+            formattedAddress: `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
+            location,
+        };
+    }
+
+    try {
+        const geocoder = new googleMaps.maps.Geocoder();
+        const response = await geocoder.geocode({ location });
+        const topResult = response.results?.[0];
+
+        return {
+            name: topResult?.address_components?.[0]?.long_name || 'Current location',
+            formattedAddress: topResult?.formatted_address || `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
+            location,
+        };
+    } catch (error) {
+        console.warn('Failed to reverse geocode current location:', error);
+        return {
+            name: 'Current location',
+            formattedAddress: `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
+            location,
+        };
+    }
+};
+
 const createStopFromPlace = (
     place: Pick<AppPlace, 'name' | 'formattedAddress' | 'location'>,
     type: Stop['type']
@@ -185,6 +217,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     const [favoritePlaceDraft, setFavoritePlaceDraft] = useState<AppPlace | null>(null);
     const [favoriteSearchValue, setFavoriteSearchValue] = useState('');
     const [favoriteInputKey, setFavoriteInputKey] = useState(0);
+    const [isUsingCurrentLocation, setIsUsingCurrentLocation] = useState(false);
+    const [originLocationError, setOriginLocationError] = useState<string | null>(null);
     const { google } = useGoogleMaps();
     const autoPitstopRouteKeyRef = useRef<string | null>(null);
     const updateTrip = useCallback((updater: Trip | ((previousTrip: Trip) => Trip)) => {
@@ -231,6 +265,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         setNavigationNotice(null);
         setTripStartedAt(null);
         setElapsedTimeMs(0);
+        setIsUsingCurrentLocation(false);
+        setOriginLocationError(null);
         autoPitstopRouteKeyRef.current = null;
     }, [initialTrip]);
 
@@ -480,8 +516,29 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             const retyped = retypeStops(updated);
             return { ...prev, stops: retyped };
         });
+        setOriginLocationError(null);
         setIsAddingStop(false);
     }, [retypeStops, updateTrip]);
+
+    const handleUseCurrentLocationAsOrigin = useCallback(async () => {
+        if (trip.stops.length > 0) return;
+
+        setIsUsingCurrentLocation(true);
+        setOriginLocationError(null);
+
+        try {
+            const liveLocation = await getGeolocation();
+            const originPlace = await reverseGeocodeLocation(google, liveLocation);
+            handleAddPlaceAsStop(originPlace);
+        } catch (error) {
+            const message = error instanceof Error
+                ? error.message
+                : 'Unable to access your current location.';
+            setOriginLocationError(message);
+        } finally {
+            setIsUsingCurrentLocation(false);
+        }
+    }, [google, handleAddPlaceAsStop, trip.stops.length]);
 
     const handleSaveFavorite = () => {
         const trimmedLabel = favoriteLabel.trim();
@@ -619,9 +676,9 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     const canRecommendPitstops = trip.stops.length >= 2;
     const addStopPrompt = trip.stops.length === 0
         ? {
-            title: 'Add your origin',
-            description: 'Your first stop becomes the starting point for the trip.',
-            placeholder: 'Enter your origin',
+            title: 'Use your current location',
+            description: 'Your trip will start from this device. Allow location access, then add your final destination.',
+            placeholder: '',
         }
         : trip.stops.length === 1
         ? {
@@ -843,15 +900,34 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                                     <h4>{addStopPrompt.title}</h4>
                                                     <p>{addStopPrompt.description}</p>
                                                 </div>
-                                                <PlaceAutocompleteInput
-                                                    className="add-stop-input"
-                                                    placeholder={addStopPrompt.placeholder}
-                                                    onSelect={async (prediction) => {
-                                                        const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
-                                                        if (!place) return;
-                                                        handleAddPlaceAsStop(place);
-                                                    }}
-                                                />
+                                                {trip.stops.length === 0 ? (
+                                                    <div className="origin-location-panel">
+                                                        <button
+                                                            type="button"
+                                                            className="use-current-location-btn"
+                                                            onClick={() => void handleUseCurrentLocationAsOrigin()}
+                                                            disabled={isUsingCurrentLocation}
+                                                        >
+                                                            {isUsingCurrentLocation ? 'Finding Your Location...' : 'Use My Current Location'}
+                                                        </button>
+                                                        <p className="origin-location-hint">
+                                                            We will ask the browser for permission and use that point as your trip origin.
+                                                        </p>
+                                                        {originLocationError && (
+                                                            <p className="origin-location-error">{originLocationError}</p>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <PlaceAutocompleteInput
+                                                        className="add-stop-input"
+                                                        placeholder={addStopPrompt.placeholder}
+                                                        onSelect={async (prediction) => {
+                                                            const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
+                                                            if (!place) return;
+                                                            handleAddPlaceAsStop(place);
+                                                        }}
+                                                    />
+                                                )}
                                                 {favorites.length > 0 && (
                                                     <div className="favorite-shortcuts">
                                                         <span className="favorite-shortcuts__label">Quick picks</span>

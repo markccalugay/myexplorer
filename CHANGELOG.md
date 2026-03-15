@@ -9,8 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Landing page hero search now suggests destinations while typing, supports date range selection with calendar inputs, and lets travelers choose adults and children from a guest dropdown.
+- Trip planner origin setup can now use the device's current location as the starting point, with browser permission handling and reverse-geocoded address details when available.
 - Trip planner users can now save favorite places like Home, Office, or family addresses and reuse them as one-tap presets for origins, destinations, and extra stops.
 - Trip planner routes can now be saved into the Bookings tab, reopened later for editing or starting, and protected with unsaved-change warnings before leaving the planner.
+- Added ESLint with a project-level `npm run lint` command so the app can be checked for React and TypeScript lint issues from the CLI.
 
 ### Changed
 - Reworked the mobile experience across the app shell, discovery layout, landing page cards, map interactions, and detail/planner overlays so key flows stack, scroll, and fit smaller screens more reliably.

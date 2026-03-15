@@ -406,6 +406,46 @@
     width: 100%;
 }
 
+.origin-location-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.use-current-location-btn {
+    width: 100%;
+    border: none;
+    border-radius: 14px;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, #1a73e8, #0d47a1);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 10px 24px rgba(26, 115, 232, 0.22);
+}
+
+.use-current-location-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+    box-shadow: none;
+}
+
+.origin-location-hint,
+.origin-location-error {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.origin-location-hint {
+    color: #5e738d;
+}
+
+.origin-location-error {
+    color: #c62828;
+}
+
 .cancel-add {
     background: none;
     border: none;
