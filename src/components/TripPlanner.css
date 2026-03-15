@@ -1,6 +1,7 @@
 .trip-planner-view {
     display: flex;
-    height: calc(100vh - 80px);
+    height: calc(100vh - 80px + 220px);
+    min-height: calc(100vh - 80px + 220px);
     /* Subtract Navbar height */
     overflow: hidden;
     position: relative;
