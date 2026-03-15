@@ -9,6 +9,7 @@ import { BASIC_PLACE_FIELDS, toAppPlace, fetchPlaceFromPrediction } from '../lib
 import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
 import { getStopColor } from '../lib/stopColors';
 import { AppRoute, AppRouteStep, computeDrivingRoute, getRouteDistanceKm, getRouteDurationMinutes, getRoutePath, getRouteSteps } from '../lib/googleRoutes';
+import { AppPlace } from '../types/place';
 import './TripPlanner.css';
 
 interface TripPlannerProps {
@@ -18,6 +19,13 @@ interface TripPlannerProps {
 
 // Average fuel efficiency assumed for estimation
 const FUEL_EFFICIENCY_KM_PER_L = 12;
+const FAVORITE_STORAGE_KEY = 'myexplorer.favorite-places';
+
+interface FavoritePlace {
+    id: string;
+    label: string;
+    place: AppPlace;
+}
 
 // Helper: interpolate a fraction (0–1) along an encoded polyline path
 const interpolatePath = (
@@ -125,6 +133,17 @@ const getGeolocation = () =>
         );
     });
 
+const createStopFromPlace = (
+    place: Pick<AppPlace, 'name' | 'formattedAddress' | 'location'>,
+    type: Stop['type']
+): Stop => ({
+    id: Math.random().toString(36).substr(2, 9),
+    name: place.name,
+    formattedAddress: place.formattedAddress,
+    location: place.location,
+    type,
+});
+
 export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onClose }) => {
     const [trip, setTrip] = useState<Trip>(initialTrip);
     const [isAddingStop, setIsAddingStop] = useState(false);
@@ -135,8 +154,35 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
     const [currentStopIndex, setCurrentStopIndex] = useState(1);
     const [currentLocation, setCurrentLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [navigationNotice, setNavigationNotice] = useState<string | null>(null);
+    const [favorites, setFavorites] = useState<FavoritePlace[]>([]);
+    const [favoriteLabel, setFavoriteLabel] = useState('');
+    const [favoritePlaceDraft, setFavoritePlaceDraft] = useState<AppPlace | null>(null);
+    const [favoriteSearchValue, setFavoriteSearchValue] = useState('');
+    const [favoriteInputKey, setFavoriteInputKey] = useState(0);
     const { google } = useGoogleMaps();
     const autoPitstopRouteKeyRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        try {
+            const raw = window.localStorage.getItem(FAVORITE_STORAGE_KEY);
+            if (!raw) return;
+
+            const parsed = JSON.parse(raw) as FavoritePlace[];
+            if (Array.isArray(parsed)) {
+                setFavorites(parsed);
+            }
+        } catch (error) {
+            console.error('Failed to load favorite places:', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(FAVORITE_STORAGE_KEY, JSON.stringify(favorites));
+        } catch (error) {
+            console.error('Failed to save favorite places:', error);
+        }
+    }, [favorites]);
 
     // ── Retype stops so first=start, last=destination ─────────────────────────
     const retypeStops = useCallback((stops: Stop[]): Stop[] => {
@@ -358,6 +404,43 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
 
     const handleFilterChange = (category: string, value: string) => {
         console.log(`Filter: ${category} = ${value}`);
+    };
+
+    const handleAddPlaceAsStop = useCallback((place: Pick<AppPlace, 'name' | 'formattedAddress' | 'location'>) => {
+        setTrip((prev) => {
+            const isFirst = prev.stops.length === 0;
+            const newStop = createStopFromPlace(place, isFirst ? 'start' : 'stop');
+            const updated = [...prev.stops, newStop];
+            const retyped = retypeStops(updated);
+            return { ...prev, stops: retyped };
+        });
+        setIsAddingStop(false);
+    }, [retypeStops]);
+
+    const handleSaveFavorite = () => {
+        const trimmedLabel = favoriteLabel.trim();
+        if (!trimmedLabel || !favoritePlaceDraft) return;
+
+        const favorite: FavoritePlace = {
+            id: `${trimmedLabel.toLowerCase()}-${Date.now()}`,
+            label: trimmedLabel,
+            place: favoritePlaceDraft,
+        };
+
+        setFavorites((prev) => {
+            const filtered = prev.filter(
+                (entry) => entry.label.trim().toLowerCase() !== trimmedLabel.toLowerCase()
+            );
+            return [favorite, ...filtered];
+        });
+        setFavoriteLabel('');
+        setFavoritePlaceDraft(null);
+        setFavoriteSearchValue('');
+        setFavoriteInputKey((prev) => prev + 1);
+    };
+
+    const handleRemoveFavorite = (favoriteId: string) => {
+        setFavorites((prev) => prev.filter((favorite) => favorite.id !== favoriteId));
     };
 
     const stopCount = trip.stops.length;
@@ -596,6 +679,75 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                     ) : (
                         <>
                             <div className="planner-timeline">
+                                <div className="favorites-panel">
+                                    <div className="favorites-panel__header">
+                                        <div>
+                                            <h3>Saved Places</h3>
+                                            <p>Save labels like Home, Office, or Grandpa's Place for one-tap route planning.</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="favorites-panel__form">
+                                        <input
+                                            type="text"
+                                            className="favorite-label-input"
+                                            placeholder="Favorite label"
+                                            value={favoriteLabel}
+                                            onChange={(event) => setFavoriteLabel(event.target.value)}
+                                        />
+                                        <PlaceAutocompleteInput
+                                            key={favoriteInputKey}
+                                            className="favorite-place-input"
+                                            placeholder="Search for a favorite address"
+                                            defaultValue={favoriteSearchValue}
+                                            onSelect={async (prediction) => {
+                                                const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
+                                                if (!place) return;
+                                                setFavoritePlaceDraft(place);
+                                                setFavoriteSearchValue(place.name);
+                                            }}
+                                        />
+                                        <button
+                                            className="favorite-save-btn"
+                                            onClick={handleSaveFavorite}
+                                            disabled={!favoriteLabel.trim() || !favoritePlaceDraft}
+                                        >
+                                            Save Favorite
+                                        </button>
+                                    </div>
+
+                                    {favorites.length > 0 ? (
+                                        <div className="favorite-chip-grid">
+                                            {favorites.map((favorite) => (
+                                                <div className="favorite-chip" key={favorite.id}>
+                                                    <button
+                                                        type="button"
+                                                        className="favorite-chip__main"
+                                                        onClick={() => handleAddPlaceAsStop(favorite.place)}
+                                                    >
+                                                        <span className="favorite-chip__label">{favorite.label}</span>
+                                                        <span className="favorite-chip__address">
+                                                            {favorite.place.formattedAddress || favorite.place.name}
+                                                        </span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="favorite-chip__remove"
+                                                        onClick={() => handleRemoveFavorite(favorite.id)}
+                                                        aria-label={`Remove ${favorite.label}`}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="favorites-empty">
+                                            No saved places yet. Add one above to reuse it for your origin, destination, or extra stops.
+                                        </p>
+                                    )}
+                                </div>
+
                                 {trip.stops.length > 0 || isAddingStop ? (
                                     <>
                                         <Timeline
@@ -618,26 +770,26 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
                                                     onSelect={async (prediction) => {
                                                         const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
                                                         if (!place) return;
-
-                                                        const isFirst = trip.stops.length === 0;
-                                                        const stopType: Stop['type'] = isFirst ? 'start' : 'stop';
-
-                                                        const newStop: Stop = {
-                                                            id: Math.random().toString(36).substr(2, 9),
-                                                            name: place.name,
-                                                            formattedAddress: place.formattedAddress,
-                                                            location: place.location,
-                                                            type: stopType,
-                                                        };
-
-                                                        setTrip(prev => {
-                                                            const updated = [...prev.stops, newStop];
-                                                            const retyped = retypeStops(updated);
-                                                            return { ...prev, stops: retyped };
-                                                        });
-                                                        setIsAddingStop(false);
+                                                        handleAddPlaceAsStop(place);
                                                     }}
                                                 />
+                                                {favorites.length > 0 && (
+                                                    <div className="favorite-shortcuts">
+                                                        <span className="favorite-shortcuts__label">Quick picks</span>
+                                                        <div className="favorite-shortcuts__list">
+                                                            {favorites.map((favorite) => (
+                                                                <button
+                                                                    key={favorite.id}
+                                                                    type="button"
+                                                                    className="favorite-shortcut"
+                                                                    onClick={() => handleAddPlaceAsStop(favorite.place)}
+                                                                >
+                                                                    {favorite.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 <button className="cancel-add" onClick={() => setIsAddingStop(false)}>
                                                     Cancel
                                                 </button>

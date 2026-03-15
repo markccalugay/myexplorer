@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Landing page hero search now suggests destinations while typing, supports date range selection with calendar inputs, and lets travelers choose adults and children from a guest dropdown.
+- Trip planner users can now save favorite places like Home, Office, or family addresses and reuse them as one-tap presets for origins, destinations, and extra stops.
 
 ### Changed
+- Reworked the mobile experience across the app shell, discovery layout, landing page cards, map interactions, and detail/planner overlays so key flows stack, scroll, and fit smaller screens more reliably.
+- Updated the app font family to a Google Maps-style `Roboto` stack across shared theme tokens, global styles, and existing page-level typography overrides without changing the color palette.
 - Trip planner map pins now match the color of each stop marker dot in the timeline, including origin, destination, suggested pitstops, and manual stops.
 - Migrated Google Maps routing and marker rendering away from deprecated `DirectionsRenderer`, `DirectionsService`, `DistanceMatrixService`, and legacy `Marker` usage, while removing insecure marker asset URLs and stabilizing place identifiers.
 - Fixed the auto-pitstop routing flow to use a valid Google Maps travel mode, refresh suggested stops when trip endpoints change, and avoid stale suggestions while aligning `mapId` usage with cloud-styled map requirements.
