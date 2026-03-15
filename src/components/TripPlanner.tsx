@@ -67,6 +67,19 @@ const interpolatePath = (
 const formatTime = (date: Date) =>
     date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+const formatElapsedTime = (elapsedMs: number) => {
+    const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
+
 const hasJourneyDetailsChanged = (previousStops: Stop[], nextStops: Stop[]) =>
     previousStops.length !== nextStops.length ||
     previousStops.some((stop, index) => {
@@ -154,6 +167,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
     const [currentStopIndex, setCurrentStopIndex] = useState(1);
     const [currentLocation, setCurrentLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [navigationNotice, setNavigationNotice] = useState<string | null>(null);
+    const [tripStartedAt, setTripStartedAt] = useState<number | null>(null);
+    const [elapsedTimeMs, setElapsedTimeMs] = useState(0);
     const [favorites, setFavorites] = useState<FavoritePlace[]>([]);
     const [favoriteLabel, setFavoriteLabel] = useState('');
     const [favoritePlaceDraft, setFavoritePlaceDraft] = useState<AppPlace | null>(null);
@@ -183,6 +198,22 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
             console.error('Failed to save favorite places:', error);
         }
     }, [favorites]);
+
+    useEffect(() => {
+        if (!isNavigating || tripStartedAt === null) {
+            setElapsedTimeMs(0);
+            return;
+        }
+
+        setElapsedTimeMs(Date.now() - tripStartedAt);
+        const intervalId = window.setInterval(() => {
+            setElapsedTimeMs(Date.now() - tripStartedAt);
+        }, 1000);
+
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [isNavigating, tripStartedAt]);
 
     // ── Retype stops so first=start, last=destination ─────────────────────────
     const retypeStops = useCallback((stops: Stop[]): Stop[] => {
@@ -453,6 +484,10 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
     const currentLegDurationMinutes = getRouteDurationMinutes(navigationRoute, 0);
     const currentLegSteps = getRouteSteps(navigationRoute, 0);
     const nextStep = currentLegSteps[0] ?? null;
+    const estimatedArrivalTime = currentLegDurationMinutes > 0
+        ? formatTime(new Date(Date.now() + currentLegDurationMinutes * 60_000))
+        : '--';
+    const elapsedTimeLabel = formatElapsedTime(elapsedTimeMs);
 
     useEffect(() => {
         if (!isNavigating || !google || !navigationOrigin || !nextStop || !finalStop) return;
@@ -493,6 +528,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
         setCurrentStopIndex(1);
         setNavigationRoute(null);
         setNavigationNotice(null);
+        setTripStartedAt(Date.now());
+        setElapsedTimeMs(0);
 
         try {
             const liveLocation = await getGeolocation();
@@ -514,6 +551,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
         setNavigationNotice(null);
         setCurrentLocation(null);
         setCurrentStopIndex(1);
+        setTripStartedAt(null);
+        setElapsedTimeMs(0);
     };
 
     const handleAdvanceToNextStop = () => {
@@ -613,6 +652,11 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
 
                             {nextStop && (
                                 <div className="navigation-summary-grid">
+                                    <div className="nav-summary-item">
+                                        <span className="label">Estimated Arrival</span>
+                                        <span className="value">{estimatedArrivalTime}</span>
+                                        <span className="subvalue">Elapsed {elapsedTimeLabel}</span>
+                                    </div>
                                     <div className="nav-summary-item">
                                         <span className="label">Leg Distance</span>
                                         <span className="value">{currentLegDistanceKm} km</span>

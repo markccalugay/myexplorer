@@ -465,6 +465,12 @@
     color: var(--explorer-blue);
 }
 
+.nav-summary-item .subvalue {
+    font-size: 12px;
+    font-weight: 600;
+    color: #5f6f82;
+}
+
 .upcoming-stops h4 {
     margin: 0 0 16px 0;
     font-size: 14px;
