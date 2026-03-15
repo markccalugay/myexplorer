@@ -278,6 +278,7 @@ const App = () => {
 
             {view === 'planner' && (
                 <TripPlanner
+                    key={currentTrip.id}
                     trip={currentTrip}
                     onTripChange={handleTripChange}
                     onSaveTrip={handleSaveTrip}

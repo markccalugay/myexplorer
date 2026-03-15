@@ -187,6 +187,15 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     const [favoriteInputKey, setFavoriteInputKey] = useState(0);
     const { google } = useGoogleMaps();
     const autoPitstopRouteKeyRef = useRef<string | null>(null);
+    const updateTrip = useCallback((updater: Trip | ((previousTrip: Trip) => Trip)) => {
+        setTrip((previousTrip) => {
+            const nextTrip = typeof updater === 'function'
+                ? (updater as (previousTrip: Trip) => Trip)(previousTrip)
+                : updater;
+            onTripChange(nextTrip);
+            return nextTrip;
+        });
+    }, [onTripChange]);
 
     useEffect(() => {
         try {
@@ -212,11 +221,18 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     useEffect(() => {
         setTrip(initialTrip);
+        setIsAddingStop(false);
+        setEditingStopId(null);
+        setIsNavigating(false);
+        setIsPreparingNavigation(false);
+        setNavigationRoute(null);
+        setCurrentStopIndex(1);
+        setCurrentLocation(null);
+        setNavigationNotice(null);
+        setTripStartedAt(null);
+        setElapsedTimeMs(0);
+        autoPitstopRouteKeyRef.current = null;
     }, [initialTrip]);
-
-    useEffect(() => {
-        onTripChange(trip);
-    }, [onTripChange, trip]);
 
     useEffect(() => {
         if (!isNavigating || tripStartedAt === null) {
@@ -287,7 +303,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                     newStops[index + 1].arrivalTime = formatTime(currentTime);
                 });
 
-                setTrip((prev) => (
+                updateTrip((prev) => (
                     hasJourneyDetailsChanged(prev.stops, newStops)
                         ? { ...prev, stops: newStops }
                         : prev
@@ -296,7 +312,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             .catch((error) => {
                 console.error('Failed to calculate trip segment details:', error);
             });
-    }, [google]);
+    }, [google, updateTrip]);
 
     // ── Auto-pitstop injection ─────────────────────────────────────────────────
     const autoInsertPitstops = useCallback((stops: Stop[]) => {
@@ -314,14 +330,14 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                 // Only insert pitstops for trips > 90 minutes
                 if (durationMins < 90) {
                     autoPitstopRouteKeyRef.current = routeKey;
-                    setTrip((prev) => ({ ...prev, stops: retypeStops(baseStops) }));
+                    updateTrip((prev) => ({ ...prev, stops: retypeStops(baseStops) }));
                     return;
                 }
 
                 const path = getRoutePath(route).map((point) => new google.maps.LatLng(point));
                 if (!path.length) {
                     autoPitstopRouteKeyRef.current = routeKey;
-                    setTrip((prev) => ({ ...prev, stops: retypeStops(baseStops) }));
+                    updateTrip((prev) => ({ ...prev, stops: retypeStops(baseStops) }));
                     return;
                 }
 
@@ -381,7 +397,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                 ) === index
                         );
 
-                    setTrip(prev => {
+                    updateTrip(prev => {
                         // Insert pitstops between start and destination, preserving any manually-added stops.
                         const manualStops = baseStops.filter((s) => s.type === 'stop');
                         const newStops = [
@@ -399,7 +415,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             .catch((error) => {
                 console.error('Failed to compute auto-pitstop route:', error);
             });
-    }, [google, getEndpointRouteKey, retypeStops, stripAutoSuggestedStops]);
+    }, [google, getEndpointRouteKey, retypeStops, stripAutoSuggestedStops, updateTrip]);
 
     // Trigger calculations whenever stops change (≥ 2)
     useEffect(() => {
@@ -425,7 +441,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     // ── Handlers ──────────────────────────────────────────────────────────────
     const handleRemoveStop = (id: string) => {
-        setTrip(prev => {
+        updateTrip(prev => {
             const filtered = prev.stops.filter(s => s.id !== id);
             const retyped = retypeStops(filtered);
             if (retyped.length >= 2) calculateJourneyDetails(retyped);
@@ -439,7 +455,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     const handleStopEdited = (id: string, updated: Stop) => {
         setEditingStopId(null);
-        setTrip(prev => {
+        updateTrip(prev => {
             const newStops = prev.stops.map(s => (s.id === id ? updated : s));
             const retyped = retypeStops(newStops);
             if (retyped.length >= 2) calculateJourneyDetails(retyped);
@@ -448,7 +464,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     };
 
     const handleReorder = (newStops: Stop[]) => {
-        setTrip(prev => ({ ...prev, stops: newStops }));
+        updateTrip(prev => ({ ...prev, stops: newStops }));
         if (newStops.length >= 2) calculateJourneyDetails(newStops);
     };
 
@@ -457,7 +473,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     };
 
     const handleAddPlaceAsStop = useCallback((place: Pick<AppPlace, 'name' | 'formattedAddress' | 'location'>) => {
-        setTrip((prev) => {
+        updateTrip((prev) => {
             const isFirst = prev.stops.length === 0;
             const newStop = createStopFromPlace(place, isFirst ? 'start' : 'stop');
             const updated = [...prev.stops, newStop];
@@ -465,7 +481,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             return { ...prev, stops: retyped };
         });
         setIsAddingStop(false);
-    }, [retypeStops]);
+    }, [retypeStops, updateTrip]);
 
     const handleSaveFavorite = () => {
         const trimmedLabel = favoriteLabel.trim();

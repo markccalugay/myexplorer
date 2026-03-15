@@ -33,7 +33,7 @@ const formatUpdatedAt = (value?: string) => {
 
 export const Bookings: React.FC<BookingsProps> = ({ trips, onOpenTrip, onCreateTrip }) => {
     return (
-        <main className="bookings-page">
+        <div className="bookings-page">
             <section className="bookings-hero">
                 <div>
                     <p className="bookings-eyebrow">Bookings</p>
@@ -95,6 +95,6 @@ export const Bookings: React.FC<BookingsProps> = ({ trips, onOpenTrip, onCreateT
                     </button>
                 </section>
             )}
-        </main>
+        </div>
     );
 };
