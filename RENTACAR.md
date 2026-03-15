@@ -347,6 +347,277 @@ Instead, explicitly separate:
 
 This will keep the product, operations, legal review, and insurance planning much cleaner.
 
+## Recent Community and Traveler Research
+
+The notes below focus only on relevant traveler-reported issues from roughly the last 6 to 12 months before March 15, 2026.
+
+These are not official regulatory sources. They are useful as market-signal research for product design, trust and safety, pricing transparency, and support workflows.
+
+### Research Window
+
+- Start: March 15, 2025
+- End: March 15, 2026
+
+### Source Types Reviewed
+
+- Reddit communities with recent Philippines travel and expat discussions
+- Tripadvisor forums and bookable transfer/tour listings with recent traveler comments
+
+### Strong Patterns Seen Repeatedly
+
+#### 1. Airport transfer scams remain a major trust issue
+
+Recent Reddit discussions continue to describe NAIA as a high-risk environment for travelers who accept unsolicited transfer offers.
+
+Relevant signals:
+
+- Travelers reported being approached for informal “airport transfer” services with prices far above normal app-based transport
+- Community advice was consistently to avoid unsolicited drivers and use known channels such as Grab or pre-arranged transfers
+- Terminal-transfer confusion appears to create a common scam opportunity
+
+Product implications:
+
+- The app should support only pre-booked, identity-verified drivers
+- Pickup instructions should be explicit and include meeting-point details
+- Driver and vehicle identity should be visible before pickup
+- A customer should never need to negotiate on arrival
+- The app should warn users not to accept off-platform substitutions
+
+Recent examples:
+
+- Reddit, `A Tourist Warning about Taxi Scams at NAIA`, April 21, 2025:
+  https://www.reddit.com/r/Philippines_Expats/comments/1k4420a/
+- Reddit, `Beware of "terminal shuttle" scam in NAIA`, May 31, 2025:
+  https://www.reddit.com/r/Philippines_Expats/comments/1kzt02y/
+- Reddit, `"Airport transfer" This is a scam, right?`, March 3, 2026:
+  https://www.reddit.com/r/Philippines_Expats/comments/1rjhlgq/airport_transfer_this_is_a_scam_right/
+
+#### 2. Travelers strongly prefer verified, pre-arranged drivers over random private hires
+
+When travelers ask for a driver in Manila or other major areas, recent Reddit responses often push them toward either:
+
+- an established company
+- hotel-arranged transport
+- or app-based transport for city-only trips
+
+Relevant signals:
+
+- Travelers see “random for-hire driver” arrangements as risky
+- Advance payment beyond one day is viewed with caution
+- City-only use cases are often seen as better served by app-based transport than full-day private hire
+
+Product implications:
+
+- Require provider verification and profile trust markers
+- Limit advance payouts to providers before trip milestones
+- Add clear labels such as `Verified Fleet`, `Verified Independent Provider`, and `Hotel Partner`
+- Support both hourly/city-use and full-day/provincial booking types
+
+Recent example:
+
+- Reddit, `Looking for a driver for 10 days`, July 2, 2025:
+  https://www.reddit.com/r/Philippines_Expats/comments/1lpiaw8/looking_for_a_driver_for_10_days/
+
+#### 3. Hidden charges and unclear inclusions are a recurring pain point
+
+Recent traveler-facing listings and traveler discussions show repeated friction around extras that are not always obvious at booking time.
+
+Common extras mentioned:
+
+- toll fees
+- parking fees
+- driver meals
+- fuel
+- driver accommodation for overnight trips
+- overtime charges
+- area-based surcharges
+- one-way return-to-base charges
+
+Product implications:
+
+- Booking totals should show `Base Price` and `Possible Extra Charges` separately
+- The platform should require providers to declare all variable charges in advance
+- Extension rules should state hourly overage before booking
+- Overnight trips should force explicit driver accommodation and meal policy confirmation
+- The customer should never receive after-the-fact pricing changes outside pre-agreed rules
+
+Recent examples:
+
+- Tripadvisor, `Manila Private Car Rental with Driver`, crawled February 2026, showing stated extras such as tolls, parking, driver meals, and `PHP500` per hour overtime:
+  https://www.tripadvisor.com/AttractionProductReview-g298573-d17224207-Manila_Private_Car_Rental_with_Driver-Manila_Metro_Manila_Luzon.html
+- Tripadvisor, `Metro Manila Car Rental and Transportation with Driver`, published February 2026, showing fuel, toll, and parking as separate items while the driver meal is included:
+  https://www.tripadvisor.com/AttractionProductReview-g294248-d33041775-Metro_Manila_Car_Rental_and_Transportation_with_Driver-Luzon.html
+- Tripadvisor, `Private Car Rental with Driver in Puerto Princesa`, crawled February 2026, showing `Php 1000/hour` extension pricing:
+  https://www.tripadvisor.com/AttractionProductReview-g294255-d30551943-Private_Car_Rental_with_Driver_in_Puerto_Princesa-Palawan_Island_Palawan_Province_.html
+- Tripadvisor, `Twin Cebu - Mactan City Day Tour`, review written January 8, 2025 but surfaced as a recent listing warning, describing disputes over extra fuel and overtime charges:
+  https://www.tripadvisor.com/AttractionProductReview-g298460-d12648131-Twin_Cebu_Mactan_City_Day_Tour-Cebu_City_Cebu_Island_Visayas.html
+- Tripadvisor forum, `private driver in Cebu-quotation`, May 27, 2025, discussing that multi-day hire often separately involves fuel, accommodation, and subsistence:
+  https://www.tripadvisor.com/ShowTopic-g294245-i3256-k14965059-Private_driver_in_Cebu_quotation-Philippines.html
+
+#### 4. Shared van safety is a serious concern, especially on long intercity routes
+
+Recent Tripadvisor discussions about Palawan transfers repeatedly mention:
+
+- speeding
+- over-aggressive overtaking
+- long wait times before departure
+- vans leaving only when full
+- cramped conditions
+- unsafe driving compared with private transfers
+
+Product implications:
+
+- The app should distinguish `Shared Transfer` from `Private Transfer`
+- Shared services should disclose expected wait policy and seating density
+- Safety standards should be stricter for providers on long-distance routes
+- The app should capture and flag repeated complaints about dangerous driving
+- A `Safe Driver` score or internal incident/risk score would be valuable
+
+Recent examples:
+
+- Tripadvisor forum, `Transfer from Puerto Princesa airport`, April 30, 2025, describing shared vans as tightly packed and often dangerously driven, while a recommended private driver was considered safer:
+  https://www.tripadvisor.com/ShowTopic-g294255-i8273-k15325390-Transfer_from_Puerto_Princesa_airport-Palawan_Island_Palawan_Province_Mimaropa.html
+- Tripadvisor forum, `Transport on Palawan`, March 7, 2025, recommending private transfer options over general transfer uncertainty:
+  https://www.tripadvisor.com/ShowTopic-g294245-i3256-k15275075-Transport_on_Palawan-Philippines.html
+- Tripadvisor forum, `Travelling by van from Puerta Princessa to El Nido`, December 2025, emphasizing shared-van schedules and the burden of long winding travel:
+  https://www.tripadvisor.com/ShowTopic-g294257-i10101-k15468037-Travelling_by_van_from_Puerta_Princessa_to_El_Nido-Puerto_Princesa_Palawan_Island_Palawan.html
+
+#### 5. Travelers often compare private hire against Grab, hotel transport, and direct booking
+
+Recent traveler behavior suggests people do not evaluate “private driver” in isolation. They compare it against:
+
+- Grab for city travel
+- hotel-arranged transport for trust
+- direct-to-driver or direct-to-company booking for better pricing
+- flights instead of long overland transfers
+
+Product implications:
+
+- The app should help users choose the correct service type, not only browse inventory
+- Add booking prompts such as:
+  - `Best for city trips`
+  - `Best for families with luggage`
+  - `Best for long-distance private transfer`
+- The app should explain when not to book a full-day private vehicle
+
+Recent examples:
+
+- Reddit, `Looking for a driver for 10 days`, July 2, 2025, where many replies said app-based transport is better for city-only movement:
+  https://www.reddit.com/r/Philippines_Expats/comments/1lpiaw8/looking_for_a_driver_for_10_days/
+- Tripadvisor forum, `Grab and Private Driver in Cebu`, May 25, 2025, where a traveler compared wide pricing differences and called out online transfer offers that looked overpriced:
+  https://www.tripadvisor.com/ShowTopic-g294245-i3256-k15350141-Grab_and_Private_Driver_in_Cebu-Philippines.html
+- Tripadvisor forum, `Travelling by van from Puerta Princessa to El Nido`, December 2025, suggesting direct flights into El Nido to avoid long overland travel when possible:
+  https://www.tripadvisor.com/ShowTopic-g294257-i10101-k15468037-Travelling_by_van_from_Puerta_Princessa_to_El_Nido-Puerto_Princesa_Palawan_Island_Palawan.html
+
+#### 6. WhatsApp-style coordination is effectively part of the travel experience
+
+Recent traveler reviews often mention confirmation and driver coordination through WhatsApp or similar messaging.
+
+Product implications:
+
+- In-app messaging is highly desirable
+- If the app uses phone-based fallback contact, it should support WhatsApp-friendly workflows
+- Booking confirmation should include:
+  - driver name
+  - vehicle plate or identifier
+  - pickup point
+  - live contact method
+
+Recent examples:
+
+- Tripadvisor, `Metro Manila Car Rental and Transportation with Driver`, published February 2026, states that the driver will contact the traveler via WhatsApp:
+  https://www.tripadvisor.com/AttractionProductReview-g294248-d33041775-Metro_Manila_Car_Rental_and_Transportation_with_Driver-Luzon.html
+- Tripadvisor, `Private driver for a day? - Palawan Island Forum`, October 11, 2025:
+  https://www.tripadvisor.com/ShowTopic-g294255-i8273-k15441893-Private_driver_for_a_day-Palawan_Island_Palawan_Province_Mimaropa.html
+
+#### 7. Capacity, luggage, and trip-shape matter more than just seat count
+
+Recent traveler listings and community discussions show that users think in terms of:
+
+- number of passengers
+- amount of luggage
+- whether the trip is point-to-point, city use, or multi-stop
+- whether it is an overnight or multi-day trip
+
+Product implications:
+
+- Search should ask for both passengers and luggage
+- Vehicle cards should show `max passengers` and `max luggage`
+- Multi-day trips should collect route shape, overnight stops, and whether the driver needs lodging
+- Family use cases should ask about child seats
+
+Recent examples:
+
+- Tripadvisor, `Private Airport Transfer: Cebu Airport (CEB) → Cebu City Hotels`, crawled February 2026, provides explicit passenger and suitcase combinations and says child seats are available on request:
+  https://www.tripadvisor.com/AttractionProductReview-g294261-d20483048-Try_find_your_better_than_us_Airport_transfer_service_in_Cebu_APT_HTL_CEB-Cebu_Isl.html
+- Tripadvisor, `One-Way Private Car Transfer with Airport Representative within Muntinlupa and Alabang`, crawled February 2026, notes baggage restrictions and limits:
+  https://www.tripadvisor.com/AttractionProductReview-g298573-d16647633-One_Way_Private_Car_Transfer_with_Airport_Representative_within_Muntinlupa_and_Ala.html
+- Reddit, `DRIVER DAILY PAY`, February 24, 2026, discusses a family event where the group intentionally avoided fully loading the van for safety and also planned for driver food and accommodation:
+  https://www.reddit.com/r/CebuWeddings/comments/1rduk85/driver_daily_pay/
+
+#### 8. Overloading and “one vehicle fits all” assumptions are risky for family and event bookings
+
+Recent discussions suggest that travelers often try to solve large-group movement with a single van even when luggage, route complexity, or safety makes that a poor fit.
+
+Product implications:
+
+- Do not recommend a van based on seats alone
+- Include warnings when luggage or route complexity likely requires a larger unit or multiple vehicles
+- Provide a `multi-vehicle plan` option for events, weddings, reunions, and airport-family moves
+
+Recent examples:
+
+- Reddit, `DRIVER DAILY PAY`, February 24, 2026:
+  https://www.reddit.com/r/CebuWeddings/comments/1rduk85/driver_daily_pay/
+- Reddit, `Moving services suggestions please`, July 8, 2025, showing that users may underestimate the right vehicle category for family-sized loads:
+  https://www.reddit.com/r/RentPH/comments/1lud4oj/
+
+### Additional Edge Cases Suggested by Recent Research
+
+Based on the sources above, these edge cases should be added to planning:
+
+- `Airport substitution risk`: driver says the booked vehicle is unavailable and offers a different one off-platform
+- `Arrival confusion`: traveler cannot find the driver due to poor signage or pickup-point ambiguity
+- `No-show / fake arrival`: provider claims they arrived and waits for the customer to cancel
+- `Shared van overfill`: vehicle seats are technically enough but luggage and comfort are not
+- `Unsafe shared transfer`: repeated speeding or reckless overtaking on provincial roads
+- `Overtime dispute`: trip runs long and the customer disputes hourly overage charges
+- `Area surcharge dispute`: extra charge appears because destination is outside the default city boundary
+- `Driver subsistence dispute`: overnight booking but no prior agreement on meals or lodging
+- `Terminal transfer confusion`: traveler arriving at NAIA is pushed into an overpriced ride because inter-terminal transfer rules are unclear
+- `Luggage mismatch`: a booking fits passenger count but not suitcases, strollers, or bulky gear
+- `Child-seat mismatch`: family booking requires a child seat but provider is not prepared
+
+### Recommended Product Responses Based on This Research
+
+- Add a `service-type selector` before showing vehicles:
+  - `City rides`
+  - `Airport transfer`
+  - `Self-drive rental`
+  - `Private driver with vehicle`
+  - `Driver only`
+  - `Multi-day family trip`
+- Require providers to declare all mandatory and conditional fees up front
+- Make `pickup instructions` a first-class part of the booking
+- Store and display `vehicle`, `plate`, `driver`, and `contact` before the trip starts
+- Add `luggage capacity`, not just seat count
+- Add `child seat required` as a booking field
+- Build an `extension quote` flow instead of informal overtime charging
+- Separate `shared transfer` and `private transfer` inventory
+- Add trust signals:
+  - verified ID
+  - verified vehicle docs
+  - verified insurance
+  - response rate
+  - safety complaints
+  - cancellation rate
+
+### Research Notes
+
+- I prioritized sources with visible dates from March 15, 2025 to March 15, 2026
+- Reddit and Tripadvisor provide useful market signals, but they are anecdotal and should not replace legal, insurance, or compliance review
+- Where travelers made specific claims, the product implication is an inference from those patterns, not a verified legal conclusion
+
 ## Next Recommended Planning Documents
 
 After this document, the next useful planning outputs would be:
