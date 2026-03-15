@@ -134,9 +134,3 @@
     opacity: 0.45;
     cursor: default;
 }
-
-@media (min-width: 640px) {
-    .filter-options {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
