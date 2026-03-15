@@ -14,6 +14,10 @@ import './TripPlanner.css';
 
 interface TripPlannerProps {
     trip: Trip;
+    onTripChange: (trip: Trip) => void;
+    onSaveTrip: (trip: Trip) => void;
+    isDirty: boolean;
+    isSavedTrip: boolean;
     onClose: () => void;
 }
 
@@ -157,7 +161,14 @@ const createStopFromPlace = (
     type,
 });
 
-export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onClose }) => {
+export const TripPlanner: React.FC<TripPlannerProps> = ({
+    trip: initialTrip,
+    onTripChange,
+    onSaveTrip,
+    isDirty,
+    isSavedTrip,
+    onClose,
+}) => {
     const [trip, setTrip] = useState<Trip>(initialTrip);
     const [isAddingStop, setIsAddingStop] = useState(false);
     const [isNavigating, setIsNavigating] = useState(false);
@@ -198,6 +209,14 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
             console.error('Failed to save favorite places:', error);
         }
     }, [favorites]);
+
+    useEffect(() => {
+        setTrip(initialTrip);
+    }, [initialTrip]);
+
+    useEffect(() => {
+        onTripChange(trip);
+    }, [onTripChange, trip]);
 
     useEffect(() => {
         if (!isNavigating || tripStartedAt === null) {
@@ -870,6 +889,33 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ trip: initialTrip, onC
 
                 {!isNavigating && (
                     <div className="planner-footer">
+                        <div className="planner-save-bar">
+                            <div className="planner-save-copy">
+                                <span className="planner-save-title">
+                                    {isDirty
+                                        ? isSavedTrip
+                                            ? 'Unsaved trip changes'
+                                            : 'Trip not saved yet'
+                                        : isSavedTrip
+                                        ? 'All trip changes saved'
+                                        : 'Save this trip to Bookings'}
+                                </span>
+                                <span className="planner-save-description">
+                                    {isDirty
+                                        ? 'Save before leaving if you want these route updates available from Bookings.'
+                                        : 'You can reopen this trip from Bookings and start it later with one tap.'}
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                className="save-trip-btn"
+                                onClick={() => onSaveTrip(trip)}
+                                disabled={!isDirty && isSavedTrip}
+                            >
+                                {isSavedTrip ? (isDirty ? 'Save Changes' : 'Saved') : 'Save Trip'}
+                            </button>
+                        </div>
+
                         {trip.stops.length >= 2 && (
                             <div className="journey-summary">
                                 <div className="summary-item">

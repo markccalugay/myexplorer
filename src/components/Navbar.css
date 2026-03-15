@@ -56,6 +56,11 @@
     color: var(--explorer-blue);
 }
 
+.nav-link.active {
+    color: var(--explorer-blue);
+    font-weight: 700;
+}
+
 .navbar-actions {
     display: flex;
     align-items: center;

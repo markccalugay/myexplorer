@@ -20,6 +20,10 @@
     overflow: hidden;
 }
 
+.main-content--bookings {
+    overflow: hidden;
+}
+
 .hero {
     padding: 80px var(--space-xl);
     background-color: var(--sand);

@@ -19,4 +19,6 @@ export interface Trip {
     stops: Stop[];
     totalDistance?: number;
     totalDuration?: number;
+    savedAt?: string;
+    updatedAt?: string;
 }
