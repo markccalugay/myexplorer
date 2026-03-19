@@ -837,82 +837,6 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                     ) : (
                         <>
                             <div className="planner-timeline">
-                                <ConveyPanel
-                                    trip={trip}
-                                    defaultOverlay={conveyDefaultOverlay}
-                                    onOverlayHandled={onConveyOverlayHandled}
-                                    onTripChange={updateTrip}
-                                />
-
-                                <div className="favorites-panel">
-                                    <div className="favorites-panel__header">
-                                        <div>
-                                            <h3>Saved Places</h3>
-                                            <p>Save labels like Home, Office, or Grandpa's Place for one-tap route planning.</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="favorites-panel__form">
-                                        <input
-                                            type="text"
-                                            className="favorite-label-input"
-                                            placeholder="Favorite label"
-                                            value={favoriteLabel}
-                                            onChange={(event) => setFavoriteLabel(event.target.value)}
-                                        />
-                                        <PlaceAutocompleteInput
-                                            key={favoriteInputKey}
-                                            className="favorite-place-input"
-                                            placeholder="Search for a favorite address"
-                                            defaultValue={favoriteSearchValue}
-                                            onSelect={async (prediction) => {
-                                                const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
-                                                if (!place) return;
-                                                setFavoritePlaceDraft(place);
-                                                setFavoriteSearchValue(place.name);
-                                            }}
-                                        />
-                                        <button
-                                            className="favorite-save-btn"
-                                            onClick={handleSaveFavorite}
-                                            disabled={!favoriteLabel.trim() || !favoritePlaceDraft}
-                                        >
-                                            Save Favorite
-                                        </button>
-                                    </div>
-
-                                    {favorites.length > 0 ? (
-                                        <div className="favorite-chip-grid">
-                                            {favorites.map((favorite) => (
-                                                <div className="favorite-chip" key={favorite.id}>
-                                                    <button
-                                                        type="button"
-                                                        className="favorite-chip__main"
-                                                        onClick={() => handleAddPlaceAsStop(favorite.place)}
-                                                    >
-                                                        <span className="favorite-chip__label">{favorite.label}</span>
-                                                        <span className="favorite-chip__address">
-                                                            {favorite.place.formattedAddress || favorite.place.name}
-                                                        </span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="favorite-chip__remove"
-                                                        onClick={() => handleRemoveFavorite(favorite.id)}
-                                                        aria-label={`Remove ${favorite.label}`}
-                                                    >
-                                                        ×
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="favorites-empty">
-                                            No saved places yet. Add one above to reuse it for your origin, destination, or extra stops.
-                                        </p>
-                                    )}
-                                </div>
-
                                 {trip.stops.length > 0 || isAddingStop ? (
                                     <>
                                         <Timeline
@@ -992,6 +916,82 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                         </button>
                                     </div>
                                 )}
+
+                                <ConveyPanel
+                                    trip={trip}
+                                    defaultOverlay={conveyDefaultOverlay}
+                                    onOverlayHandled={onConveyOverlayHandled}
+                                    onTripChange={updateTrip}
+                                />
+
+                                <div className="favorites-panel">
+                                    <div className="favorites-panel__header">
+                                        <div>
+                                            <h3>Saved Places</h3>
+                                            <p>Save labels like Home, Office, or Grandpa's Place for one-tap route planning.</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="favorites-panel__form">
+                                        <input
+                                            type="text"
+                                            className="favorite-label-input"
+                                            placeholder="Favorite label"
+                                            value={favoriteLabel}
+                                            onChange={(event) => setFavoriteLabel(event.target.value)}
+                                        />
+                                        <PlaceAutocompleteInput
+                                            key={favoriteInputKey}
+                                            className="favorite-place-input"
+                                            placeholder="Search for a favorite address"
+                                            defaultValue={favoriteSearchValue}
+                                            onSelect={async (prediction) => {
+                                                const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
+                                                if (!place) return;
+                                                setFavoritePlaceDraft(place);
+                                                setFavoriteSearchValue(place.name);
+                                            }}
+                                        />
+                                        <button
+                                            className="favorite-save-btn"
+                                            onClick={handleSaveFavorite}
+                                            disabled={!favoriteLabel.trim() || !favoritePlaceDraft}
+                                        >
+                                            Save Favorite
+                                        </button>
+                                    </div>
+
+                                    {favorites.length > 0 ? (
+                                        <div className="favorite-chip-grid">
+                                            {favorites.map((favorite) => (
+                                                <div className="favorite-chip" key={favorite.id}>
+                                                    <button
+                                                        type="button"
+                                                        className="favorite-chip__main"
+                                                        onClick={() => handleAddPlaceAsStop(favorite.place)}
+                                                    >
+                                                        <span className="favorite-chip__label">{favorite.label}</span>
+                                                        <span className="favorite-chip__address">
+                                                            {favorite.place.formattedAddress || favorite.place.name}
+                                                        </span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="favorite-chip__remove"
+                                                        onClick={() => handleRemoveFavorite(favorite.id)}
+                                                        aria-label={`Remove ${favorite.label}`}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="favorites-empty">
+                                            No saved places yet. Add one above to reuse it for your origin, destination, or extra stops.
+                                        </p>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="suggestions-teaser">
