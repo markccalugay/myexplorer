@@ -223,17 +223,12 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
 
     return (
         <div className="convey-panel">
-            <div className="convey-panel__header">
-                <div>
+            <div className="convey-panel__grid">
+                <div className="convey-panel__header">
                     <h3>Convey</h3>
                     <p>Coordinate vehicles, add people, and let families place themselves into the convoy.</p>
                 </div>
-                <span className="convey-panel__status">
-                    {vehicles.length > 0 ? `${vehicles.length} vehicles ready` : 'Set up your first vehicle'}
-                </span>
-            </div>
 
-            <div className="convey-panel__summary">
                 <div className="convey-summary-card">
                     <span className="convey-summary-card__label">Vehicles</span>
                     <strong>{vehicles.length}</strong>
@@ -250,17 +245,18 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                     <span className="convey-summary-card__label">Warnings</span>
                     <strong>{warnings}</strong>
                 </div>
-            </div>
 
-            <div className="convey-panel__actions">
-                <button type="button" className="convey-action-btn" onClick={() => openOverlay('vehicles')}>
+                <button type="button" className="convey-action-btn convey-action-btn--primary" onClick={() => openOverlay('vehicles')}>
                     Manage Vehicles
                 </button>
-                <button type="button" className="convey-action-btn" onClick={() => openOverlay('invite')}>
+                <button type="button" className="convey-action-btn convey-action-btn--primary" onClick={() => openOverlay('invite')}>
                     Invite / Add People
                 </button>
-                <button type="button" className="convey-action-btn" onClick={() => openOverlay('assignments')}>
+                <button type="button" className="convey-action-btn convey-action-btn--secondary" onClick={() => openOverlay('assignments')}>
                     View Assignments
+                </button>
+                <button type="button" className="convey-action-btn convey-action-btn--secondary" onClick={() => openOverlay('vehicles')}>
+                    {vehicles.length > 0 ? 'Add Vehicle' : 'Set Up First Vehicle'}
                 </button>
             </div>
 
