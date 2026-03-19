@@ -10,6 +10,7 @@ import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
 import { getStopColor } from '../lib/stopColors';
 import { AppRoute, AppRouteStep, computeDrivingRoute, getRouteDistanceKm, getRouteDurationMinutes, getRoutePath, getRouteSteps } from '../lib/googleRoutes';
 import { AppPlace } from '../types/place';
+import { ConveyPanel } from './ConveyPanel';
 import './TripPlanner.css';
 
 interface TripPlannerProps {
@@ -18,6 +19,8 @@ interface TripPlannerProps {
     onSaveTrip: (trip: Trip) => void;
     isDirty: boolean;
     isSavedTrip: boolean;
+    conveyDefaultOverlay?: 'vehicles' | 'invite' | 'assignments' | null;
+    onConveyOverlayHandled?: () => void;
     onClose: () => void;
 }
 
@@ -205,6 +208,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     onSaveTrip,
     isDirty,
     isSavedTrip,
+    conveyDefaultOverlay = null,
+    onConveyOverlayHandled,
     onClose,
 }) => {
     const [trip, setTrip] = useState<Trip>(initialTrip);
@@ -832,6 +837,13 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                     ) : (
                         <>
                             <div className="planner-timeline">
+                                <ConveyPanel
+                                    trip={trip}
+                                    defaultOverlay={conveyDefaultOverlay}
+                                    onOverlayHandled={onConveyOverlayHandled}
+                                    onTripChange={updateTrip}
+                                />
+
                                 <div className="favorites-panel">
                                     <div className="favorites-panel__header">
                                         <div>

@@ -25,6 +25,7 @@ interface TripState {
     currentTrip: Trip;
     tripBaselineSnapshot: string | null;
 }
+type PlannerOverlayIntent = 'vehicles' | 'invite' | 'assignments' | null;
 
 const createTripId = () => `trip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -58,6 +59,7 @@ const App = () => {
     const [route, setRoute] = useState<AppRoute | null>(null);
     const [view, setView] = useState<AppView>('explore');
     const [tripState, setTripState] = useState(createInitialTripState);
+    const [plannerOverlayIntent, setPlannerOverlayIntent] = useState<PlannerOverlayIntent>(null);
     const [savedTrips, setSavedTrips] = useState<Trip[]>(() => {
         try {
             const raw = window.localStorage.getItem(SAVED_TRIPS_STORAGE_KEY);
@@ -154,6 +156,7 @@ const App = () => {
     };
 
     const handleStartPlanning = () => {
+        setPlannerOverlayIntent(null);
         navigateToView('planner');
     };
 
@@ -196,6 +199,7 @@ const App = () => {
         const nextTrip = createEmptyTrip();
         setCurrentTrip(nextTrip);
         setTripBaselineSnapshot(normalizeTrip(nextTrip));
+        setPlannerOverlayIntent(null);
         setView('planner');
     };
 
@@ -205,6 +209,17 @@ const App = () => {
         const nextTrip = cloneTrip(trip);
         setCurrentTrip(nextTrip);
         setTripBaselineSnapshot(normalizeTrip(nextTrip));
+        setPlannerOverlayIntent(null);
+        setView('planner');
+    };
+
+    const handleOpenTripConvey = (trip: Trip) => {
+        if (!confirmLeavePlanner()) return;
+
+        const nextTrip = cloneTrip(trip);
+        setCurrentTrip(nextTrip);
+        setTripBaselineSnapshot(normalizeTrip(nextTrip));
+        setPlannerOverlayIntent('vehicles');
         setView('planner');
     };
 
@@ -303,6 +318,8 @@ const App = () => {
                     onSaveTrip={handleSaveTrip}
                     isDirty={hasUnsavedTripChanges}
                     isSavedTrip={savedTrips.some((trip) => trip.id === currentTrip.id)}
+                    conveyDefaultOverlay={plannerOverlayIntent}
+                    onConveyOverlayHandled={() => setPlannerOverlayIntent(null)}
                     onClose={handleExplore}
                 />
             )}
@@ -312,6 +329,7 @@ const App = () => {
                     <Bookings
                         trips={savedTrips}
                         onOpenTrip={handleOpenSavedTrip}
+                        onManageConvey={handleOpenTripConvey}
                         onCreateTrip={handleCreateNewTrip}
                     />
                 </main>

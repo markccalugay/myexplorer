@@ -13,12 +13,82 @@ export interface Stop {
     arrivalTime?: string;          // e.g. "8:15 AM"
 }
 
+export type ConveyParticipantKind = 'individual' | 'group';
+export type ConveyParticipantStatus = 'pending' | 'joined' | 'declined';
+export type ConveyInviteMethod = 'link' | 'code' | 'manual';
+export type ConveyInviteStatus = 'pending' | 'accepted' | 'declined' | 'revoked';
+export type ConveyAssignmentStatus = 'active' | 'removed';
+
+export interface ConveyVehicle {
+    id: string;
+    label: string;
+    order: number;
+    seatCapacity?: number;
+    notes?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface ConveyMember {
+    id: string;
+    displayName: string;
+    isPrimary?: boolean;
+}
+
+export interface ConveyParticipant {
+    id: string;
+    kind: ConveyParticipantKind;
+    displayName: string;
+    status: ConveyParticipantStatus;
+    invitedBy?: string;
+    contactLabel?: string;
+    members: ConveyMember[];
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface ConveyInvite {
+    id: string;
+    participantId: string;
+    method: ConveyInviteMethod;
+    token?: string;
+    status: ConveyInviteStatus;
+    sentAt?: string;
+    respondedAt?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface ConveyAssignment {
+    id: string;
+    participantId: string;
+    memberId: string;
+    vehicleId: string;
+    assignedBy?: string;
+    status: ConveyAssignmentStatus;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface Convey {
+    id: string;
+    tripId: string;
+    vehicles: ConveyVehicle[];
+    participants: ConveyParticipant[];
+    invites: ConveyInvite[];
+    assignments: ConveyAssignment[];
+    assignmentLockAt?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
 export interface Trip {
     id: string;
     name: string;
     stops: Stop[];
     totalDistance?: number;
     totalDuration?: number;
+    convey?: Convey;
     savedAt?: string;
     updatedAt?: string;
 }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 interface FilterPanelProps {
-    onFilterChange: (category: string, values: string[]) => void;
+    onFilterChange: (category: 'fuel' | 'dining' | 'essentials', values: string[]) => void;
 }
 
 interface FilterOption {
@@ -210,7 +210,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onFilterChange }) => {
         essentials: [],
     });
 
-    const handleToggle = (categoryId: string, optionId: string, label: string) => {
+    const handleToggle = (categoryId: 'fuel' | 'dining' | 'essentials', label: string) => {
         setSelectedFilters((previous) => {
             const currentValues = previous[categoryId] || [];
             const nextValues = currentValues.includes(label)
@@ -234,7 +234,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onFilterChange }) => {
         });
 
         FILTER_CATEGORIES.forEach((category) => {
-            onFilterChange(category.id, []);
+            onFilterChange(category.id as 'fuel' | 'dining' | 'essentials', []);
         });
     };
 
@@ -258,7 +258,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onFilterChange }) => {
                                 <input
                                     type="checkbox"
                                     checked={(selectedFilters[id] || []).includes(option.label)}
-                                    onChange={() => handleToggle(id, option.id, option.label)}
+                                    onChange={() => handleToggle(id as 'fuel' | 'dining' | 'essentials', option.label)}
                                 />
                                 <span>
                                     <span className="filter-chip__icon" aria-hidden="true">{iconLabel}</span>
