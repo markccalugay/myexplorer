@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added ESLint with a project-level `npm run lint` command so the app can be checked for React and TypeScript lint issues from the CLI.
 
 ### Changed
+- 2026-03-20: Increased the vertical spacing between the trip destination setup area and the Convey panel so the planner layout reads more clearly after reordering the sidebar sections.
 - Reworked the mobile experience across the app shell, discovery layout, landing page cards, map interactions, and detail/planner overlays so key flows stack, scroll, and fit smaller screens more reliably.
 - Updated the app font family to a Google Maps-style `Roboto` stack across shared theme tokens, global styles, and existing page-level typography overrides without changing the color palette.
 - Cleaned up the React and TypeScript codebase to satisfy the new ESLint rules, including safer state initialization, tighter Google Maps typings, corrected hook dependencies, and route-planner/trip-planner callback fixes so `npm run lint` and `npm run build` both pass.
