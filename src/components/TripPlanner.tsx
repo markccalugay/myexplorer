@@ -3,7 +3,13 @@ import Map from './Map';
 import { Timeline } from './Timeline';
 import { StopCard } from './StopCard';
 import { FilterPanel } from './FilterPanel';
-import { Trip, Stop } from '../types/trip';
+import {
+    ActiveNavigationRecommendationSession,
+    RecommendationCandidate,
+    RecommendationVote,
+    Stop,
+    Trip,
+} from '../types/trip';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { BASIC_PLACE_FIELDS, toAppPlace, fetchPlaceFromPrediction } from '../lib/googlePlaces';
 import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
@@ -27,6 +33,13 @@ interface TripPlannerProps {
 // Average fuel efficiency assumed for estimation
 const FUEL_EFFICIENCY_KM_PER_L = 12;
 const FAVORITE_STORAGE_KEY = 'myexplorer.favorite-places';
+const RECOMMENDATION_DISPLAY_DELAY_MS = 5_000;
+const RECOMMENDATION_DECISION_WINDOW_MS = 300_000;
+const RECOMMENDATION_MIN_DISTANCE_KM = 25;
+const RECOMMENDATION_MIN_DURATION_MINUTES = 30;
+const RECOMMENDATION_MAX_NEARBY_RESULTS = 6;
+const RECOMMENDATION_DUPLICATE_RADIUS_KM = 1;
+const DEFAULT_RECOMMENDATION_TYPES = ['tourist_attraction', 'park', 'restaurant', 'cafe', 'museum'];
 
 interface FavoritePlace {
     id: string;
@@ -93,6 +106,13 @@ const formatElapsedTime = (elapsedMs: number) => {
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
 };
 
+const formatCountdown = (remainingMs: number) => {
+    const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
 const hasJourneyDetailsChanged = (previousStops: Stop[], nextStops: Stop[]) =>
     previousStops.length !== nextStops.length ||
     previousStops.some((stop, index) => {
@@ -134,6 +154,73 @@ const getInstructionDuration = (step?: AppRouteStep | null) => {
     }
 
     return `${totalMinutes} min`;
+};
+
+const normalizeLabel = (value?: string | null) => value?.trim().toLowerCase() ?? '';
+
+const toRadians = (value: number) => (value * Math.PI) / 180;
+
+const getDistanceKmBetweenPoints = (
+    start: google.maps.LatLngLiteral,
+    end: google.maps.LatLngLiteral
+) => {
+    const earthRadiusKm = 6371;
+    const latDistance = toRadians(end.lat - start.lat);
+    const lngDistance = toRadians(end.lng - start.lng);
+    const a = Math.sin(latDistance / 2) ** 2 +
+        Math.cos(toRadians(start.lat)) * Math.cos(toRadians(end.lat)) * Math.sin(lngDistance / 2) ** 2;
+
+    return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const getNavigationLegKey = (
+    origin: google.maps.LatLngLiteral | null,
+    stopIndex: number,
+    stop: Stop | null
+) => {
+    if (!origin || !stop) return null;
+
+    return [
+        stopIndex,
+        stop.id,
+        origin.lat.toFixed(5),
+        origin.lng.toFixed(5),
+        stop.location.lat.toFixed(5),
+        stop.location.lng.toFixed(5),
+    ].join(':');
+};
+
+const getRecommendationCategoryLabel = (primaryType?: string) => (
+    primaryType
+        ? primaryType
+            .split('_')
+            .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+            .join(' ')
+        : 'Things to do'
+);
+
+const getRecommendationTypes = (filters: RecommendationFilters) => {
+    const preferredTypes = new Set<string>(DEFAULT_RECOMMENDATION_TYPES);
+    const diningLabels = filters.dining.map((value) => normalizeLabel(value));
+    const essentialLabels = filters.essentials.map((value) => normalizeLabel(value));
+
+    if (diningLabels.some((label) => label.includes('coffee'))) {
+        preferredTypes.add('cafe');
+    }
+    if (diningLabels.some((label) => label.includes('fast food') || label.includes('drive-thru'))) {
+        preferredTypes.add('meal_takeaway');
+    }
+    if (diningLabels.length > 0) {
+        preferredTypes.add('restaurant');
+    }
+    if (essentialLabels.some((label) => label.includes('7-eleven') || label.includes('alfamart'))) {
+        preferredTypes.add('convenience_store');
+    }
+    if (essentialLabels.some((label) => label.includes('clean toilets') || label.includes('24-hour'))) {
+        preferredTypes.add('rest_stop');
+    }
+
+    return Array.from(preferredTypes).slice(0, 10);
 };
 
 const getGeolocation = () =>
@@ -200,6 +287,7 @@ const createStopFromPlace = (
     formattedAddress: place.formattedAddress,
     location: place.location,
     type,
+    source: 'manual',
 });
 
 export const TripPlanner: React.FC<TripPlannerProps> = ({
@@ -235,8 +323,11 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         dining: [],
         essentials: [],
     });
+    const [recommendationSession, setRecommendationSession] = useState<ActiveNavigationRecommendationSession | null>(null);
+    const [recommendationNowMs, setRecommendationNowMs] = useState(() => Date.now());
     const { google } = useGoogleMaps();
     const autoPitstopRouteKeyRef = useRef<string | null>(null);
+    const offeredRecommendationLegsRef = useRef<Set<string>>(new Set());
     const updateTrip = useCallback((updater: Trip | ((previousTrip: Trip) => Trip)) => {
         setTrip((previousTrip) => {
             const nextTrip = typeof updater === 'function'
@@ -288,7 +379,10 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             dining: [],
             essentials: [],
         });
+        setRecommendationSession(null);
+        setRecommendationNowMs(Date.now());
         autoPitstopRouteKeyRef.current = null;
+        offeredRecommendationLegsRef.current = new Set();
     }, [initialTrip]);
 
     useEffect(() => {
@@ -428,8 +522,10 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                             formattedAddress: appPlace.formattedAddress,
                             location: appPlace.location,
                             type: 'stop',
+                            source: 'auto-pitstop',
                             isAutoSuggested: true,
                             category: 'Gas Station',
+                            googleMapsUri: appPlace.googleMapsUri,
                         };
                         return pitstop;
                     } catch (error) {
@@ -600,6 +696,110 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         ? formatTime(new Date(Date.now() + currentLegDurationMinutes * 60_000))
         : '--';
     const elapsedTimeLabel = formatElapsedTime(elapsedTimeMs);
+    const activeConveyParticipants = trip.convey?.participants.filter((participant) => participant.status === 'joined') ?? [];
+    const recommendationLegKey = getNavigationLegKey(navigationOrigin, currentStopIndex, nextStop);
+    const recommendationTimeLeftMs = recommendationSession?.expiresAt
+        ? Math.max(0, recommendationSession.expiresAt - recommendationNowMs)
+        : 0;
+    const recommendationYesVotes = activeConveyParticipants.filter(
+        (participant) => recommendationSession?.votes[participant.id] === 'yes'
+    ).length;
+    const recommendationNoVotes = activeConveyParticipants.filter(
+        (participant) => recommendationSession?.votes[participant.id] === 'no'
+    ).length;
+    const recommendationPendingVotes = Math.max(
+        0,
+        activeConveyParticipants.length - recommendationYesVotes - recommendationNoVotes
+    );
+
+    const dismissRecommendationSession = useCallback(() => {
+        setRecommendationSession(null);
+        setRecommendationNowMs(Date.now());
+    }, []);
+
+    const finalizeRecommendationSession = useCallback((
+        session: ActiveNavigationRecommendationSession,
+        outcome: 'accepted' | 'rejected' | 'expired'
+    ) => {
+        offeredRecommendationLegsRef.current.add(session.legKey);
+        const acceptedCandidate = session.candidate;
+
+        if (outcome === 'accepted' && acceptedCandidate) {
+            updateTrip((previousTrip) => {
+                const targetIndex = previousTrip.stops.findIndex((stop) => stop.id === session.targetStopId);
+                if (targetIndex < 0) return previousTrip;
+
+                const recommendationStop: Stop = {
+                    id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    name: acceptedCandidate.name,
+                    formattedAddress: acceptedCandidate.formattedAddress,
+                    location: acceptedCandidate.location,
+                    type: 'stop',
+                    source: 'activity-recommendation',
+                    category: acceptedCandidate.category,
+                    description: acceptedCandidate.description,
+                    rating: acceptedCandidate.rating,
+                    googleMapsUri: acceptedCandidate.googleMapsUri,
+                };
+
+                const nextStops = [...previousTrip.stops];
+                nextStops.splice(targetIndex, 0, recommendationStop);
+                return {
+                    ...previousTrip,
+                    stops: retypeStops(nextStops),
+                };
+            });
+            setNavigationNotice(`Added ${acceptedCandidate.name} to your route before ${session.targetStopName}.`);
+        } else if (outcome === 'expired') {
+            setNavigationNotice(`The detour recommendation for ${session.targetStopName} expired with no route change.`);
+        }
+
+        setRecommendationSession((current) => {
+            if (!current || current.legKey !== session.legKey) return current;
+
+            let resultLabel = 'Recommendation dismissed.';
+            if (outcome === 'accepted') {
+                resultLabel = `${session.candidate?.name || 'Recommendation'} added to your route.`;
+            } else if (outcome === 'expired') {
+                resultLabel = activeConveyParticipants.length > 0
+                    ? 'Vote window ended. The route stays the same.'
+                    : 'Recommendation expired. The route stays the same.';
+            } else if (activeConveyParticipants.length > 0) {
+                resultLabel = 'Vote did not pass. The route stays the same.';
+            } else {
+                resultLabel = 'Recommendation skipped.';
+            }
+
+            return {
+                ...current,
+                status: outcome,
+                resultLabel,
+            };
+        });
+    }, [activeConveyParticipants.length, retypeStops, updateTrip]);
+
+    const handleVoteRecommendation = useCallback((participantId: string, vote: RecommendationVote) => {
+        setRecommendationSession((current) => {
+            if (!current || current.status !== 'awaitingDecision') return current;
+            return {
+                ...current,
+                votes: {
+                    ...current.votes,
+                    [participantId]: vote,
+                },
+            };
+        });
+    }, []);
+
+    const handleRejectRecommendation = useCallback(() => {
+        if (!recommendationSession) return;
+        finalizeRecommendationSession(recommendationSession, 'rejected');
+    }, [finalizeRecommendationSession, recommendationSession]);
+
+    const handleAcceptRecommendation = useCallback(() => {
+        if (!recommendationSession) return;
+        finalizeRecommendationSession(recommendationSession, 'accepted');
+    }, [finalizeRecommendationSession, recommendationSession]);
 
     useEffect(() => {
         if (!isNavigating || !google || !navigationOrigin || !nextStop || !finalStop) return;
@@ -633,6 +833,185 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         };
     }, [currentStopIndex, finalStop, google, isNavigating, navigationOrigin, nextStop, stopCount, trip.stops]);
 
+    useEffect(() => {
+        if (!recommendationSession || recommendationSession.status !== 'awaitingDecision') return;
+
+        setRecommendationNowMs(Date.now());
+        const intervalId = window.setInterval(() => {
+            setRecommendationNowMs(Date.now());
+        }, 1000);
+
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [recommendationSession]);
+
+    useEffect(() => {
+        if (!recommendationSession || recommendationSession.status !== 'awaitingDecision') return;
+        if (recommendationTimeLeftMs > 0) return;
+
+        const outcome = activeConveyParticipants.length > 0 &&
+            recommendationYesVotes > recommendationNoVotes + recommendationPendingVotes
+            ? 'accepted'
+            : 'expired';
+
+        finalizeRecommendationSession(recommendationSession, outcome);
+    }, [
+        activeConveyParticipants.length,
+        finalizeRecommendationSession,
+        recommendationNoVotes,
+        recommendationPendingVotes,
+        recommendationSession,
+        recommendationTimeLeftMs,
+        recommendationYesVotes,
+    ]);
+
+    useEffect(() => {
+        if (!recommendationSession || recommendationSession.status !== 'awaitingDecision') return;
+        if (activeConveyParticipants.length === 0) return;
+        if (recommendationPendingVotes > 0) return;
+
+        finalizeRecommendationSession(
+            recommendationSession,
+            recommendationYesVotes > recommendationNoVotes ? 'accepted' : 'rejected'
+        );
+    }, [
+        activeConveyParticipants.length,
+        finalizeRecommendationSession,
+        recommendationNoVotes,
+        recommendationPendingVotes,
+        recommendationSession,
+        recommendationYesVotes,
+    ]);
+
+    useEffect(() => {
+        if (!recommendationSession || recommendationSession.status === 'awaitingDecision') return;
+
+        const timeoutId = window.setTimeout(() => {
+            dismissRecommendationSession();
+        }, 2500);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
+    }, [dismissRecommendationSession, recommendationSession]);
+
+    useEffect(() => {
+        if (!isNavigating || !google || !navigationRoute || !nextStop || !recommendationLegKey) return;
+        if (currentLegDistanceKm < RECOMMENDATION_MIN_DISTANCE_KM &&
+            currentLegDurationMinutes < RECOMMENDATION_MIN_DURATION_MINUTES) {
+            return;
+        }
+        if (offeredRecommendationLegsRef.current.has(recommendationLegKey) || recommendationSession) {
+            return;
+        }
+
+        let isCancelled = false;
+        let displayTimer: number | undefined;
+
+        displayTimer = window.setTimeout(async () => {
+            if (isCancelled) return;
+
+            setRecommendationSession({
+                legKey: recommendationLegKey,
+                targetStopId: nextStop.id,
+                targetStopName: nextStop.name,
+                status: 'loadingCandidate',
+                votes: {},
+            });
+
+            try {
+                const path = getRoutePath(navigationRoute).map((point) => new google.maps.LatLng(point));
+                if (!path.length) {
+                    setRecommendationSession(null);
+                    return;
+                }
+
+                const midpoint = interpolatePath(path, 0.5);
+                const preferredTypes = getRecommendationTypes(recommendationFilters);
+                const response = await google.maps.places.Place.searchNearby({
+                    fields: ['displayName', 'formattedAddress', 'location', 'rating', 'editorialSummary', 'googleMapsURI', 'primaryType'],
+                    includedPrimaryTypes: preferredTypes,
+                    locationRestriction: {
+                        center: midpoint,
+                        radius: 5000,
+                    },
+                    maxResultCount: RECOMMENDATION_MAX_NEARBY_RESULTS,
+                    rankPreference: google.maps.places.SearchNearbyRankPreference.DISTANCE,
+                    language: 'en',
+                    region: 'ph',
+                });
+
+                if (isCancelled) return;
+
+                const existingNames = new Set(trip.stops.map((stop) => normalizeLabel(stop.name)));
+                const candidate = (response.places ?? [])
+                    .map((place) => toAppPlace(place))
+                    .filter((place): place is AppPlace => Boolean(place))
+                    .find((place) => {
+                        const normalizedName = normalizeLabel(place.name);
+                        if (existingNames.has(normalizedName)) return false;
+
+                        return !trip.stops.some((stop) =>
+                            getDistanceKmBetweenPoints(stop.location, place.location) <= RECOMMENDATION_DUPLICATE_RADIUS_KM
+                        );
+                    });
+
+                if (!candidate) {
+                    setRecommendationSession(null);
+                    return;
+                }
+
+                const nextCandidate: RecommendationCandidate = {
+                    id: candidate.id,
+                    name: candidate.name,
+                    formattedAddress: candidate.formattedAddress,
+                    location: candidate.location,
+                    category: getRecommendationCategoryLabel(candidate.primaryType),
+                    description: candidate.summary,
+                    rating: candidate.rating,
+                    googleMapsUri: candidate.googleMapsUri,
+                };
+                const startedAt = Date.now();
+
+                setRecommendationSession({
+                    legKey: recommendationLegKey,
+                    targetStopId: nextStop.id,
+                    targetStopName: nextStop.name,
+                    status: 'awaitingDecision',
+                    candidate: nextCandidate,
+                    startedAt,
+                    expiresAt: startedAt + RECOMMENDATION_DECISION_WINDOW_MS,
+                    votes: {},
+                });
+                setRecommendationNowMs(startedAt);
+            } catch (error) {
+                console.error('Failed to load an along-the-route recommendation:', error);
+                if (!isCancelled) {
+                    setRecommendationSession(null);
+                }
+            }
+        }, RECOMMENDATION_DISPLAY_DELAY_MS);
+
+        return () => {
+            isCancelled = true;
+            if (displayTimer) {
+                window.clearTimeout(displayTimer);
+            }
+        };
+    }, [
+        currentLegDistanceKm,
+        currentLegDurationMinutes,
+        google,
+        isNavigating,
+        navigationRoute,
+        nextStop,
+        recommendationFilters,
+        recommendationLegKey,
+        recommendationSession,
+        trip.stops,
+    ]);
+
     const handleStartTrip = async () => {
         if (!hasTripRoute) return;
 
@@ -642,6 +1021,9 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         setNavigationNotice(null);
         setTripStartedAt(Date.now());
         setElapsedTimeMs(0);
+        setRecommendationSession(null);
+        setRecommendationNowMs(Date.now());
+        offeredRecommendationLegsRef.current = new Set();
 
         try {
             const liveLocation = await getGeolocation();
@@ -665,6 +1047,9 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         setCurrentStopIndex(1);
         setTripStartedAt(null);
         setElapsedTimeMs(0);
+        setRecommendationSession(null);
+        setRecommendationNowMs(Date.now());
+        offeredRecommendationLegsRef.current = new Set();
     };
 
     const handleAdvanceToNextStop = () => {
@@ -672,6 +1057,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
         const nextIndex = currentStopIndex + 1;
         setCurrentLocation(nextStop.location);
+        setRecommendationSession(null);
+        setRecommendationNowMs(Date.now());
 
         if (nextIndex >= stopCount) {
             setNavigationNotice(`You have arrived at ${nextStop.name}.`);
@@ -730,6 +1117,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             }]
             : []),
     ];
+    const isConveyRecommendation = activeConveyParticipants.length > 0;
+    const showRecommendationCard = Boolean(recommendationSession && nextStop);
 
     return (
         <div className="trip-planner-view">
@@ -783,6 +1172,113 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                         <span className="label">Stops Left</span>
                                         <span className="value">{stopCount - currentStopIndex}</span>
                                     </div>
+                                </div>
+                            )}
+
+                            {showRecommendationCard && recommendationSession && (
+                                <div className={`route-recommendation-card route-recommendation-card--${recommendationSession.status}`}>
+                                    <div className="route-recommendation-card__header">
+                                        <div>
+                                            <span className="route-recommendation-card__eyebrow">
+                                                {isConveyRecommendation ? 'Convoy Detour Vote' : 'Detour Recommendation'}
+                                            </span>
+                                            <h4>
+                                                {recommendationSession.status === 'loadingCandidate'
+                                                    ? 'Finding something worth the detour'
+                                                    : recommendationSession.candidate?.name || 'Checking nearby stops'}
+                                            </h4>
+                                        </div>
+                                        {recommendationSession.status === 'awaitingDecision' && (
+                                            <span className="route-recommendation-card__timer">
+                                                {formatCountdown(recommendationTimeLeftMs)}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {recommendationSession.candidate ? (
+                                        <>
+                                            <p className="route-recommendation-card__category">
+                                                {recommendationSession.candidate.category || 'Things to do'}
+                                                {typeof recommendationSession.candidate.rating === 'number'
+                                                    ? ` • ${recommendationSession.candidate.rating.toFixed(1)}★`
+                                                    : ''}
+                                            </p>
+                                            <p className="route-recommendation-card__address">
+                                                {recommendationSession.candidate.formattedAddress || 'Along your current route'}
+                                            </p>
+                                            {recommendationSession.candidate.description && (
+                                                <p className="route-recommendation-card__description">
+                                                    {recommendationSession.candidate.description}
+                                                </p>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <p className="route-recommendation-card__address">
+                                            We are checking places between here and {recommendationSession.targetStopName}.
+                                        </p>
+                                    )}
+
+                                    {recommendationSession.status === 'awaitingDecision' ? (
+                                        isConveyRecommendation ? (
+                                            <>
+                                                <div className="route-recommendation-card__tally">
+                                                    <span>Yes {recommendationYesVotes}</span>
+                                                    <span>No {recommendationNoVotes}</span>
+                                                    <span>Pending {recommendationPendingVotes}</span>
+                                                </div>
+                                                <div className="route-recommendation-votes">
+                                                    {activeConveyParticipants.map((participant) => (
+                                                        <div className="route-recommendation-vote-row" key={participant.id}>
+                                                            <span className="route-recommendation-vote-row__name">
+                                                                {participant.displayName}
+                                                            </span>
+                                                            <div className="route-recommendation-vote-row__actions">
+                                                                <button
+                                                                    type="button"
+                                                                    className={recommendationSession.votes[participant.id] === 'yes'
+                                                                        ? 'route-recommendation-vote-btn is-active'
+                                                                        : 'route-recommendation-vote-btn'}
+                                                                    onClick={() => handleVoteRecommendation(participant.id, 'yes')}
+                                                                >
+                                                                    Yes
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className={recommendationSession.votes[participant.id] === 'no'
+                                                                        ? 'route-recommendation-vote-btn is-active is-negative'
+                                                                        : 'route-recommendation-vote-btn is-negative'}
+                                                                    onClick={() => handleVoteRecommendation(participant.id, 'no')}
+                                                                >
+                                                                    No
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="route-recommendation-card__actions">
+                                                <button
+                                                    type="button"
+                                                    className="route-recommendation-primary-btn"
+                                                    onClick={handleAcceptRecommendation}
+                                                >
+                                                    Add to Route
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="route-recommendation-secondary-btn"
+                                                    onClick={handleRejectRecommendation}
+                                                >
+                                                    Not Now
+                                                </button>
+                                            </div>
+                                        )
+                                    ) : (
+                                        <div className="route-recommendation-card__result">
+                                            {recommendationSession.resultLabel}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

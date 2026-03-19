@@ -1,16 +1,53 @@
+export type StopSource = 'manual' | 'auto-pitstop' | 'activity-recommendation';
+
 export interface Stop {
     id: string;
     name: string;
     formattedAddress?: string;     // Full Google Places formatted_address
     location: google.maps.LatLngLiteral;
     type: 'start' | 'stop' | 'destination';
+    source?: StopSource;
     isAutoSuggested?: boolean;     // true = inserted automatically
     category?: string;
     description?: string;
     rating?: number;
+    googleMapsUri?: string;
     distanceFromPrevious?: number; // km
     durationFromPrevious?: number; // mins
     arrivalTime?: string;          // e.g. "8:15 AM"
+}
+
+export type RecommendationSessionStatus =
+    | 'idle'
+    | 'loadingCandidate'
+    | 'awaitingDecision'
+    | 'accepted'
+    | 'rejected'
+    | 'expired';
+
+export type RecommendationVote = 'yes' | 'no';
+
+export interface RecommendationCandidate {
+    id: string;
+    name: string;
+    formattedAddress?: string;
+    location: google.maps.LatLngLiteral;
+    category?: string;
+    description?: string;
+    rating?: number;
+    googleMapsUri?: string;
+}
+
+export interface ActiveNavigationRecommendationSession {
+    legKey: string;
+    targetStopId: string;
+    targetStopName: string;
+    status: RecommendationSessionStatus;
+    candidate?: RecommendationCandidate;
+    startedAt?: number;
+    expiresAt?: number;
+    votes: Record<string, RecommendationVote>;
+    resultLabel?: string;
 }
 
 export type ConveyParticipantKind = 'individual' | 'group';
