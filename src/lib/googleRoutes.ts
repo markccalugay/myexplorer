@@ -30,26 +30,45 @@ export interface AppRouteStep {
 
 type RouteRequestLocation = google.maps.LatLng | google.maps.LatLngLiteral;
 
-interface ComputeRoutesResponse {
-    routes?: AppRoute[] | null;
-}
-
-interface RoutesLibraryShape {
-    Route?: {
-        computeRoutes?: (request: {
-            origin: RouteRequestLocation;
-            destination: RouteRequestLocation;
-            intermediates: Array<{ location: RouteRequestLocation }>;
-            travelMode: google.maps.TravelMode;
-            fields: string[];
-        }) => Promise<ComputeRoutesResponse>;
-    };
-}
-
 const toTravelSeconds = (durationMillis?: number | null): number => {
     if (typeof durationMillis !== 'number') return 0;
     return Math.round(durationMillis / 1000);
 };
+
+const toMillis = (duration?: google.maps.Duration): number | null => {
+    if (typeof duration?.value !== 'number') return null;
+    return duration.value * 1000;
+};
+
+const normalizeStep = (step: google.maps.DirectionsStep): AppRouteStep => ({
+    distanceMeters: step.distance?.value ?? null,
+    durationMillis: toMillis(step.duration),
+    navigationInstruction: {
+        instructions: step.instructions ?? null,
+        maneuver: step.maneuver ?? null,
+    },
+    localizedValues: {
+        distance: {
+            text: step.distance?.text ?? null,
+        },
+        staticDuration: {
+            text: step.duration?.text ?? null,
+        },
+    },
+    startLocation: step.start_location ?? null,
+    endLocation: step.end_location ?? null,
+});
+
+const normalizeLeg = (leg: google.maps.DirectionsLeg): AppRouteLeg => ({
+    distanceMeters: leg.distance?.value ?? null,
+    durationMillis: toMillis(leg.duration),
+    steps: leg.steps.map(normalizeStep),
+});
+
+const normalizeRoute = (route: google.maps.DirectionsRoute): AppRoute => ({
+    path: route.overview_path ?? null,
+    legs: route.legs.map(normalizeLeg),
+});
 
 export const computeDrivingRoute = async (
     google: typeof window.google,
@@ -57,33 +76,15 @@ export const computeDrivingRoute = async (
     destination: RouteRequestLocation,
     intermediates: RouteRequestLocation[] = []
 ): Promise<AppRoute | null> => {
-    const routesLibrary = (google.maps as unknown as { routes?: RoutesLibraryShape }).routes;
-    const RouteApi = routesLibrary?.Route;
-    if (!RouteApi?.computeRoutes) {
-        throw new Error('Google Maps Routes library is unavailable.');
-    }
-
-    const response = await RouteApi.computeRoutes({
+    const directionsService = new google.maps.DirectionsService();
+    const response = await directionsService.route({
         origin,
         destination,
-        intermediates: intermediates.map((location) => ({ location })),
+        waypoints: intermediates.map((location) => ({ location, stopover: true })),
         travelMode: google.maps.TravelMode.DRIVING,
-        fields: [
-            'path',
-            'legs',
-            'legs.distanceMeters',
-            'legs.durationMillis',
-            'legs.steps',
-            'legs.steps.distanceMeters',
-            'legs.steps.durationMillis',
-            'legs.steps.localizedValues',
-            'legs.steps.navigationInstruction',
-            'legs.steps.startLocation',
-            'legs.steps.endLocation',
-        ],
     });
 
-    return response?.routes?.[0] ?? null;
+    return response.routes[0] ? normalizeRoute(response.routes[0]) : null;
 };
 
 export const getRoutePath = (route: AppRoute | null | undefined): google.maps.LatLngLiteral[] => {
