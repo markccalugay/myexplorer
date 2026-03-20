@@ -50,13 +50,13 @@ export interface ActiveNavigationRecommendationSession {
     resultLabel?: string;
 }
 
-export type ConveyParticipantKind = 'individual' | 'group';
-export type ConveyParticipantStatus = 'pending' | 'joined' | 'declined';
-export type ConveyInviteMethod = 'link' | 'code' | 'manual';
-export type ConveyInviteStatus = 'pending' | 'accepted' | 'declined' | 'revoked';
-export type ConveyAssignmentStatus = 'active' | 'removed';
+export type ConvoyParticipantKind = 'individual' | 'group';
+export type ConvoyParticipantStatus = 'pending' | 'joined' | 'declined';
+export type ConvoyInviteMethod = 'link' | 'code' | 'manual';
+export type ConvoyInviteStatus = 'pending' | 'accepted' | 'declined' | 'revoked';
+export type ConvoyAssignmentStatus = 'active' | 'removed';
 
-export interface ConveyVehicle {
+export interface ConvoyVehicle {
     id: string;
     label: string;
     order: number;
@@ -66,54 +66,54 @@ export interface ConveyVehicle {
     updatedAt: string;
 }
 
-export interface ConveyMember {
+export interface ConvoyMember {
     id: string;
     displayName: string;
     isPrimary?: boolean;
 }
 
-export interface ConveyParticipant {
+export interface ConvoyParticipant {
     id: string;
-    kind: ConveyParticipantKind;
+    kind: ConvoyParticipantKind;
     displayName: string;
-    status: ConveyParticipantStatus;
+    status: ConvoyParticipantStatus;
     invitedBy?: string;
     contactLabel?: string;
-    members: ConveyMember[];
+    members: ConvoyMember[];
     createdAt: string;
     updatedAt: string;
 }
 
-export interface ConveyInvite {
+export interface ConvoyInvite {
     id: string;
     participantId: string;
-    method: ConveyInviteMethod;
+    method: ConvoyInviteMethod;
     token?: string;
-    status: ConveyInviteStatus;
+    status: ConvoyInviteStatus;
     sentAt?: string;
     respondedAt?: string;
     createdAt: string;
     updatedAt: string;
 }
 
-export interface ConveyAssignment {
+export interface ConvoyAssignment {
     id: string;
     participantId: string;
     memberId: string;
     vehicleId: string;
     assignedBy?: string;
-    status: ConveyAssignmentStatus;
+    status: ConvoyAssignmentStatus;
     createdAt: string;
     updatedAt: string;
 }
 
-export interface Convey {
+export interface Convoy {
     id: string;
     tripId: string;
-    vehicles: ConveyVehicle[];
-    participants: ConveyParticipant[];
-    invites: ConveyInvite[];
-    assignments: ConveyAssignment[];
+    vehicles: ConvoyVehicle[];
+    participants: ConvoyParticipant[];
+    invites: ConvoyInvite[];
+    assignments: ConvoyAssignment[];
     assignmentLockAt?: string;
     createdAt: string;
     updatedAt: string;
@@ -125,7 +125,7 @@ export interface Trip {
     stops: Stop[];
     totalDistance?: number;
     totalDuration?: number;
-    convey?: Convey;
+    convoy?: Convoy;
     savedAt?: string;
     updatedAt?: string;
 }

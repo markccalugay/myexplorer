@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added ESLint with a project-level `npm run lint` command so the app can be checked for React and TypeScript lint issues from the CLI.
 
 ### Changed
+- 2026-03-20: Renamed the trip-planning convoy feature from `Convey` to `Convoy` across the app and storage compatibility layer, while refreshing the mobile planner so the map leads the page, route tools move into a bottom tabbed toolbox, and the save/start actions stay sticky in a compact shared footer row.
 - 2026-03-20: Increased the vertical spacing between the trip destination setup area and the Convey panel so the planner layout reads more clearly after reordering the sidebar sections.
 - 2026-03-20: Refined the Convey planner card into a four-column bento grid with fixed-height stat tiles, matching action tiles, and a softer peach booking-surface treatment that aligns with the Route Recommendations filter design language.
 - Reworked the mobile experience across the app shell, discovery layout, landing page cards, map interactions, and detail/planner overlays so key flows stack, scroll, and fit smaller screens more reliably.

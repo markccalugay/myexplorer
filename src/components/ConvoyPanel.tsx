@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import {
-    Convey,
-    ConveyInviteMethod,
-    ConveyParticipantKind,
-    ConveyVehicle,
+    Convoy,
+    ConvoyInviteMethod,
+    ConvoyParticipantKind,
+    ConvoyVehicle,
     Trip,
 } from '../types/trip';
 import {
@@ -12,7 +12,7 @@ import {
     createMembers,
     createParticipant,
     createVehicle,
-    ensureConvey,
+    ensureConvoy,
     getAssignedMemberCount,
     getAssignedVehicleId,
     getTotalMemberCount,
@@ -20,25 +20,25 @@ import {
     getVehicleOccupancy,
     getVehicleSeatWarning,
     removeVehicleAndUnassignMembers,
-} from '../lib/convey';
-import './ConveyPanel.css';
+} from '../lib/convoy';
+import './ConvoyPanel.css';
 
-type ConveyOverlay = 'vehicles' | 'invite' | 'assignments' | null;
+type ConvoyOverlay = 'vehicles' | 'invite' | 'assignments' | null;
 
-interface ConveyPanelProps {
+interface ConvoyPanelProps {
     trip: Trip;
-    defaultOverlay?: ConveyOverlay;
+    defaultOverlay?: ConvoyOverlay;
     onOverlayHandled?: () => void;
     onTripChange: (trip: Trip) => void;
 }
 
 interface InviteDraft {
     mode: 'manual' | 'invite';
-    kind: ConveyParticipantKind;
+    kind: ConvoyParticipantKind;
     displayName: string;
     contactLabel: string;
     memberNames: string[];
-    inviteMethod: ConveyInviteMethod;
+    inviteMethod: ConvoyInviteMethod;
 }
 
 const createEmptyInviteDraft = (): InviteDraft => ({
@@ -57,23 +57,23 @@ const parseCapacity = (value: string) => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
 
-const sortVehicles = (vehicles: ConveyVehicle[]) => vehicles.slice().sort((left, right) => left.order - right.order);
+const sortVehicles = (vehicles: ConvoyVehicle[]) => vehicles.slice().sort((left, right) => left.order - right.order);
 
-export const ConveyPanel: React.FC<ConveyPanelProps> = ({
+export const ConvoyPanel: React.FC<ConvoyPanelProps> = ({
     trip,
     defaultOverlay = null,
     onOverlayHandled,
     onTripChange,
 }) => {
-    const [activeOverlay, setActiveOverlay] = useState<ConveyOverlay>(defaultOverlay);
+    const [activeOverlay, setActiveOverlay] = useState<ConvoyOverlay>(defaultOverlay);
     const [seatCapacityDraft, setSeatCapacityDraft] = useState('');
     const [vehicleNotesDraft, setVehicleNotesDraft] = useState('');
     const [inviteDraft, setInviteDraft] = useState<InviteDraft>(createEmptyInviteDraft);
 
-    const convey = trip.convey;
-    const vehicles = useMemo(() => sortVehicles(convey?.vehicles ?? []), [convey?.vehicles]);
-    const participants = convey?.participants ?? [];
-    const assignments = convey?.assignments ?? [];
+    const convoy = trip.convoy;
+    const vehicles = useMemo(() => sortVehicles(convoy?.vehicles ?? []), [convoy?.vehicles]);
+    const participants = convoy?.participants ?? [];
+    const assignments = convoy?.assignments ?? [];
     const totalMembers = getTotalMemberCount(participants);
     const assignedMembers = getAssignedMemberCount(participants, assignments);
     const warnings = vehicles.filter((vehicle) => getVehicleSeatWarning(vehicle, assignments)).length;
@@ -82,20 +82,20 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
         [participants, assignments]
     );
 
-    const updateConvey = (updater: (current: Convey) => Convey) => {
-        const ensured = ensureConvey(trip.id, trip.convey);
-        const nextConvey = updater(ensured);
+    const updateConvoy = (updater: (current: Convoy) => Convoy) => {
+        const ensured = ensureConvoy(trip.id, trip.convoy);
+        const nextConvoy = updater(ensured);
         onTripChange({
             ...trip,
-            convey: {
-                ...nextConvey,
+            convoy: {
+                ...nextConvoy,
                 tripId: trip.id,
                 updatedAt: new Date().toISOString(),
             },
         });
     };
 
-    const openOverlay = (overlay: ConveyOverlay) => {
+    const openOverlay = (overlay: ConvoyOverlay) => {
         setActiveOverlay(overlay);
         onOverlayHandled?.();
     };
@@ -108,7 +108,7 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
     };
 
     const handleAddVehicle = () => {
-        updateConvey((current) => ({
+        updateConvoy((current) => ({
             ...current,
             vehicles: [
                 ...current.vehicles,
@@ -120,7 +120,7 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
     };
 
     const handleMoveVehicle = (vehicleId: string, direction: -1 | 1) => {
-        updateConvey((current) => {
+        updateConvoy((current) => {
             const ordered = sortVehicles(current.vehicles);
             const currentIndex = ordered.findIndex((vehicle) => vehicle.id === vehicleId);
             const nextIndex = currentIndex + direction;
@@ -141,7 +141,7 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
     };
 
     const handleRemoveVehicle = (vehicleId: string) => {
-        updateConvey((current) => removeVehicleAndUnassignMembers(current, vehicleId));
+        updateConvoy((current) => removeVehicleAndUnassignMembers(current, vehicleId));
     };
 
     const handleMemberNameChange = (index: number, value: string) => {
@@ -169,7 +169,7 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
 
         if (!displayName || members.length === 0) return;
 
-        updateConvey((current) => {
+        updateConvoy((current) => {
             const participant = createParticipant(
                 inviteDraft.kind,
                 displayName,
@@ -204,7 +204,7 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
     };
 
     const handleReassignMember = (participantId: string, memberId: string, vehicleId: string) => {
-        updateConvey((current) => ({
+        updateConvoy((current) => ({
             ...current,
             assignments: assignMembersToVehicles(
                 current.assignments,
@@ -222,61 +222,61 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
           vehicles.length > 0;
 
     return (
-        <div className="convey-panel">
-            <div className="convey-panel__grid">
-                <div className="convey-panel__header">
-                    <h3>Convey</h3>
+        <div className="convoy-panel">
+            <div className="convoy-panel__grid">
+                <div className="convoy-panel__header">
+                    <h3>Convoy</h3>
                     <p>Coordinate vehicles, add people, and let families place themselves into the convoy.</p>
                 </div>
 
-                <div className="convey-summary-card">
-                    <span className="convey-summary-card__label">Vehicles</span>
+                <div className="convoy-summary-card">
+                    <span className="convoy-summary-card__label">Vehicles</span>
                     <strong>{vehicles.length}</strong>
                 </div>
-                <div className="convey-summary-card">
-                    <span className="convey-summary-card__label">Travelers</span>
+                <div className="convoy-summary-card">
+                    <span className="convoy-summary-card__label">Travelers</span>
                     <strong>{totalMembers}</strong>
                 </div>
-                <div className="convey-summary-card">
-                    <span className="convey-summary-card__label">Assigned</span>
+                <div className="convoy-summary-card">
+                    <span className="convoy-summary-card__label">Assigned</span>
                     <strong>{assignedMembers}</strong>
                 </div>
-                <div className="convey-summary-card">
-                    <span className="convey-summary-card__label">Warnings</span>
+                <div className="convoy-summary-card">
+                    <span className="convoy-summary-card__label">Warnings</span>
                     <strong>{warnings}</strong>
                 </div>
 
-                <button type="button" className="convey-action-btn convey-action-btn--primary" onClick={() => openOverlay('vehicles')}>
+                <button type="button" className="convoy-action-btn convoy-action-btn--primary" onClick={() => openOverlay('vehicles')}>
                     Manage Vehicles
                 </button>
-                <button type="button" className="convey-action-btn convey-action-btn--primary" onClick={() => openOverlay('invite')}>
+                <button type="button" className="convoy-action-btn convoy-action-btn--primary" onClick={() => openOverlay('invite')}>
                     Invite / Add People
                 </button>
-                <button type="button" className="convey-action-btn convey-action-btn--secondary" onClick={() => openOverlay('assignments')}>
+                <button type="button" className="convoy-action-btn convoy-action-btn--secondary" onClick={() => openOverlay('assignments')}>
                     View Assignments
                 </button>
-                <button type="button" className="convey-action-btn convey-action-btn--secondary" onClick={() => openOverlay('vehicles')}>
+                <button type="button" className="convoy-action-btn convoy-action-btn--secondary" onClick={() => openOverlay('vehicles')}>
                     {vehicles.length > 0 ? 'Add Vehicle' : 'Set Up First Vehicle'}
                 </button>
             </div>
 
             {unassignedMembers.length > 0 && (
-                <div className="convey-panel__notice">
+                <div className="convoy-panel__notice">
                     {unassignedMembers.length} traveler{unassignedMembers.length === 1 ? '' : 's'} still need a vehicle assignment.
                 </div>
             )}
 
             {activeOverlay && (
-                <div className="convey-overlay">
-                    <div className="convey-overlay__scrim" onClick={closeOverlay} />
-                    <div className="convey-overlay__panel">
-                        <div className="convey-overlay__header">
+                <div className="convoy-overlay">
+                    <div className="convoy-overlay__scrim" onClick={closeOverlay} />
+                    <div className="convoy-overlay__panel">
+                        <div className="convoy-overlay__header">
                             <div>
                                 <h4>
                                     {activeOverlay === 'vehicles'
                                         ? 'Manage Vehicles'
                                         : activeOverlay === 'invite'
-                                        ? 'Invite / Join Convey'
+                                        ? 'Invite / Join Convoy'
                                         : 'Assignments Roster'}
                                 </h4>
                                 <p>
@@ -287,14 +287,14 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                         : 'Review occupancy by vehicle and reassign members when plans change.'}
                                 </p>
                             </div>
-                            <button type="button" className="convey-overlay__close" onClick={closeOverlay}>
+                            <button type="button" className="convoy-overlay__close" onClick={closeOverlay}>
                                 ×
                             </button>
                         </div>
 
                         {activeOverlay === 'vehicles' && (
-                            <div className="convey-overlay__body">
-                                <div className="convey-form-grid">
+                            <div className="convoy-overlay__body">
+                                <div className="convoy-form-grid">
                                     <label>
                                         <span>Seat capacity</span>
                                         <input
@@ -313,15 +313,15 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                         />
                                     </label>
                                 </div>
-                                <button type="button" className="convey-primary-btn" onClick={handleAddVehicle}>
+                                <button type="button" className="convoy-primary-btn" onClick={handleAddVehicle}>
                                     Add Vehicle
                                 </button>
 
-                                <div className="convey-vehicle-list">
+                                <div className="convoy-vehicle-list">
                                     {vehicles.length > 0 ? vehicles.map((vehicle, index) => {
                                         const warning = getVehicleSeatWarning(vehicle, assignments);
                                         return (
-                                            <article key={vehicle.id} className="convey-vehicle-card">
+                                            <article key={vehicle.id} className="convoy-vehicle-card">
                                                 <div>
                                                     <strong>{vehicle.label}</strong>
                                                     <p>
@@ -329,9 +329,9 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                                         {vehicle.seatCapacity ? ` • ${vehicle.seatCapacity} seats` : ''}
                                                     </p>
                                                     {vehicle.notes && <p>{vehicle.notes}</p>}
-                                                    {warning && <span className="convey-warning-badge">{warning}</span>}
+                                                    {warning && <span className="convoy-warning-badge">{warning}</span>}
                                                 </div>
-                                                <div className="convey-vehicle-card__actions">
+                                                <div className="convoy-vehicle-card__actions">
                                                     <button type="button" onClick={() => handleMoveVehicle(vehicle.id, -1)} disabled={index === 0}>Up</button>
                                                     <button type="button" onClick={() => handleMoveVehicle(vehicle.id, 1)} disabled={index === vehicles.length - 1}>Down</button>
                                                     <button type="button" onClick={() => handleRemoveVehicle(vehicle.id)}>Remove</button>
@@ -339,15 +339,15 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                             </article>
                                         );
                                     }) : (
-                                        <p className="convey-empty-state">No vehicles yet. Add a lead car to start the convoy.</p>
+                                        <p className="convoy-empty-state">No vehicles yet. Add a lead car to start the convoy.</p>
                                     )}
                                 </div>
                             </div>
                         )}
 
                         {activeOverlay === 'invite' && (
-                            <div className="convey-overlay__body">
-                                <div className="convey-toggle-group">
+                            <div className="convoy-overlay__body">
+                                <div className="convoy-toggle-group">
                                     <button
                                         type="button"
                                         className={inviteDraft.mode === 'manual' ? 'is-active' : ''}
@@ -364,7 +364,7 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                     </button>
                                 </div>
 
-                                <div className="convey-toggle-group">
+                                <div className="convoy-toggle-group">
                                     <button
                                         type="button"
                                         className={inviteDraft.kind === 'individual' ? 'is-active' : ''}
@@ -389,7 +389,7 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                     </button>
                                 </div>
 
-                                <div className="convey-form-grid">
+                                <div className="convoy-form-grid">
                                     <label>
                                         <span>{inviteDraft.kind === 'group' ? 'Family or group name' : 'Traveler name'}</span>
                                         <input
@@ -409,7 +409,7 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                 </div>
 
                                 {inviteDraft.mode === 'invite' && (
-                                    <div className="convey-toggle-group">
+                                    <div className="convoy-toggle-group">
                                         <button
                                             type="button"
                                             className={inviteDraft.inviteMethod === 'link' ? 'is-active' : ''}
@@ -428,7 +428,7 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                 )}
 
                                 {inviteDraft.kind === 'group' && (
-                                    <div className="convey-member-list">
+                                    <div className="convoy-member-list">
                                         {inviteDraft.memberNames.map((memberName, index) => (
                                             <label key={`member-${index}`}>
                                                 <span>Member {index + 1}</span>
@@ -439,29 +439,29 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                                 />
                                             </label>
                                         ))}
-                                        <button type="button" className="convey-secondary-btn" onClick={handleAddMemberField}>
+                                        <button type="button" className="convoy-secondary-btn" onClick={handleAddMemberField}>
                                             Add Another Member
                                         </button>
                                     </div>
                                 )}
 
-                                <div className="convey-inline-note">
-                                    New entries assign themselves into the convey immediately. You can reassign anyone later from the roster.
+                                <div className="convoy-inline-note">
+                                    New entries assign themselves into the convoy immediately. You can reassign anyone later from the roster.
                                 </div>
 
                                 <button
                                     type="button"
-                                    className="convey-primary-btn"
+                                    className="convoy-primary-btn"
                                     onClick={handleCreateParticipant}
                                     disabled={!canCreateParticipant}
                                 >
-                                    {inviteDraft.mode === 'manual' ? 'Add To Convey' : 'Create Invite And Join'}
+                                    {inviteDraft.mode === 'manual' ? 'Add To Convoy' : 'Create Invite And Join'}
                                 </button>
                             </div>
                         )}
 
                         {activeOverlay === 'assignments' && (
-                            <div className="convey-overlay__body">
+                            <div className="convoy-overlay__body">
                                 {vehicles.map((vehicle) => {
                                     const occupancy = getVehicleOccupancy(vehicle.id, assignments);
                                     const warning = getVehicleSeatWarning(vehicle, assignments);
@@ -472,8 +472,8 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                     ));
 
                                     return (
-                                        <section key={vehicle.id} className="convey-roster-section">
-                                            <div className="convey-roster-section__header">
+                                        <section key={vehicle.id} className="convoy-roster-section">
+                                            <div className="convoy-roster-section__header">
                                                 <div>
                                                     <h5>{vehicle.label}</h5>
                                                     <p>
@@ -481,13 +481,13 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                                         {vehicle.seatCapacity ? ` • ${vehicle.seatCapacity} seats` : ''}
                                                     </p>
                                                 </div>
-                                                {warning && <span className="convey-warning-badge">{warning}</span>}
+                                                {warning && <span className="convoy-warning-badge">{warning}</span>}
                                             </div>
 
                                             {assignedMembersForVehicle.length > 0 ? (
-                                                <div className="convey-roster-list">
+                                                <div className="convoy-roster-list">
                                                     {assignedMembersForVehicle.map(({ participant, member }) => (
-                                                        <div key={member.id} className="convey-roster-row">
+                                                        <div key={member.id} className="convoy-roster-row">
                                                             <div>
                                                                 <strong>{member.displayName}</strong>
                                                                 <p>{participant.displayName}</p>
@@ -506,23 +506,23 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                                     ))}
                                                 </div>
                                             ) : (
-                                                <p className="convey-empty-state">No one is assigned here yet.</p>
+                                                <p className="convoy-empty-state">No one is assigned here yet.</p>
                                             )}
                                         </section>
                                     );
                                 })}
 
-                                <section className="convey-roster-section">
-                                    <div className="convey-roster-section__header">
+                                <section className="convoy-roster-section">
+                                    <div className="convoy-roster-section__header">
                                         <div>
                                             <h5>Unassigned</h5>
                                             <p>Members removed from a vehicle appear here until reassigned.</p>
                                         </div>
                                     </div>
                                     {unassignedMembers.length > 0 ? (
-                                        <div className="convey-roster-list">
+                                        <div className="convoy-roster-list">
                                             {unassignedMembers.map(({ participant, member }) => (
-                                                <div key={member.id} className="convey-roster-row">
+                                                <div key={member.id} className="convoy-roster-row">
                                                     <div>
                                                         <strong>{member.displayName}</strong>
                                                         <p>{participant.displayName}</p>
@@ -542,7 +542,7 @@ export const ConveyPanel: React.FC<ConveyPanelProps> = ({
                                             ))}
                                         </div>
                                     ) : (
-                                        <p className="convey-empty-state">Everyone currently has a vehicle assignment.</p>
+                                        <p className="convoy-empty-state">Everyone currently has a vehicle assignment.</p>
                                     )}
                                 </section>
                             </div>

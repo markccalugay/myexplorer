@@ -16,7 +16,7 @@ import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
 import { getStopColor } from '../lib/stopColors';
 import { AppRoute, AppRouteStep, computeDrivingRoute, getRouteDistanceKm, getRouteDurationMinutes, getRoutePath, getRouteSteps } from '../lib/googleRoutes';
 import { AppPlace } from '../types/place';
-import { ConveyPanel } from './ConveyPanel';
+import { ConvoyPanel } from './ConvoyPanel';
 import './TripPlanner.css';
 
 interface TripPlannerProps {
@@ -25,8 +25,8 @@ interface TripPlannerProps {
     onSaveTrip: (trip: Trip) => void;
     isDirty: boolean;
     isSavedTrip: boolean;
-    conveyDefaultOverlay?: 'vehicles' | 'invite' | 'assignments' | null;
-    onConveyOverlayHandled?: () => void;
+    convoyDefaultOverlay?: 'vehicles' | 'invite' | 'assignments' | null;
+    onConvoyOverlayHandled?: () => void;
     onClose: () => void;
 }
 
@@ -52,6 +52,8 @@ interface RecommendationFilters {
     dining: string[];
     essentials: string[];
 }
+
+type MobileToolboxTab = 'route-recs' | 'saved-places' | 'convoy';
 
 // Helper: interpolate a fraction (0–1) along an encoded polyline path
 const interpolatePath = (
@@ -309,8 +311,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     onSaveTrip,
     isDirty,
     isSavedTrip,
-    conveyDefaultOverlay = null,
-    onConveyOverlayHandled,
+    convoyDefaultOverlay = null,
+    onConvoyOverlayHandled,
     onClose,
 }) => {
     const [trip, setTrip] = useState<Trip>(initialTrip);
@@ -336,6 +338,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         dining: [],
         essentials: [],
     });
+    const [activeMobileToolboxTab, setActiveMobileToolboxTab] = useState<MobileToolboxTab>('route-recs');
+    const [isMobilePlannerLayout, setIsMobilePlannerLayout] = useState(false);
     const [recommendationSession, setRecommendationSession] = useState<ActiveNavigationRecommendationSession | null>(null);
     const [recommendationNowMs, setRecommendationNowMs] = useState(() => Date.now());
     const { google } = useGoogleMaps();
@@ -394,6 +398,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             dining: [],
             essentials: [],
         });
+        setActiveMobileToolboxTab('route-recs');
         setRecommendationSession(null);
         setRecommendationNowMs(Date.now());
         autoPitstopRouteKeyRef.current = null;
@@ -401,6 +406,18 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         autoPitstopRequestIdRef.current += 1;
         offeredRecommendationLegsRef.current = new Set();
     }, [initialTrip]);
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia('(max-width: 960px)');
+        const handleMediaChange = (event: MediaQueryListEvent | MediaQueryList) => {
+            setIsMobilePlannerLayout(event.matches);
+        };
+
+        handleMediaChange(mediaQuery);
+        const listener = (event: MediaQueryListEvent) => handleMediaChange(event);
+        mediaQuery.addEventListener('change', listener);
+        return () => mediaQuery.removeEventListener('change', listener);
+    }, []);
 
     useEffect(() => {
         if (!isNavigating || tripStartedAt === null) {
@@ -757,20 +774,20 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         ? formatTime(new Date(Date.now() + currentLegDurationMinutes * 60_000))
         : '--';
     const elapsedTimeLabel = formatElapsedTime(elapsedTimeMs);
-    const activeConveyParticipants = trip.convey?.participants.filter((participant) => participant.status === 'joined') ?? [];
+    const activeConvoyParticipants = trip.convoy?.participants.filter((participant) => participant.status === 'joined') ?? [];
     const recommendationLegKey = getNavigationLegKey(navigationOrigin, currentStopIndex, nextStop);
     const recommendationTimeLeftMs = recommendationSession?.expiresAt
         ? Math.max(0, recommendationSession.expiresAt - recommendationNowMs)
         : 0;
-    const recommendationYesVotes = activeConveyParticipants.filter(
+    const recommendationYesVotes = activeConvoyParticipants.filter(
         (participant) => recommendationSession?.votes[participant.id] === 'yes'
     ).length;
-    const recommendationNoVotes = activeConveyParticipants.filter(
+    const recommendationNoVotes = activeConvoyParticipants.filter(
         (participant) => recommendationSession?.votes[participant.id] === 'no'
     ).length;
     const recommendationPendingVotes = Math.max(
         0,
-        activeConveyParticipants.length - recommendationYesVotes - recommendationNoVotes
+        activeConvoyParticipants.length - recommendationYesVotes - recommendationNoVotes
     );
 
     const dismissRecommendationSession = useCallback(() => {
@@ -822,10 +839,10 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             if (outcome === 'accepted') {
                 resultLabel = `${session.candidate?.name || 'Recommendation'} added to your route.`;
             } else if (outcome === 'expired') {
-                resultLabel = activeConveyParticipants.length > 0
+                resultLabel = activeConvoyParticipants.length > 0
                     ? 'Vote window ended. The route stays the same.'
                     : 'Recommendation expired. The route stays the same.';
-            } else if (activeConveyParticipants.length > 0) {
+            } else if (activeConvoyParticipants.length > 0) {
                 resultLabel = 'Vote did not pass. The route stays the same.';
             } else {
                 resultLabel = 'Recommendation skipped.';
@@ -837,7 +854,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                 resultLabel,
             };
         });
-    }, [activeConveyParticipants.length, retypeStops, updateTrip]);
+    }, [activeConvoyParticipants.length, retypeStops, updateTrip]);
 
     const handleVoteRecommendation = useCallback((participantId: string, vote: RecommendationVote) => {
         setRecommendationSession((current) => {
@@ -911,14 +928,14 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         if (!recommendationSession || recommendationSession.status !== 'awaitingDecision') return;
         if (recommendationTimeLeftMs > 0) return;
 
-        const outcome = activeConveyParticipants.length > 0 &&
+        const outcome = activeConvoyParticipants.length > 0 &&
             recommendationYesVotes > recommendationNoVotes + recommendationPendingVotes
             ? 'accepted'
             : 'expired';
 
         finalizeRecommendationSession(recommendationSession, outcome);
     }, [
-        activeConveyParticipants.length,
+        activeConvoyParticipants.length,
         finalizeRecommendationSession,
         recommendationNoVotes,
         recommendationPendingVotes,
@@ -929,7 +946,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     useEffect(() => {
         if (!recommendationSession || recommendationSession.status !== 'awaitingDecision') return;
-        if (activeConveyParticipants.length === 0) return;
+        if (activeConvoyParticipants.length === 0) return;
         if (recommendationPendingVotes > 0) return;
 
         finalizeRecommendationSession(
@@ -937,7 +954,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             recommendationYesVotes > recommendationNoVotes ? 'accepted' : 'rejected'
         );
     }, [
-        activeConveyParticipants.length,
+        activeConvoyParticipants.length,
         finalizeRecommendationSession,
         recommendationNoVotes,
         recommendationPendingVotes,
@@ -1178,8 +1195,9 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             }]
             : []),
     ];
-    const isConveyRecommendation = activeConveyParticipants.length > 0;
+    const isConvoyRecommendation = activeConvoyParticipants.length > 0;
     const showRecommendationCard = Boolean(recommendationSession && nextStop);
+    const showMobileToolbox = isMobilePlannerLayout && !isNavigating;
 
     return (
         <div className="trip-planner-view">
@@ -1241,7 +1259,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                     <div className="route-recommendation-card__header">
                                         <div>
                                             <span className="route-recommendation-card__eyebrow">
-                                                {isConveyRecommendation ? 'Convoy Detour Vote' : 'Detour Recommendation'}
+                                                {isConvoyRecommendation ? 'Convoy Detour Vote' : 'Detour Recommendation'}
                                             </span>
                                             <h4>
                                                 {recommendationSession.status === 'loadingCandidate'
@@ -1280,7 +1298,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                     )}
 
                                     {recommendationSession.status === 'awaitingDecision' ? (
-                                        isConveyRecommendation ? (
+                                        isConvoyRecommendation ? (
                                             <>
                                                 <div className="route-recommendation-card__tally">
                                                     <span>Yes {recommendationYesVotes}</span>
@@ -1288,7 +1306,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                                     <span>Pending {recommendationPendingVotes}</span>
                                                 </div>
                                                 <div className="route-recommendation-votes">
-                                                    {activeConveyParticipants.map((participant) => (
+                                                    {activeConvoyParticipants.map((participant) => (
                                                         <div className="route-recommendation-vote-row" key={participant.id}>
                                                             <span className="route-recommendation-vote-row__name">
                                                                 {participant.displayName}
@@ -1474,128 +1492,141 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                     </div>
                                 )}
 
-                                <ConveyPanel
-                                    trip={trip}
-                                    defaultOverlay={conveyDefaultOverlay}
-                                    onOverlayHandled={onConveyOverlayHandled}
-                                    onTripChange={updateTrip}
-                                />
-
-                                <div className="favorites-panel">
-                                    <div className="favorites-panel__header">
-                                        <div>
-                                            <h3>Saved Places</h3>
-                                            <p>Save labels like Home, Office, or Grandpa's Place for one-tap route planning.</p>
+                                <div className={`planner-tools${showMobileToolbox ? ' planner-tools--mobile' : ''}`}>
+                                    {showMobileToolbox && (
+                                        <div className="planner-toolbox-tabs">
+                                            <button
+                                                type="button"
+                                                className={activeMobileToolboxTab === 'route-recs' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
+                                                onClick={() => setActiveMobileToolboxTab('route-recs')}
+                                            >
+                                                Route Recs
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={activeMobileToolboxTab === 'saved-places' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
+                                                onClick={() => setActiveMobileToolboxTab('saved-places')}
+                                            >
+                                                Saved Places
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={activeMobileToolboxTab === 'convoy' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
+                                                onClick={() => setActiveMobileToolboxTab('convoy')}
+                                            >
+                                                Convoy
+                                            </button>
                                         </div>
-                                    </div>
-
-                                    <div className="favorites-panel__form">
-                                        <input
-                                            type="text"
-                                            className="favorite-label-input"
-                                            placeholder="Favorite label"
-                                            value={favoriteLabel}
-                                            onChange={(event) => setFavoriteLabel(event.target.value)}
-                                        />
-                                        <PlaceAutocompleteInput
-                                            key={favoriteInputKey}
-                                            className="favorite-place-input"
-                                            placeholder="Search for a favorite address"
-                                            defaultValue={favoriteSearchValue}
-                                            onSelect={async (prediction) => {
-                                                const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
-                                                if (!place) return;
-                                                setFavoritePlaceDraft(place);
-                                                setFavoriteSearchValue(place.name);
-                                            }}
-                                        />
-                                        <button
-                                            className="favorite-save-btn"
-                                            onClick={handleSaveFavorite}
-                                            disabled={!favoriteLabel.trim() || !favoritePlaceDraft}
-                                        >
-                                            Save Favorite
-                                        </button>
-                                    </div>
-
-                                    {favorites.length > 0 ? (
-                                        <div className="favorite-chip-grid">
-                                            {favorites.map((favorite) => (
-                                                <div className="favorite-chip" key={favorite.id}>
-                                                    <button
-                                                        type="button"
-                                                        className="favorite-chip__main"
-                                                        onClick={() => handleAddPlaceAsStop(favorite.place)}
-                                                    >
-                                                        <span className="favorite-chip__label">{favorite.label}</span>
-                                                        <span className="favorite-chip__address">
-                                                            {favorite.place.formattedAddress || favorite.place.name}
-                                                        </span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="favorite-chip__remove"
-                                                        onClick={() => handleRemoveFavorite(favorite.id)}
-                                                        aria-label={`Remove ${favorite.label}`}
-                                                    >
-                                                        ×
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="favorites-empty">
-                                            No saved places yet. Add one above to reuse it for your origin, destination, or extra stops.
-                                        </p>
                                     )}
+
+                                    <div className={showMobileToolbox && activeMobileToolboxTab !== 'convoy'
+                                        ? 'planner-toolbox-panel is-hidden'
+                                        : 'planner-toolbox-panel'}>
+                                        <ConvoyPanel
+                                            trip={trip}
+                                            defaultOverlay={convoyDefaultOverlay}
+                                            onOverlayHandled={onConvoyOverlayHandled}
+                                            onTripChange={updateTrip}
+                                        />
+                                    </div>
+
+                                    <div className={showMobileToolbox && activeMobileToolboxTab !== 'saved-places'
+                                        ? 'planner-toolbox-panel is-hidden'
+                                        : 'planner-toolbox-panel'}>
+                                        <div className="favorites-panel">
+                                            <div className="favorites-panel__header">
+                                                <div>
+                                                    <h3>Saved Places</h3>
+                                                    <p>Save labels like Home, Office, or Grandpa's Place for one-tap route planning.</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="favorites-panel__form">
+                                                <input
+                                                    type="text"
+                                                    className="favorite-label-input"
+                                                    placeholder="Favorite label"
+                                                    value={favoriteLabel}
+                                                    onChange={(event) => setFavoriteLabel(event.target.value)}
+                                                />
+                                                <PlaceAutocompleteInput
+                                                    key={favoriteInputKey}
+                                                    className="favorite-place-input"
+                                                    placeholder="Search for a favorite address"
+                                                    defaultValue={favoriteSearchValue}
+                                                    onSelect={async (prediction) => {
+                                                        const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
+                                                        if (!place) return;
+                                                        setFavoritePlaceDraft(place);
+                                                        setFavoriteSearchValue(place.name);
+                                                    }}
+                                                />
+                                                <button
+                                                    className="favorite-save-btn"
+                                                    onClick={handleSaveFavorite}
+                                                    disabled={!favoriteLabel.trim() || !favoritePlaceDraft}
+                                                >
+                                                    Save Favorite
+                                                </button>
+                                            </div>
+
+                                            {favorites.length > 0 ? (
+                                                <div className="favorite-chip-grid">
+                                                    {favorites.map((favorite) => (
+                                                        <div className="favorite-chip" key={favorite.id}>
+                                                            <button
+                                                                type="button"
+                                                                className="favorite-chip__main"
+                                                                onClick={() => handleAddPlaceAsStop(favorite.place)}
+                                                            >
+                                                                <span className="favorite-chip__label">{favorite.label}</span>
+                                                                <span className="favorite-chip__address">
+                                                                    {favorite.place.formattedAddress || favorite.place.name}
+                                                                </span>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="favorite-chip__remove"
+                                                                onClick={() => handleRemoveFavorite(favorite.id)}
+                                                                aria-label={`Remove ${favorite.label}`}
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="favorites-empty">
+                                                    No saved places yet. Add one above to reuse it for your origin, destination, or extra stops.
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className={showMobileToolbox && activeMobileToolboxTab !== 'route-recs'
+                                        ? 'planner-toolbox-panel is-hidden'
+                                        : 'planner-toolbox-panel'}>
+                                        <div className="suggestions-teaser">
+                                            <h3>Route Recommendations</h3>
+                                            <p>
+                                                {canRecommendPitstops
+                                                    ? selectedRecommendationCount > 0
+                                                        ? `With ${selectedRecommendationCount} travel preference${selectedRecommendationCount === 1 ? '' : 's'} selected, we will bias pitstop recommendations toward those needs along the drive.`
+                                                        : 'With an origin and final destination in place, we can recommend pitstops along the drive.'
+                                                    : 'Set your origin and final destination first, then we will recommend pitstops between them.'}
+                                            </p>
+                                        </div>
+
+                                        <FilterPanel onFilterChange={handleFilterChange} />
+                                    </div>
                                 </div>
                             </div>
-
-                            <div className="suggestions-teaser">
-                                <h3>Route Recommendations</h3>
-                                <p>
-                                    {canRecommendPitstops
-                                        ? selectedRecommendationCount > 0
-                                            ? `With ${selectedRecommendationCount} travel preference${selectedRecommendationCount === 1 ? '' : 's'} selected, we will bias pitstop recommendations toward those needs along the drive.`
-                                            : 'With an origin and final destination in place, we can recommend pitstops along the drive.'
-                                        : 'Set your origin and final destination first, then we will recommend pitstops between them.'}
-                                </p>
-                            </div>
-
-                            <FilterPanel onFilterChange={handleFilterChange} />
                         </>
                     )}
                 </div>
 
                 {!isNavigating && (
                     <div className="planner-footer">
-                        <div className="planner-save-bar">
-                            <div className="planner-save-copy">
-                                <span className="planner-save-title">
-                                    {isDirty
-                                        ? isSavedTrip
-                                            ? 'Unsaved trip changes'
-                                            : 'Trip not saved yet'
-                                        : isSavedTrip
-                                        ? 'All trip changes saved'
-                                        : 'Save this trip to Bookings'}
-                                </span>
-                                <span className="planner-save-description">
-                                    {isDirty
-                                        ? 'Save before leaving if you want these route updates available from Bookings.'
-                                        : 'You can reopen this trip from Bookings and start it later with one tap.'}
-                                </span>
-                            </div>
-                            <button
-                                type="button"
-                                className="save-trip-btn"
-                                onClick={() => onSaveTrip(trip)}
-                                disabled={!isDirty && isSavedTrip}
-                            >
-                                {isSavedTrip ? (isDirty ? 'Save Changes' : 'Saved') : 'Save Trip'}
-                            </button>
-                        </div>
-
                         {trip.stops.length >= 2 && (
                             <div className="journey-summary">
                                 <div className="summary-item">
@@ -1624,17 +1655,46 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                             </div>
                         )}
 
-                        <button
-                            className="start-trip-btn"
-                            onClick={handleStartTrip}
-                            disabled={!hasTripRoute || isPreparingNavigation}
-                        >
-                            {isPreparingNavigation
-                                ? 'Preparing Navigation...'
-                                : hasTripRoute
-                                ? 'Start Trip'
-                                : 'Add Destination to Start'}
-                        </button>
+                        <div className="planner-save-bar">
+                            <div className="planner-save-copy">
+                                <span className="planner-save-title">
+                                    {isDirty
+                                        ? isSavedTrip
+                                            ? 'Unsaved trip changes'
+                                            : 'Trip not saved yet'
+                                        : isSavedTrip
+                                        ? 'All trip changes saved'
+                                        : 'Save this trip to Bookings'}
+                                </span>
+                                <span className="planner-save-description">
+                                    {isDirty
+                                        ? 'Save before leaving if you want these route updates available from Bookings.'
+                                        : 'You can reopen this trip from Bookings and start it later with one tap.'}
+                                </span>
+                            </div>
+                            <div className="planner-primary-actions">
+                                <button
+                                    className="start-trip-btn planner-start-trip-btn"
+                                    onClick={handleStartTrip}
+                                    disabled={!hasTripRoute || isPreparingNavigation}
+                                >
+                                    {isPreparingNavigation
+                                        ? 'Preparing Navigation...'
+                                        : hasTripRoute
+                                        ? 'Start Trip'
+                                        : 'Add Destination to Start'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="save-trip-btn save-trip-btn--compact"
+                                    onClick={() => onSaveTrip(trip)}
+                                    disabled={!isDirty && isSavedTrip}
+                                    aria-label={isSavedTrip ? (isDirty ? 'Save changes' : 'Saved') : 'Save trip'}
+                                >
+                                    {isSavedTrip ? (isDirty ? 'Save' : '✓') : 'Save'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

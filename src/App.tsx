@@ -10,7 +10,7 @@ import { ExplorePage } from './components/ExplorePage';
 import { Bookings } from './components/Bookings';
 import { usePlaces } from './hooks/usePlaces';
 import { usePitstops } from './hooks/usePitstops';
-import { Trip } from './types/trip';
+import { Convoy, Trip } from './types/trip';
 import { AppPlace } from './types/place';
 import { AppRoute } from './lib/googleRoutes';
 import './App.css';
@@ -26,6 +26,7 @@ interface TripState {
     tripBaselineSnapshot: string | null;
 }
 type PlannerOverlayIntent = 'vehicles' | 'invite' | 'assignments' | null;
+type LegacyTrip = Trip & { convey?: Convoy };
 
 const createTripId = () => `trip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -43,10 +44,18 @@ const createInitialTripState = (): TripState => {
     };
 };
 
-const cloneTrip = (trip: Trip): Trip => JSON.parse(JSON.stringify(trip)) as Trip;
+const normalizeLoadedTrip = (trip: LegacyTrip): Trip => {
+    const { convey, ...rest } = trip;
+    return {
+        ...rest,
+        convoy: trip.convoy ?? convey,
+    };
+};
 
-const normalizeTrip = (trip: Trip) => JSON.stringify({
-    ...trip,
+const cloneTrip = (trip: LegacyTrip): Trip => normalizeLoadedTrip(JSON.parse(JSON.stringify(trip)) as LegacyTrip);
+
+const normalizeTrip = (trip: LegacyTrip) => JSON.stringify({
+    ...normalizeLoadedTrip(trip),
     savedAt: undefined,
     updatedAt: undefined,
 });
@@ -65,8 +74,8 @@ const App = () => {
             const raw = window.localStorage.getItem(SAVED_TRIPS_STORAGE_KEY);
             if (!raw) return [];
 
-            const parsed = JSON.parse(raw) as Trip[];
-            return Array.isArray(parsed) ? parsed : [];
+            const parsed = JSON.parse(raw) as LegacyTrip[];
+            return Array.isArray(parsed) ? parsed.map(normalizeLoadedTrip) : [];
         } catch (error) {
             console.error('Failed to load saved trips:', error);
             return [];
@@ -213,7 +222,7 @@ const App = () => {
         setView('planner');
     };
 
-    const handleOpenTripConvey = (trip: Trip) => {
+    const handleOpenTripConvoy = (trip: Trip) => {
         if (!confirmLeavePlanner()) return;
 
         const nextTrip = cloneTrip(trip);
@@ -318,8 +327,8 @@ const App = () => {
                     onSaveTrip={handleSaveTrip}
                     isDirty={hasUnsavedTripChanges}
                     isSavedTrip={savedTrips.some((trip) => trip.id === currentTrip.id)}
-                    conveyDefaultOverlay={plannerOverlayIntent}
-                    onConveyOverlayHandled={() => setPlannerOverlayIntent(null)}
+                    convoyDefaultOverlay={plannerOverlayIntent}
+                    onConvoyOverlayHandled={() => setPlannerOverlayIntent(null)}
                     onClose={handleExplore}
                 />
             )}
@@ -329,7 +338,7 @@ const App = () => {
                     <Bookings
                         trips={savedTrips}
                         onOpenTrip={handleOpenSavedTrip}
-                        onManageConvey={handleOpenTripConvey}
+                        onManageConvoy={handleOpenTripConvoy}
                         onCreateTrip={handleCreateNewTrip}
                     />
                 </main>

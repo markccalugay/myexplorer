@@ -1,12 +1,12 @@
 import React from 'react';
 import { Trip } from '../types/trip';
-import { getAssignedMemberCount, getTotalMemberCount } from '../lib/convey';
+import { getAssignedMemberCount, getTotalMemberCount } from '../lib/convoy';
 import './Bookings.css';
 
 interface BookingsProps {
     trips: Trip[];
     onOpenTrip: (trip: Trip) => void;
-    onManageConvey: (trip: Trip) => void;
+    onManageConvoy: (trip: Trip) => void;
     onCreateTrip: () => void;
 }
 
@@ -33,7 +33,7 @@ const formatUpdatedAt = (value?: string) => {
     });
 };
 
-export const Bookings: React.FC<BookingsProps> = ({ trips, onOpenTrip, onManageConvey, onCreateTrip }) => {
+export const Bookings: React.FC<BookingsProps> = ({ trips, onOpenTrip, onManageConvoy, onCreateTrip }) => {
     return (
         <div className="bookings-page">
             <section className="bookings-hero">
@@ -78,16 +78,16 @@ export const Bookings: React.FC<BookingsProps> = ({ trips, onOpenTrip, onManageC
                                 <span>Updated {formatUpdatedAt(trip.updatedAt || trip.savedAt)}</span>
                             </div>
 
-                            <div className="booking-card__convey">
-                                <span className="booking-card__label">Convey</span>
+                            <div className="booking-card__convoy">
+                                <span className="booking-card__label">Convoy</span>
                                 <strong>
-                                    {trip.convey
-                                        ? `${trip.convey.vehicles.length} vehicles • ${getTotalMemberCount(trip.convey.participants)} travelers`
+                                    {trip.convoy
+                                        ? `${trip.convoy.vehicles.length} vehicles • ${getTotalMemberCount(trip.convoy.participants)} travelers`
                                         : 'Not set up yet'}
                                 </strong>
-                                {trip.convey && (
-                                    <span className="booking-card__convey-meta">
-                                        {getAssignedMemberCount(trip.convey.participants, trip.convey.assignments)} assigned
+                                {trip.convoy && (
+                                    <span className="booking-card__convoy-meta">
+                                        {getAssignedMemberCount(trip.convoy.participants, trip.convoy.assignments)} assigned
                                     </span>
                                 )}
                             </div>
@@ -103,9 +103,9 @@ export const Bookings: React.FC<BookingsProps> = ({ trips, onOpenTrip, onManageC
                                 <button
                                     type="button"
                                     className="bookings-tertiary-btn"
-                                    onClick={() => onManageConvey(trip)}
+                                    onClick={() => onManageConvoy(trip)}
                                 >
-                                    Manage Convey
+                                    Manage Convoy
                                 </button>
                             </div>
                         </article>
