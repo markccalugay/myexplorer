@@ -1,12 +1,27 @@
 .app {
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: clip;
 }
 
 .main-content {
     flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.main-content--explore {
+    overflow-y: auto;
+}
+
+.main-content--discovery {
+    overflow: hidden;
+}
+
+.main-content--bookings {
+    overflow: hidden;
 }
 
 .hero {
@@ -100,8 +115,8 @@
 }
 
 .results-panel {
-    width: 40%;
-    min-width: 400px;
+    width: min(42%, 520px);
+    min-width: 360px;
     height: 100%;
     overflow-y: auto;
     background: var(--bg-color, #ffffff);
@@ -115,6 +130,7 @@
     flex: 1;
     height: 100%;
     background: #f0f0f0;
+    min-width: 0;
 }
 
 .search-overlay {
@@ -175,6 +191,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: var(--space-md);
 }
 
 .footer-logo {
@@ -187,6 +204,59 @@
 @media (max-width: 1024px) {
     .grid-4 {
         grid-template-columns: repeat(2, 1fr);
+    }
+
+    .results-panel {
+        min-width: 320px;
+    }
+}
+
+@media (max-width: 960px) {
+    .app {
+        min-height: 100dvh;
+    }
+
+    .main-content--discovery {
+        flex-direction: column;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    .results-panel {
+        width: 100%;
+        min-width: 0;
+        height: auto;
+        min-height: 0;
+        border-right: none;
+        border-bottom: 1px solid #eee;
+    }
+
+    .map-panel {
+        order: -1;
+        height: min(42dvh, 420px);
+        min-height: 280px;
+        position: sticky;
+        top: 80px;
+        z-index: 5;
+    }
+
+    .search-overlay,
+    .results-content {
+        padding-inline: 20px;
+    }
+
+    .results-grid {
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 16px;
+    }
+
+    .footer {
+        padding: 28px 20px calc(28px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .footer-content {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }
 
@@ -205,5 +275,20 @@
 
     .cta-card {
         padding: 32px;
+    }
+
+    .search-overlay,
+    .results-content {
+        padding-inline: 16px;
+    }
+
+    .results-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .map-panel {
+        height: 36dvh;
+        min-height: 240px;
+        top: 72px;
     }
 }

@@ -1,40 +1,28 @@
-import React, { useEffect, useRef } from 'react';
-import { useGoogleMaps } from '../hooks/useGoogleMaps';
+import React from 'react';
 import './SearchBar.css';
+import { AppPlace } from '../types/place';
+import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
+import { fetchPlaceFromPrediction } from '../lib/googlePlaces';
 
 interface SearchBarProps {
-    onPlaceSelect?: (place: google.maps.places.PlaceResult) => void;
+    onPlaceSelect?: (place: AppPlace) => void;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({ onPlaceSelect }) => {
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    const { google } = useGoogleMaps();
-
-    useEffect(() => {
-        if (google && inputRef.current) {
-            const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
-                componentRestrictions: { country: "ph" },
-                fields: ["address_components", "geometry", "name", "formatted_address"],
-                types: ["(regions)"]
-            });
-
-            autocomplete.addListener("place_changed", () => {
-                const place = autocomplete.getPlace();
-                if (onPlaceSelect) onPlaceSelect(place);
-            });
-        }
-    }, [google, onPlaceSelect]);
-
     return (
         <div className="search-bar">
             <div className="search-item">
                 <label className="search-label">Destination</label>
-                <input
-                    ref={inputRef}
-                    type="text"
-                    placeholder="Where are you going?"
+                <PlaceAutocompleteInput
                     className="search-input"
+                    placeholder="Where are you going?"
+                    includedPrimaryTypes={['(regions)']}
+                    onSelect={async (prediction) => {
+                        const place = await fetchPlaceFromPrediction(prediction);
+                        if (place && onPlaceSelect) {
+                            onPlaceSelect(place);
+                        }
+                    }}
                 />
             </div>
             <div className="divider"></div>

@@ -1,49 +1,82 @@
 import { useState, useEffect } from 'react';
 import { useGoogleMaps } from './useGoogleMaps';
+import { AppPlace } from '../types/place';
+import { BASIC_PLACE_FIELDS, toAppPlace } from '../lib/googlePlaces';
+import { AppRoute, getRoutePath } from '../lib/googleRoutes';
 
-export const usePitstops = (directions: google.maps.DirectionsResult | null) => {
-    const [pitstops, setPitstops] = useState<google.maps.places.PlaceResult[]>([]);
+export const usePitstops = (route: AppRoute | null) => {
+    const [pitstops, setPitstops] = useState<AppPlace[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const { google } = useGoogleMaps();
 
     useEffect(() => {
-        if (google && directions) {
-            setIsLoading(true);
-            const route = directions.routes[0];
-            const path = route.overview_path;
+        if (!google || !route) return;
 
-            // For MVP, we'll pick midpoints or samples along the path
-            // Real implementation would use Search Along Route if available or sample points
+        let cancelled = false;
+
+        const loadPitstops = async () => {
+            setIsLoading(true);
+            const path = getRoutePath(route);
+            if (path.length < 4) {
+                setPitstops([]);
+                setIsLoading(false);
+                return;
+            }
+
             const samplePoints = [
                 path[Math.floor(path.length * 0.25)],
                 path[Math.floor(path.length * 0.5)],
                 path[Math.floor(path.length * 0.75)]
             ];
 
-            const service = new google.maps.places.PlacesService(document.createElement('div'));
-            const allResults: google.maps.places.PlaceResult[] = [];
+            try {
+                const { Place, SearchNearbyRankPreference } = google.maps.places;
+                const responses = await Promise.all(
+                    samplePoints.map((point) =>
+                        Place.searchNearby({
+                            fields: [...BASIC_PLACE_FIELDS, 'rating', 'primaryType'],
+                            includedPrimaryTypes: ['gas_station'],
+                            locationRestriction: {
+                                center: point,
+                                radius: 2000,
+                            },
+                            maxResultCount: 2,
+                            rankPreference: SearchNearbyRankPreference.DISTANCE,
+                            language: 'en',
+                            region: 'ph',
+                        })
+                    )
+                );
 
-            let completedRequests = 0;
-            samplePoints.forEach(point => {
-                const request: google.maps.places.PlaceSearchRequest = {
-                    location: point,
-                    radius: 2000,
-                    type: 'gas_station' // We can expand this to restaurants, cafes etc.
-                };
+                if (cancelled) return;
 
-                service.nearbySearch(request, (results: google.maps.places.PlaceResult[] | null, status: google.maps.places.PlacesServiceStatus) => {
-                    if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-                        allResults.push(...results.slice(0, 2)); // Take top 2 from each point
-                    }
-                    completedRequests++;
-                    if (completedRequests === samplePoints.length) {
-                        setPitstops(allResults.filter((v, i, a) => a.findIndex(t => t.place_id === v.place_id) === i));
-                        setIsLoading(false);
-                    }
-                });
-            });
-        }
-    }, [google, directions]);
+                const allResults = responses
+                    .flatMap((response) => response.places || [])
+                    .map((place) => toAppPlace(place))
+                    .filter((place): place is AppPlace => Boolean(place));
+
+                const deduped = allResults.filter(
+                    (place, index, list) => list.findIndex((item) => item.id === place.id) === index
+                );
+                setPitstops(deduped);
+            } catch (error) {
+                console.error('Failed to load route pitstops:', error);
+                if (!cancelled) {
+                    setPitstops([]);
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsLoading(false);
+                }
+            }
+        };
+
+        loadPitstops();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [google, route]);
 
     return { pitstops, isLoading };
 };
