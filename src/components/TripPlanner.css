@@ -936,6 +936,18 @@
         padding: 20px 20px 8px;
     }
 
+    .timeline-placeholder {
+        height: auto;
+        min-height: 160px;
+        padding: 20px 16px;
+        text-align: center;
+    }
+
+    .timeline-placeholder p {
+        margin: 0;
+        line-height: 1.5;
+    }
+
     .planner-tools--mobile {
         margin-top: 8px;
         gap: 14px;
