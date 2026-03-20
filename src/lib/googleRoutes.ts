@@ -119,7 +119,7 @@ const normalizeLeg = (leg: RouteLegLike): AppRouteLeg => ({
     steps: leg.steps?.map(normalizeStep) ?? null,
 });
 
-const normalizeRoute = (route: RouteLike): AppRoute => ({
+export const normalizeRoute = (route: RouteLike): AppRoute => ({
     path: route.path?.map(toLatLngLiteral).filter((point): point is google.maps.LatLngLiteral => Boolean(point)) ?? null,
     legs: route.legs?.map(normalizeLeg) ?? null,
 });

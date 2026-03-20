@@ -4,13 +4,17 @@ import { AppPlace } from '../types/place';
 import { BASIC_PLACE_FIELDS, toAppPlace } from '../lib/googlePlaces';
 import { AppRoute, getRoutePath } from '../lib/googleRoutes';
 
-export const usePitstops = (route: AppRoute | null) => {
+export const usePitstops = (route: AppRoute | null, enabled = true) => {
     const [pitstops, setPitstops] = useState<AppPlace[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const { google } = useGoogleMaps();
 
     useEffect(() => {
-        if (!google || !route) return;
+        if (!enabled || !google || !route) {
+            setPitstops([]);
+            setIsLoading(false);
+            return;
+        }
 
         let cancelled = false;
 
@@ -76,7 +80,7 @@ export const usePitstops = (route: AppRoute | null) => {
         return () => {
             cancelled = true;
         };
-    }, [google, route]);
+    }, [enabled, google, route]);
 
     return { pitstops, isLoading };
 };

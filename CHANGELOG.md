@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- 2026-03-20 14:41:10 PST: Added a lightweight quality-guardrail layer with Vitest unit coverage for shared convoy and route helpers, a new `npm test` / `npm run test:watch` workflow, a GitHub Actions CI pipeline for lint-build-test verification, and a documented `.env.example` / verification path for local setup.
 - 2026-03-20: Added trip-level convey coordination for saved trips, including multi-vehicle setup, family or individual participant entries, invite-style local join flows, self-assignment into cars, reassignment support, soft seat-capacity warnings, and Bookings summary/actions for managing convoy placement.
 - 2026-03-20: Added dynamic along-the-route recommendations during active `Start Trip` navigation, including temporary detour pop-ups, local convoy voting with 300-second decision windows, and approved recommendation stops that can be inserted into the live route before the next target stop.
 - Landing page hero search now suggests destinations while typing, supports date range selection with calendar inputs, and lets travelers choose adults and children from a guest dropdown.
@@ -17,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added ESLint with a project-level `npm run lint` command so the app can be checked for React and TypeScript lint issues from the CLI.
 
 ### Changed
+- 2026-03-20 14:41:10 PST: Closed out the audit backlog by removing the checked-in Google Maps API key fallback, adding retryable fail-closed Maps loading with a visible app-shell error banner, gating Places and pitstop fetches to active discovery flows, making trip journey recomputation immutable and stale-request-safe, and stabilizing the Convoy panel hook dependencies so test, lint, and production build verification now all pass together.
 - 2026-03-20: Followed up on the earlier auto-pitstop fix by replacing the remaining legacy `google.maps.DirectionsService` calls in the shared routing helper with `google.maps.routes.Route.computeRoutes`, then normalizing the newer Routes API payload back into the existing app route shape. Since the last fix focused on valid travel modes, endpoint refreshes, stale-suggestion cleanup, and `mapId` alignment, this pass specifically removes the February 25, 2026 deprecation source that was still firing during auto-pitstop, planner, and navigation route calculations without changing the surrounding trip-planner flow.
 - 2026-03-20 08:55:37 PST: Replaced Route Recommendations placeholder chip letters with brand- and category-specific icons, and updated live detour recommendations to show matched brand/type icons with supporting place-summary compatibility fixes.
 - 2026-03-20: Renamed the trip-planning convoy feature from `Convey` to `Convoy` across the app and storage compatibility layer, while refreshing the mobile planner so the map leads the page, route tools move into a bottom tabbed toolbox, and the save/start actions stay sticky in a compact shared footer row.

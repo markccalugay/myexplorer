@@ -3,13 +3,17 @@ import { useGoogleMaps } from './useGoogleMaps';
 import { AppPlace } from '../types/place';
 import { APP_PLACE_FIELDS, toAppPlace } from '../lib/googlePlaces';
 
-export const usePlaces = (location: google.maps.LatLngLiteral | null) => {
+export const usePlaces = (location: google.maps.LatLngLiteral | null, enabled = true) => {
     const [places, setPlaces] = useState<AppPlace[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const { google } = useGoogleMaps();
 
     useEffect(() => {
-        if (!google || !location) return;
+        if (!enabled || !google || !location) {
+            setPlaces([]);
+            setIsLoading(false);
+            return;
+        }
 
         let cancelled = false;
 
@@ -53,7 +57,7 @@ export const usePlaces = (location: google.maps.LatLngLiteral | null) => {
         return () => {
             cancelled = true;
         };
-    }, [google, location]);
+    }, [enabled, google, location]);
 
     return { places, isLoading };
 };

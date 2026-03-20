@@ -72,8 +72,8 @@ export const ConvoyPanel: React.FC<ConvoyPanelProps> = ({
 
     const convoy = trip.convoy;
     const vehicles = useMemo(() => sortVehicles(convoy?.vehicles ?? []), [convoy?.vehicles]);
-    const participants = convoy?.participants ?? [];
-    const assignments = convoy?.assignments ?? [];
+    const participants = useMemo(() => convoy?.participants ?? [], [convoy?.participants]);
+    const assignments = useMemo(() => convoy?.assignments ?? [], [convoy?.assignments]);
     const totalMembers = getTotalMemberCount(participants);
     const assignedMembers = getAssignedMemberCount(participants, assignments);
     const warnings = vehicles.filter((vehicle) => getVehicleSeatWarning(vehicle, assignments)).length;

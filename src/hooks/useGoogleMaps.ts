@@ -7,10 +7,50 @@ type GoogleMapsWindow = Window & typeof globalThis & {
 };
 
 const getGoogleMapsApi = () => (window as GoogleMapsWindow).google;
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyBVOgwku6wcaDzHkqY7cL4swqfDzgUfK1A';
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? '';
 const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-js-api';
+const GOOGLE_MAPS_MISSING_KEY_ERROR = new Error(
+    'Google Maps API key is missing. Set VITE_GOOGLE_MAPS_API_KEY to enable maps, places, and routing.'
+);
 
 let googleMapsLoadPromise: Promise<GoogleMapsApi> | null = null;
+let googleMapsScriptElement: HTMLScriptElement | null = null;
+let googleMapsLoadRequestId = 0;
+let googleMapsLoaderGeneration = 0;
+let googleMapsLastLoggedErrorKey: string | null = null;
+const googleMapsLoaderListeners = new Set<() => void>();
+
+const clearGoogleMapsLoaderState = () => {
+    if (googleMapsScriptElement?.parentNode) {
+        googleMapsScriptElement.parentNode.removeChild(googleMapsScriptElement);
+    }
+
+    googleMapsScriptElement = null;
+    delete (window as GoogleMapsWindow).__myExplorerGoogleMapsInit;
+    googleMapsLoadPromise = null;
+};
+
+const notifyGoogleMapsLoaderReset = () => {
+    googleMapsLoaderGeneration += 1;
+    googleMapsLoaderListeners.forEach((listener) => listener());
+};
+
+const subscribeGoogleMapsLoader = (listener: () => void) => {
+    googleMapsLoaderListeners.add(listener);
+    return () => {
+        googleMapsLoaderListeners.delete(listener);
+    };
+};
+
+const reportGoogleMapsError = (error: Error) => {
+    const errorKey = `${googleMapsLoadRequestId}:${error.message}`;
+    if (googleMapsLastLoggedErrorKey === errorKey) {
+        return;
+    }
+
+    googleMapsLastLoggedErrorKey = errorKey;
+    console.error('Failed to load Google Maps:', error);
+};
 
 const loadGoogleMapsApi = (): Promise<GoogleMapsApi> => {
     if (googleMapsLoadPromise) {
@@ -23,32 +63,42 @@ const loadGoogleMapsApi = (): Promise<GoogleMapsApi> => {
         return googleMapsLoadPromise;
     }
 
+    if (!GOOGLE_MAPS_API_KEY) {
+        return Promise.reject(GOOGLE_MAPS_MISSING_KEY_ERROR);
+    }
+
+    const requestId = ++googleMapsLoadRequestId;
     googleMapsLoadPromise = new Promise((resolve, reject) => {
-        const existingScript = document.getElementById(GOOGLE_MAPS_SCRIPT_ID) as HTMLScriptElement | null;
         const callbackName = '__myExplorerGoogleMapsInit';
-        const cleanup = () => {
+        const cleanupCallback = () => {
             delete (window as GoogleMapsWindow)[callbackName];
+        };
+        const rejectIfCurrent = (error: Error) => {
+            if (requestId !== googleMapsLoadRequestId) {
+                reject(new Error('Google Maps load was superseded by a newer request.'));
+                return;
+            }
+
+            clearGoogleMapsLoaderState();
+            reject(error);
         };
 
         (window as GoogleMapsWindow)[callbackName] = () => {
+            if (requestId !== googleMapsLoadRequestId) {
+                reject(new Error('Google Maps load was superseded by a newer request.'));
+                return;
+            }
+
             const mapsApi = getGoogleMapsApi();
             if (mapsApi?.maps) {
-                cleanup();
+                cleanupCallback();
+                googleMapsScriptElement = null;
                 resolve(mapsApi);
                 return;
             }
 
-            cleanup();
-            reject(new Error('Google Maps loaded without the Maps API object.'));
+            rejectIfCurrent(new Error('Google Maps loaded without the Maps API object.'));
         };
-
-        if (existingScript) {
-            existingScript.addEventListener('error', () => {
-                cleanup();
-                reject(new Error('Google Maps could not load.'));
-            }, { once: true });
-            return;
-        }
 
         const script = document.createElement('script');
         const params = new URLSearchParams({
@@ -63,9 +113,11 @@ const loadGoogleMapsApi = (): Promise<GoogleMapsApi> => {
         script.src = `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
         script.async = true;
         script.defer = true;
+        googleMapsScriptElement = script;
         script.onerror = () => {
-            cleanup();
-            reject(new Error('Google Maps could not load.'));
+            rejectIfCurrent(
+                new Error('Google Maps could not load. Check your network connection or API key configuration.')
+            );
         };
 
         document.head.appendChild(script);
@@ -74,14 +126,25 @@ const loadGoogleMapsApi = (): Promise<GoogleMapsApi> => {
     return googleMapsLoadPromise;
 };
 
+export const retryGoogleMapsLoad = () => {
+    clearGoogleMapsLoaderState();
+    notifyGoogleMapsLoaderReset();
+};
+
 export const useGoogleMaps = () => {
-    const [googleMapsApi, setGoogleMapsApi] = useState<GoogleMapsApi | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [googleMapsApi, setGoogleMapsApi] = useState<GoogleMapsApi | null>(() => getGoogleMapsApi() ?? null);
+    const [isLoading, setIsLoading] = useState(() => !getGoogleMapsApi());
     const [error, setError] = useState<Error | null>(null);
+    const [loaderGeneration, setLoaderGeneration] = useState(googleMapsLoaderGeneration);
+
+    useEffect(() => subscribeGoogleMapsLoader(() => setLoaderGeneration(googleMapsLoaderGeneration)), []);
 
     useEffect(() => {
+        let cancelled = false;
+
         const loadLibraries = async () => {
             try {
+                setIsLoading(true);
                 const mapsApi = await loadGoogleMapsApi();
 
                 await mapsApi.maps.importLibrary('maps');
@@ -89,20 +152,27 @@ export const useGoogleMaps = () => {
                 await mapsApi.maps.importLibrary('marker');
                 await mapsApi.maps.importLibrary('routes');
 
+                if (cancelled) return;
                 setGoogleMapsApi(mapsApi);
+                setError(null);
                 setIsLoading(false);
             } catch (e: unknown) {
                 const nextError = e instanceof Error
                     ? e
                     : new Error('Failed to load Google Maps.');
-                console.error('Failed to load Google Maps:', nextError);
+                if (cancelled) return;
+                reportGoogleMapsError(nextError);
                 setError(nextError);
+                setGoogleMapsApi(null);
                 setIsLoading(false);
             }
         };
 
         loadLibraries();
-    }, []);
+        return () => {
+            cancelled = true;
+        };
+    }, [loaderGeneration]);
 
-    return { google: googleMapsApi, isLoading, error };
+    return { google: googleMapsApi, isLoading, error, retry: retryGoogleMapsLoad };
 };

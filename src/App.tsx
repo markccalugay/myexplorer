@@ -8,6 +8,7 @@ import { RoutePlanner } from './components/RoutePlanner';
 import { TripPlanner } from './components/TripPlanner';
 import { ExplorePage } from './components/ExplorePage';
 import { Bookings } from './components/Bookings';
+import { useGoogleMaps } from './hooks/useGoogleMaps';
 import { usePlaces } from './hooks/usePlaces';
 import { usePitstops } from './hooks/usePitstops';
 import { Convoy, Trip } from './types/trip';
@@ -82,6 +83,11 @@ const App = () => {
         }
     });
     const { currentTrip, tripBaselineSnapshot } = tripState;
+    const {
+        error: googleMapsError,
+        isLoading: googleMapsIsLoading,
+        retry: retryGoogleMaps,
+    } = useGoogleMaps();
 
     const setCurrentTrip = (updater: Trip | ((previousTrip: Trip) => Trip)) => {
         setTripState((previousState) => ({
@@ -99,8 +105,10 @@ const App = () => {
         }));
     };
 
-    const { places, isLoading: placesLoading } = usePlaces(center);
-    const { pitstops } = usePitstops(route);
+    const placesEnabled = view === 'discovery';
+    const pitstopsEnabled = view === 'discovery' && route !== null;
+    const { places, isLoading: placesLoading } = usePlaces(center, placesEnabled);
+    const { pitstops } = usePitstops(route, pitstopsEnabled);
 
     const hasUnsavedTripChanges = useMemo(() => {
         if (tripBaselineSnapshot === null) return false;
@@ -255,6 +263,23 @@ const App = () => {
                 onOpenBookings={handleOpenBookings}
                 activeView={view}
             />
+
+            {googleMapsError && (
+                <div className="maps-alert" role="alert" aria-live="polite">
+                    <div className="maps-alert__copy">
+                        <strong>Maps services are unavailable.</strong>
+                        <span>{googleMapsError.message}</span>
+                    </div>
+                    <button
+                        type="button"
+                        className="maps-alert__retry"
+                        onClick={retryGoogleMaps}
+                        disabled={googleMapsIsLoading}
+                    >
+                        {googleMapsIsLoading ? 'Retrying...' : 'Retry Maps'}
+                    </button>
+                </div>
+            )}
 
             {view === 'explore' && (
                 <main className="main-content main-content--explore">

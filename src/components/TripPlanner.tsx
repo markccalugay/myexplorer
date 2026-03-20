@@ -311,6 +311,13 @@ const createStopFromPlace = (
     source: 'manual',
 });
 
+const resetJourneyFields = (stop: Stop): Stop => ({
+    ...stop,
+    distanceFromPrevious: undefined,
+    durationFromPrevious: undefined,
+    arrivalTime: undefined,
+});
+
 export const TripPlanner: React.FC<TripPlannerProps> = ({
     trip: initialTrip,
     onTripChange,
@@ -352,6 +359,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     const autoPitstopRouteKeyRef = useRef<string | null>(null);
     const autoPitstopInFlightRouteKeyRef = useRef<string | null>(null);
     const autoPitstopRequestIdRef = useRef(0);
+    const journeyDetailsRequestIdRef = useRef(0);
     const offeredRecommendationLegsRef = useRef<Set<string>>(new Set());
     const updateTrip = useCallback((updater: Trip | ((previousTrip: Trip) => Trip)) => {
         setTrip((previousTrip) => {
@@ -410,6 +418,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         autoPitstopRouteKeyRef.current = null;
         autoPitstopInFlightRouteKeyRef.current = null;
         autoPitstopRequestIdRef.current += 1;
+        journeyDetailsRequestIdRef.current += 1;
         offeredRecommendationLegsRef.current = new Set();
     }, [initialTrip]);
 
@@ -474,25 +483,47 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     const calculateJourneyDetails = useCallback((stops: Stop[]) => {
         if (!google || stops.length < 2) return;
 
+        const requestId = journeyDetailsRequestIdRef.current + 1;
+        journeyDetailsRequestIdRef.current = requestId;
+
         Promise.all(
             stops.slice(0, -1).map((stop, index) =>
                 computeDrivingRoute(google, stop.location, stops[index + 1].location)
             )
         )
             .then((routes) => {
-                const newStops = [...stops];
+                if (journeyDetailsRequestIdRef.current !== requestId) {
+                    return;
+                }
+
+                const newStops = stops.map(resetJourneyFields);
                 let currentTime = new Date();
                 currentTime.setHours(8, 0, 0, 0);
-                newStops[0].arrivalTime = formatTime(currentTime);
+                newStops[0] = {
+                    ...newStops[0],
+                    arrivalTime: formatTime(currentTime),
+                };
 
                 routes.forEach((route, index) => {
+                    if (!newStops[index + 1]) return;
+
                     const distKm = getRouteDistanceKm(route);
                     const durMins = getRouteDurationMinutes(route);
-                    newStops[index + 1].distanceFromPrevious = distKm;
-                    newStops[index + 1].durationFromPrevious = durMins;
+                    newStops[index + 1] = {
+                        ...newStops[index + 1],
+                        distanceFromPrevious: distKm,
+                        durationFromPrevious: durMins,
+                    };
                     currentTime = new Date(currentTime.getTime() + (durMins + 30) * 60_000);
-                    newStops[index + 1].arrivalTime = formatTime(currentTime);
+                    newStops[index + 1] = {
+                        ...newStops[index + 1],
+                        arrivalTime: formatTime(currentTime),
+                    };
                 });
+
+                if (journeyDetailsRequestIdRef.current !== requestId) {
+                    return;
+                }
 
                 updateTrip((prev) => (
                     hasJourneyDetailsChanged(prev.stops, newStops)
@@ -501,6 +532,9 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                 ));
             })
             .catch((error) => {
+                if (journeyDetailsRequestIdRef.current !== requestId) {
+                    return;
+                }
                 console.error('Failed to calculate trip segment details:', error);
             });
     }, [google, updateTrip]);
@@ -677,7 +711,6 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         updateTrip(prev => {
             const filtered = prev.stops.filter(s => s.id !== id);
             const retyped = retypeStops(filtered);
-            if (retyped.length >= 2) calculateJourneyDetails(retyped);
             return { ...prev, stops: retyped };
         });
     };
@@ -691,14 +724,12 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         updateTrip(prev => {
             const newStops = prev.stops.map(s => (s.id === id ? updated : s));
             const retyped = retypeStops(newStops);
-            if (retyped.length >= 2) calculateJourneyDetails(retyped);
             return { ...prev, stops: retyped };
         });
     };
 
     const handleReorder = (newStops: Stop[]) => {
         updateTrip(prev => ({ ...prev, stops: newStops }));
-        if (newStops.length >= 2) calculateJourneyDetails(newStops);
     };
 
     const handleFilterChange = (category: keyof RecommendationFilters, values: string[]) => {
