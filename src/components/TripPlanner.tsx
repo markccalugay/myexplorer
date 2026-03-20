@@ -124,6 +124,19 @@ const hasJourneyDetailsChanged = (previousStops: Stop[], nextStops: Stop[]) =>
         );
     });
 
+const hasSameStopSequence = (previousStops: Stop[], nextStops: Stop[]) =>
+    previousStops.length === nextStops.length &&
+    previousStops.every((stop, index) => {
+        const nextStop = nextStops[index];
+        return (
+            stop.id === nextStop.id &&
+            stop.type === nextStop.type &&
+            stop.isAutoSuggested === nextStop.isAutoSuggested &&
+            stop.location.lat === nextStop.location.lat &&
+            stop.location.lng === nextStop.location.lng
+        );
+    });
+
 const stripInstructionMarkup = (instruction?: string | null) => {
     if (!instruction) return 'Continue on the current road';
     return instruction.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -327,6 +340,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     const [recommendationNowMs, setRecommendationNowMs] = useState(() => Date.now());
     const { google } = useGoogleMaps();
     const autoPitstopRouteKeyRef = useRef<string | null>(null);
+    const autoPitstopInFlightRouteKeyRef = useRef<string | null>(null);
+    const autoPitstopRequestIdRef = useRef(0);
     const offeredRecommendationLegsRef = useRef<Set<string>>(new Set());
     const updateTrip = useCallback((updater: Trip | ((previousTrip: Trip) => Trip)) => {
         setTrip((previousTrip) => {
@@ -382,6 +397,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         setRecommendationSession(null);
         setRecommendationNowMs(Date.now());
         autoPitstopRouteKeyRef.current = null;
+        autoPitstopInFlightRouteKeyRef.current = null;
+        autoPitstopRequestIdRef.current += 1;
         offeredRecommendationLegsRef.current = new Set();
     }, [initialTrip]);
 
@@ -472,23 +489,47 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         const start = stops[0];
         const dest = stops[stops.length - 1];
         const routeKey = getEndpointRouteKey(stops);
+        if (!routeKey) return;
+
+        autoPitstopInFlightRouteKeyRef.current = routeKey;
+        const requestId = autoPitstopRequestIdRef.current + 1;
+        autoPitstopRequestIdRef.current = requestId;
 
         computeDrivingRoute(google, start.location, dest.location)
             .then((route) => {
+                if (
+                    autoPitstopRequestIdRef.current !== requestId ||
+                    autoPitstopInFlightRouteKeyRef.current !== routeKey
+                ) {
+                    return;
+                }
+
                 const durationMins = getRouteDurationMinutes(route);
                 const baseStops = stripAutoSuggestedStops(stops);
 
                 // Only insert pitstops for trips > 90 minutes
                 if (durationMins < 90) {
                     autoPitstopRouteKeyRef.current = routeKey;
-                    updateTrip((prev) => ({ ...prev, stops: retypeStops(baseStops) }));
+                    autoPitstopInFlightRouteKeyRef.current = null;
+                    updateTrip((prev) => {
+                        const retyped = retypeStops(baseStops);
+                        return hasSameStopSequence(prev.stops, retyped)
+                            ? prev
+                            : { ...prev, stops: retyped };
+                    });
                     return;
                 }
 
                 const path = getRoutePath(route).map((point) => new google.maps.LatLng(point));
                 if (!path.length) {
                     autoPitstopRouteKeyRef.current = routeKey;
-                    updateTrip((prev) => ({ ...prev, stops: retypeStops(baseStops) }));
+                    autoPitstopInFlightRouteKeyRef.current = null;
+                    updateTrip((prev) => {
+                        const retyped = retypeStops(baseStops);
+                        return hasSameStopSequence(prev.stops, retyped)
+                            ? prev
+                            : { ...prev, stops: retyped };
+                    });
                     return;
                 }
 
@@ -535,6 +576,13 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                 });
 
                 Promise.all(pitstopPromises).then((pitstops) => {
+                    if (
+                        autoPitstopRequestIdRef.current !== requestId ||
+                        autoPitstopInFlightRouteKeyRef.current !== routeKey
+                    ) {
+                        return;
+                    }
+
                     const valid = pitstops
                         .filter((pitstop): pitstop is Stop => pitstop !== null)
                         .filter(
@@ -557,11 +605,20 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                         ];
                         const retyped = retypeStops(newStops);
                         autoPitstopRouteKeyRef.current = routeKey;
-                        return { ...prev, stops: retyped };
+                        autoPitstopInFlightRouteKeyRef.current = null;
+                        return hasSameStopSequence(prev.stops, retyped)
+                            ? prev
+                            : { ...prev, stops: retyped };
                     });
                 });
             })
             .catch((error) => {
+                if (
+                    autoPitstopRequestIdRef.current === requestId &&
+                    autoPitstopInFlightRouteKeyRef.current === routeKey
+                ) {
+                    autoPitstopInFlightRouteKeyRef.current = null;
+                }
                 console.error('Failed to compute auto-pitstop route:', error);
             });
     }, [google, getEndpointRouteKey, retypeStops, stripAutoSuggestedStops, updateTrip]);
@@ -576,13 +633,17 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     useEffect(() => {
         if (!google || trip.stops.length < 2) {
             autoPitstopRouteKeyRef.current = null;
+            autoPitstopInFlightRouteKeyRef.current = null;
+            autoPitstopRequestIdRef.current += 1;
             return;
         }
 
         const hasStart = trip.stops[0]?.type === 'start';
         const hasDest = trip.stops[trip.stops.length - 1]?.type === 'destination';
         const routeKey = getEndpointRouteKey(trip.stops);
-        const shouldRefreshAutoPitstops = routeKey !== autoPitstopRouteKeyRef.current;
+        const shouldRefreshAutoPitstops =
+            routeKey !== autoPitstopRouteKeyRef.current &&
+            routeKey !== autoPitstopInFlightRouteKeyRef.current;
         if (hasStart && hasDest && shouldRefreshAutoPitstops) {
             autoInsertPitstops(trip.stops);
         }
