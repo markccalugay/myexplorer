@@ -36,6 +36,7 @@ export interface RecommendationCandidate {
     description?: string;
     rating?: number;
     googleMapsUri?: string;
+    primaryType?: string;
 }
 
 export interface ActiveNavigationRecommendationSession {

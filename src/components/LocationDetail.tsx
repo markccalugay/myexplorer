@@ -10,6 +10,8 @@ interface LocationDetailProps {
 }
 
 export const LocationDetail: React.FC<LocationDetailProps> = ({ place, onClose, onPlanTrip }) => {
+    const summary = typeof place.summary === 'string' ? place.summary : place.summary?.text;
+
     return (
         <div className="location-detail-overlay">
             <div className="location-detail-panel">
@@ -32,7 +34,7 @@ export const LocationDetail: React.FC<LocationDetailProps> = ({ place, onClose, 
 
                     <div className="detail-section">
                         <h3>About</h3>
-                        <p>{place.summary || "Experience comfort and local charm at this beautiful location in the heart of the Philippines."}</p>
+                        <p>{summary || 'Experience comfort and local charm at this beautiful location in the heart of the Philippines.'}</p>
                     </div>
 
                     <div className="detail-section">

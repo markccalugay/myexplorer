@@ -17,6 +17,7 @@ import { getStopColor } from '../lib/stopColors';
 import { AppRoute, AppRouteStep, computeDrivingRoute, getRouteDistanceKm, getRouteDurationMinutes, getRoutePath, getRouteSteps } from '../lib/googleRoutes';
 import { AppPlace } from '../types/place';
 import { ConvoyPanel } from './ConvoyPanel';
+import { RecommendationIcon, resolveRecommendationIcon } from './RecommendationIcon';
 import './TripPlanner.css';
 
 interface TripPlannerProps {
@@ -213,6 +214,11 @@ const getRecommendationCategoryLabel = (primaryType?: string) => (
             .join(' ')
         : 'Things to do'
 );
+
+const getRecommendationDescription = (summary?: AppPlace['summary']) =>
+    typeof summary === 'string'
+        ? summary
+        : summary?.text;
 
 const getRecommendationTypes = (filters: RecommendationFilters) => {
     const preferredTypes = new Set<string>(DEFAULT_RECOMMENDATION_TYPES);
@@ -985,9 +991,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         }
 
         let isCancelled = false;
-        let displayTimer: number | undefined;
-
-        displayTimer = window.setTimeout(async () => {
+        const displayTimer = window.setTimeout(async () => {
             if (isCancelled) return;
 
             setRecommendationSession({
@@ -1046,9 +1050,10 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                     formattedAddress: candidate.formattedAddress,
                     location: candidate.location,
                     category: getRecommendationCategoryLabel(candidate.primaryType),
-                    description: candidate.summary,
+                    description: getRecommendationDescription(candidate.summary),
                     rating: candidate.rating,
                     googleMapsUri: candidate.googleMapsUri,
+                    primaryType: candidate.primaryType,
                 };
                 const startedAt = Date.now();
 
@@ -1257,15 +1262,28 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                             {showRecommendationCard && recommendationSession && (
                                 <div className={`route-recommendation-card route-recommendation-card--${recommendationSession.status}`}>
                                     <div className="route-recommendation-card__header">
-                                        <div>
-                                            <span className="route-recommendation-card__eyebrow">
-                                                {isConvoyRecommendation ? 'Convoy Detour Vote' : 'Detour Recommendation'}
-                                            </span>
-                                            <h4>
-                                                {recommendationSession.status === 'loadingCandidate'
-                                                    ? 'Finding something worth the detour'
-                                                    : recommendationSession.candidate?.name || 'Checking nearby stops'}
-                                            </h4>
+                                        <div className="route-recommendation-card__title-group">
+                                            {recommendationSession.candidate && (
+                                                <span className="route-recommendation-card__icon" aria-hidden="true">
+                                                    <RecommendationIcon
+                                                        icon={resolveRecommendationIcon(
+                                                            recommendationSession.candidate.name,
+                                                            recommendationSession.candidate.primaryType
+                                                        )}
+                                                        size={44}
+                                                    />
+                                                </span>
+                                            )}
+                                            <div>
+                                                <span className="route-recommendation-card__eyebrow">
+                                                    {isConvoyRecommendation ? 'Convoy Detour Vote' : 'Detour Recommendation'}
+                                                </span>
+                                                <h4>
+                                                    {recommendationSession.status === 'loadingCandidate'
+                                                        ? 'Finding something worth the detour'
+                                                        : recommendationSession.candidate?.name || 'Checking nearby stops'}
+                                                </h4>
+                                            </div>
                                         </div>
                                         {recommendationSession.status === 'awaitingDecision' && (
                                             <span className="route-recommendation-card__timer">

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getFilterIcon, RecommendationIcon } from './RecommendationIcon';
 
 interface FilterPanelProps {
     onFilterChange: (category: 'fuel' | 'dining' | 'essentials', values: string[]) => void;
@@ -12,7 +13,6 @@ interface FilterOption {
 interface FilterCategory {
     id: string;
     title: string;
-    iconLabel: string;
     options: FilterOption[];
 }
 
@@ -20,7 +20,6 @@ const FILTER_CATEGORIES: FilterCategory[] = [
     {
         id: 'fuel',
         title: 'Fuel (Gasolina)',
-        iconLabel: 'G',
         options: [
             { id: 'petron', label: 'Petron' },
             { id: 'shell', label: 'Shell' },
@@ -37,7 +36,6 @@ const FILTER_CATEGORIES: FilterCategory[] = [
     {
         id: 'dining',
         title: 'Dining (Kainan)',
-        iconLabel: 'K',
         options: [
             { id: 'fast-food', label: 'Fast Food' },
             { id: 'pasalubong', label: 'Pasalubong (Local Gifts)' },
@@ -51,7 +49,6 @@ const FILTER_CATEGORIES: FilterCategory[] = [
     {
         id: 'essentials',
         title: 'Essentials (Amenities)',
-        iconLabel: 'E',
         options: [
             { id: 'clean-toilets', label: 'Clean Toilets' },
             { id: 'atm-cash-point', label: 'ATM/Cash Point' },
@@ -142,15 +139,14 @@ const FILTER_PANEL_STYLES = `
     .filter-chip__icon {
         width: 24px;
         height: 24px;
-        border-radius: 999px;
-        background: #e2e8f0;
-        color: #475569;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-        font-size: 11px;
-        font-weight: 800;
+    }
+
+    .filter-chip__icon svg {
+        display: block;
     }
 
     .filter-chip__label {
@@ -160,11 +156,6 @@ const FILTER_PANEL_STYLES = `
     .filter-chip input:checked + span {
         border-color: #94a3b8;
         box-shadow: inset 0 0 0 1px #94a3b8;
-    }
-
-    .filter-chip input:checked + span .filter-chip__icon {
-        background: #cbd5e1;
-        color: #334155;
     }
 
     .filter-chip:hover > span {
@@ -238,7 +229,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onFilterChange }) => {
         });
     };
 
-    const renderSection = ({ id, title, iconLabel, options }: FilterCategory) => {
+    const renderSection = ({ id, title, options }: FilterCategory) => {
         const gridItems = options.length % 2 === 0
             ? options
             : [...options, { id: `${id}-placeholder`, label: '' }];
@@ -261,7 +252,12 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ onFilterChange }) => {
                                     onChange={() => handleToggle(id as 'fuel' | 'dining' | 'essentials', option.label)}
                                 />
                                 <span>
-                                    <span className="filter-chip__icon" aria-hidden="true">{iconLabel}</span>
+                                    <span className="filter-chip__icon" aria-hidden="true">
+                                        <RecommendationIcon
+                                            icon={getFilterIcon(id, option.id)}
+                                            size={24}
+                                        />
+                                    </span>
                                     <span className="filter-chip__label">{option.label}</span>
                                 </span>
                             </label>

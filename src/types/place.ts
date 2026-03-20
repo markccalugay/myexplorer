@@ -7,7 +7,7 @@ export interface AppPlace {
     photoUrl?: string;
     websiteUri?: string;
     nationalPhoneNumber?: string;
-    summary?: string;
+    summary?: string | { text?: string };
     primaryType?: string;
     googleMapsUri?: string;
 }
