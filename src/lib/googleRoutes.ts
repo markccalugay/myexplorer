@@ -29,45 +29,99 @@ export interface AppRouteStep {
 }
 
 type RouteRequestLocation = google.maps.LatLng | google.maps.LatLngLiteral;
+type RoutePointLike =
+    | google.maps.LatLng
+    | google.maps.LatLngLiteral
+    | google.maps.LatLngAltitude
+    | google.maps.LatLngAltitudeLiteral
+    | null
+    | undefined;
+type RouteLegStepLike = {
+    distanceMeters?: number | null;
+    staticDurationMillis?: number | null;
+    instructions?: string | null;
+    maneuver?: string | null;
+    localizedValues?: {
+        distance?: string | null;
+        staticDuration?: string | null;
+    } | null;
+    startLocation?: RoutePointLike;
+    endLocation?: RoutePointLike;
+};
+type RouteLegLike = {
+    distanceMeters?: number | null;
+    durationMillis?: number | null;
+    staticDurationMillis?: number | null;
+    steps?: RouteLegStepLike[] | null;
+};
+type RouteLike = {
+    path?: RoutePointLike[] | null;
+    legs?: RouteLegLike[] | null;
+};
+type ComputeRoutesResponseLike = {
+    routes?: RouteLike[] | null;
+};
+type RoutesLibraryWithRouteClass = {
+    Route: {
+        computeRoutes(request: {
+            origin: RouteRequestLocation;
+            destination: RouteRequestLocation;
+            intermediates?: Array<{ location: RouteRequestLocation }>;
+            travelMode: 'DRIVING';
+            fields: string[];
+        }): Promise<ComputeRoutesResponseLike>;
+    };
+};
 
 const toTravelSeconds = (durationMillis?: number | null): number => {
     if (typeof durationMillis !== 'number') return 0;
     return Math.round(durationMillis / 1000);
 };
 
-const toMillis = (duration?: google.maps.Duration): number | null => {
-    if (typeof duration?.value !== 'number') return null;
-    return duration.value * 1000;
+const toLatLngLiteral = (point: RoutePointLike): google.maps.LatLngLiteral | null => {
+    if (!point) return null;
+
+    if (typeof (point as google.maps.LatLng).lat === 'function') {
+        const latLng = point as google.maps.LatLng;
+        return { lat: latLng.lat(), lng: latLng.lng() };
+    }
+
+    const literal = point as google.maps.LatLngLiteral | google.maps.LatLngAltitudeLiteral;
+    if (typeof literal.lat === 'number' && typeof literal.lng === 'number') {
+        return { lat: literal.lat, lng: literal.lng };
+    }
+
+    return null;
 };
 
-const normalizeStep = (step: google.maps.DirectionsStep): AppRouteStep => ({
-    distanceMeters: step.distance?.value ?? null,
-    durationMillis: toMillis(step.duration),
+const normalizeStep = (step: RouteLegStepLike): AppRouteStep => ({
+    distanceMeters: step.distanceMeters ?? null,
+    durationMillis: step.staticDurationMillis ?? null,
     navigationInstruction: {
         instructions: step.instructions ?? null,
         maneuver: step.maneuver ?? null,
     },
     localizedValues: {
         distance: {
-            text: step.distance?.text ?? null,
+            text: step.localizedValues?.distance ?? null,
         },
         staticDuration: {
-            text: step.duration?.text ?? null,
+            text: step.localizedValues?.staticDuration ?? null,
         },
     },
-    startLocation: step.start_location ?? null,
-    endLocation: step.end_location ?? null,
+    startLocation: toLatLngLiteral(step.startLocation),
+    endLocation: toLatLngLiteral(step.endLocation),
 });
 
-const normalizeLeg = (leg: google.maps.DirectionsLeg): AppRouteLeg => ({
-    distanceMeters: leg.distance?.value ?? null,
-    durationMillis: toMillis(leg.duration),
-    steps: leg.steps.map(normalizeStep),
+const normalizeLeg = (leg: RouteLegLike): AppRouteLeg => ({
+    distanceMeters: leg.distanceMeters ?? null,
+    durationMillis: leg.durationMillis ?? leg.staticDurationMillis ?? null,
+    steps: leg.steps?.map(normalizeStep) ?? null,
 });
 
-const normalizeRoute = (route: google.maps.DirectionsRoute): AppRoute => ({
-    path: route.overview_path ?? null,
-    legs: route.legs.map(normalizeLeg),
+const normalizeRoute = (route: RouteLike): AppRoute => ({
+    path: route.path?.map(toLatLngLiteral).filter((point): point is google.maps.LatLngLiteral => Boolean(point)) ?? null,
+    legs: route.legs?.map(normalizeLeg) ?? null,
 });
 
 export const computeDrivingRoute = async (
@@ -76,15 +130,16 @@ export const computeDrivingRoute = async (
     destination: RouteRequestLocation,
     intermediates: RouteRequestLocation[] = []
 ): Promise<AppRoute | null> => {
-    const directionsService = new google.maps.DirectionsService();
-    const response = await directionsService.route({
+    const { Route } = await google.maps.importLibrary('routes') as unknown as RoutesLibraryWithRouteClass;
+    const response = await Route.computeRoutes({
         origin,
         destination,
-        waypoints: intermediates.map((location) => ({ location, stopover: true })),
-        travelMode: google.maps.TravelMode.DRIVING,
+        intermediates: intermediates.map((location) => ({ location })),
+        travelMode: 'DRIVING',
+        fields: ['path', 'legs'],
     });
 
-    return response.routes[0] ? normalizeRoute(response.routes[0]) : null;
+    return response.routes?.[0] ? normalizeRoute(response.routes[0]) : null;
 };
 
 export const getRoutePath = (route: AppRoute | null | undefined): google.maps.LatLngLiteral[] => {
