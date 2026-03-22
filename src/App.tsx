@@ -8,6 +8,7 @@ import { RoutePlanner } from './components/RoutePlanner';
 import { TripPlanner } from './components/TripPlanner';
 import { ExplorePage } from './components/ExplorePage';
 import { Bookings } from './components/Bookings';
+import { BrandLogo } from './components/BrandLogo';
 import { useGoogleMaps } from './hooks/useGoogleMaps';
 import { usePlaces } from './hooks/usePlaces';
 import { usePitstops } from './hooks/usePitstops';
@@ -371,7 +372,7 @@ const App = () => {
 
             <footer className="footer">
                 <div className="footer-content">
-                    <span className="footer-logo">MyExplorer</span>
+                    <BrandLogo className="footer-logo" />
                     <span className="footer-copy">© 2026 MyExplorer. All rights reserved.</span>
                 </div>
             </footer>

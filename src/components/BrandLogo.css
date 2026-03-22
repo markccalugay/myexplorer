@@ -1,0 +1,21 @@
+.brand-logo {
+    display: inline-flex;
+    align-items: center;
+    color: inherit;
+    flex-shrink: 0;
+}
+
+.brand-logo__mark {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background-color: currentColor;
+    mask-image: var(--brand-logo-image);
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
+    -webkit-mask-image: var(--brand-logo-image);
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    -webkit-mask-size: contain;
+}

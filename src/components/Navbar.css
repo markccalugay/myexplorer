@@ -22,21 +22,13 @@
 .navbar-logo {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
     cursor: pointer;
 }
 
-.logo-icon {
+.navbar-brand-logo {
+    width: 176px;
+    height: 48px;
     color: var(--explorer-blue);
-    width: 32px;
-    height: 32px;
-}
-
-.logo-text {
-    font-family: var(--font-brand);
-    font-size: var(--size-h3);
-    font-weight: 700;
-    color: var(--deep-ocean);
 }
 
 .navbar-links {
@@ -111,8 +103,9 @@
         display: none;
     }
 
-    .logo-text {
-        font-size: 24px;
+    .navbar-brand-logo {
+        width: 152px;
+        height: 42px;
     }
 }
 
@@ -121,8 +114,9 @@
         padding: 10px 12px;
     }
 
-    .logo-text {
-        font-size: 20px;
+    .navbar-brand-logo {
+        width: 132px;
+        height: 36px;
     }
 
     .nav-btn {
