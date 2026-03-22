@@ -1,8 +1,9 @@
 import type { Stop } from '../types/trip';
 import type { AppPlace } from '../types/place';
 
-export const AUTO_PITSTOP_MIN_DURATION_MINUTES = 90;
-export const AUTO_PITSTOP_MULTI_STOP_DURATION_MINUTES = 180;
+export const AUTO_PITSTOP_SINGLE_DISTANCE_KM = 50;
+export const AUTO_PITSTOP_DOUBLE_DISTANCE_KM = 100;
+export const AUTO_PITSTOP_SINGLE_DURATION_MINUTES = 60;
 
 const toLocationKey = (location: google.maps.LatLngLiteral) => (
     `${location.lat.toFixed(6)}:${location.lng.toFixed(6)}`
@@ -23,12 +24,55 @@ export const getPitstopRouteKey = (stops: Stop[]) => {
         .join('|');
 };
 
-export const getAutoPitstopFractions = (durationMins: number) => {
-    if (durationMins < AUTO_PITSTOP_MIN_DURATION_MINUTES) {
+export const getMandatoryAutoPitstopCount = (distanceKm: number, durationMins: number) => {
+    if (distanceKm > AUTO_PITSTOP_DOUBLE_DISTANCE_KM) {
+        return 2;
+    }
+
+    if (distanceKm > AUTO_PITSTOP_SINGLE_DISTANCE_KM || durationMins > AUTO_PITSTOP_SINGLE_DURATION_MINUTES) {
+        return 1;
+    }
+
+    return 0;
+};
+
+export const getAutoPitstopFractions = (count: number) => {
+    if (count <= 0) {
         return [];
     }
 
-    return durationMins >= AUTO_PITSTOP_MULTI_STOP_DURATION_MINUTES ? [1 / 3, 2 / 3] : [1 / 2];
+    return count >= 2 ? [1 / 3, 2 / 3] : [1 / 2];
+};
+
+export const allocateAutoPitstopsByLeg = (
+    legs: Array<{ distanceKm: number; durationMins: number }>
+) => {
+    const totalDistanceKm = legs.reduce((sum, leg) => sum + Math.max(0, leg.distanceKm), 0);
+    const totalDurationMins = legs.reduce((sum, leg) => sum + Math.max(0, leg.durationMins), 0);
+    const totalPitstops = getMandatoryAutoPitstopCount(totalDistanceKm, totalDurationMins);
+    const counts = legs.map(() => 0);
+
+    if (!legs.length || totalPitstops === 0) {
+        return counts;
+    }
+
+    const sortedLegIndexes = legs
+        .map((leg, index) => ({ index, distanceKm: leg.distanceKm, durationMins: leg.durationMins }))
+        .sort((left, right) => {
+            if (right.durationMins !== left.durationMins) {
+                return right.durationMins - left.durationMins;
+            }
+
+            return right.distanceKm - left.distanceKm;
+        })
+        .map((leg) => leg.index);
+
+    for (let assignment = 0; assignment < totalPitstops; assignment += 1) {
+        const legIndex = sortedLegIndexes[Math.min(assignment, sortedLegIndexes.length - 1)];
+        counts[legIndex] += 1;
+    }
+
+    return counts;
 };
 
 export const dedupeStopsByLocation = <T extends { location: google.maps.LatLngLiteral; googleMapsUri?: string; id: string }>(stops: T[]) => {

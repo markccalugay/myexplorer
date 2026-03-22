@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-    AUTO_PITSTOP_MIN_DURATION_MINUTES,
+    allocateAutoPitstopsByLeg,
+    AUTO_PITSTOP_DOUBLE_DISTANCE_KM,
+    AUTO_PITSTOP_SINGLE_DISTANCE_KM,
+    AUTO_PITSTOP_SINGLE_DURATION_MINUTES,
     buildAutoPitstopId,
     dedupeStopsByLocation,
     getAutoPitstopFractions,
+    getMandatoryAutoPitstopCount,
     getPitstopPlanningStops,
     getPitstopRouteKey,
     mergeAutoPitstopsIntoTrip,
@@ -48,10 +52,33 @@ describe('autoPitstops helpers', () => {
         );
     });
 
-    it('returns pitstop fractions based on leg duration', () => {
-        expect(getAutoPitstopFractions(AUTO_PITSTOP_MIN_DURATION_MINUTES - 1)).toEqual([]);
-        expect(getAutoPitstopFractions(120)).toEqual([0.5]);
-        expect(getAutoPitstopFractions(180)).toEqual([1 / 3, 2 / 3]);
+    it('derives mandatory pitstop counts from total route distance and duration', () => {
+        expect(
+            getMandatoryAutoPitstopCount(
+                AUTO_PITSTOP_SINGLE_DISTANCE_KM - 1,
+                AUTO_PITSTOP_SINGLE_DURATION_MINUTES - 1
+            )
+        ).toBe(0);
+        expect(getMandatoryAutoPitstopCount(AUTO_PITSTOP_SINGLE_DISTANCE_KM + 1, 30)).toBe(1);
+        expect(getMandatoryAutoPitstopCount(20, AUTO_PITSTOP_SINGLE_DURATION_MINUTES + 1)).toBe(1);
+        expect(getMandatoryAutoPitstopCount(AUTO_PITSTOP_DOUBLE_DISTANCE_KM + 1, 30)).toBe(2);
+    });
+
+    it('returns pitstop fractions and allocates mandatory stops to the longest legs first', () => {
+        expect(getAutoPitstopFractions(0)).toEqual([]);
+        expect(getAutoPitstopFractions(1)).toEqual([0.5]);
+        expect(getAutoPitstopFractions(2)).toEqual([1 / 3, 2 / 3]);
+
+        expect(allocateAutoPitstopsByLeg([
+            { distanceKm: 20, durationMins: 25 },
+            { distanceKm: 35, durationMins: 40 },
+        ])).toEqual([0, 1]);
+
+        expect(allocateAutoPitstopsByLeg([
+            { distanceKm: 60, durationMins: 70 },
+            { distanceKm: 55, durationMins: 65 },
+            { distanceKm: 10, durationMins: 12 },
+        ])).toEqual([1, 1, 0]);
     });
 
     it('dedupes suggested pitstops by location and preserves manual stops in leg order when merging', () => {

@@ -13,6 +13,7 @@ import {
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { BASIC_PLACE_FIELDS, toAppPlace, fetchPlaceFromPrediction } from '../lib/googlePlaces';
 import {
+    allocateAutoPitstopsByLeg,
     buildAutoPitstopId,
     getAutoPitstopFractions,
     getPitstopPlanningStops,
@@ -551,15 +552,26 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         google.maps.importLibrary('places')
             .then(async () => {
                 const { Place, SearchNearbyRankPreference } = google.maps.places;
-                const pitstopsByLeg = await Promise.all(
-                    baseStops.slice(0, -1).map(async (startStop, index) => {
-                        const nextStop = baseStops[index + 1];
-                        const route = await computeDrivingRoute(google, startStop.location, nextStop.location);
-                        if (isStaleRequest()) {
-                            return [];
-                        }
+                const legRoutes = await Promise.all(
+                    baseStops.slice(0, -1).map(async (startStop, index) =>
+                        computeDrivingRoute(google, startStop.location, baseStops[index + 1].location)
+                    )
+                );
 
-                        const fractions = getAutoPitstopFractions(getRouteDurationMinutes(route));
+                if (isStaleRequest()) {
+                    return;
+                }
+
+                const pitstopCountsByLeg = allocateAutoPitstopsByLeg(
+                    legRoutes.map((route) => ({
+                        distanceKm: getRouteDistanceKm(route),
+                        durationMins: getRouteDurationMinutes(route),
+                    }))
+                );
+
+                const pitstopsByLeg = await Promise.all(
+                    legRoutes.map(async (route, index) => {
+                        const fractions = getAutoPitstopFractions(pitstopCountsByLeg[index] ?? 0);
                         if (!fractions.length) {
                             return [];
                         }

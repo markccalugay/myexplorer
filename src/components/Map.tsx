@@ -19,6 +19,11 @@ interface MapProps {
     directions?: AppRoute | null;
 }
 
+type ManagedMarker = {
+    marker: google.maps.marker.AdvancedMarkerElement;
+    pin: google.maps.marker.PinElement;
+};
+
 const MAP_INLINE_STYLES: google.maps.MapTypeStyle[] = [
     {
         featureType: 'poi',
@@ -36,10 +41,16 @@ const Map: React.FC<MapProps> = ({
 }) => {
     const mapRef = useRef<HTMLDivElement>(null);
     const googleMapRef = useRef<google.maps.Map | null>(null);
-    const markerRefs = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+    const markerRefs = useRef<globalThis.Map<string, ManagedMarker>>(new globalThis.Map());
+    const markerDataRef = useRef<globalThis.Map<string, MapMarker>>(new globalThis.Map());
+    const onMarkerClickRef = useRef(onMarkerClick);
     const routePolylineRef = useRef<google.maps.Polyline | null>(null);
     const { google } = useGoogleMaps();
     const mapId = getGoogleMapsMapId() || 'DEMO_MAP_ID';
+
+    useEffect(() => {
+        onMarkerClickRef.current = onMarkerClick;
+    }, [onMarkerClick]);
 
     useEffect(() => {
         if (google && mapRef.current && !googleMapRef.current) {
@@ -98,12 +109,24 @@ const Map: React.FC<MapProps> = ({
 
     useEffect(() => {
         if (google && googleMapRef.current) {
-            markerRefs.current.forEach((marker) => {
-                marker.map = null;
-            });
-            markerRefs.current = [];
+            const nextKeys = new Set<string>();
+            for (const options of markers) {
+                const markerKey = options.placeId || [
+                    options.title || 'marker',
+                    options.position.lat.toFixed(6),
+                    options.position.lng.toFixed(6),
+                    options.color || '#d93025',
+                ].join(':');
+                nextKeys.add(markerKey);
+                markerDataRef.current.set(markerKey, options);
 
-            markers.forEach((options) => {
+                const existing = markerRefs.current.get(markerKey);
+                if (existing) {
+                    existing.marker.position = options.position;
+                    existing.marker.title = options.title || '';
+                    continue;
+                }
+
                 const pin = new google.maps.marker.PinElement({
                     background: options.color || '#d93025',
                     borderColor: '#1f1f1f',
@@ -112,20 +135,34 @@ const Map: React.FC<MapProps> = ({
 
                 const marker = new google.maps.marker.AdvancedMarkerElement({
                     position: options.position,
-                    title: options.title,
+                    title: options.title || '',
                     content: pin,
                     map: googleMapRef.current
                 });
-                markerRefs.current.push(marker);
 
-                if (onMarkerClick) {
+                if (onMarkerClickRef.current) {
                     marker.addListener('click', () => {
-                        onMarkerClick(options);
+                        const nextMarker = markerDataRef.current.get(markerKey);
+                        if (nextMarker) {
+                            onMarkerClickRef.current?.(nextMarker);
+                        }
                     });
                 }
+
+                markerRefs.current.set(markerKey, { marker, pin });
+            }
+
+            Array.from(markerRefs.current.entries()).forEach(([markerKey, managedMarker]) => {
+                if (nextKeys.has(markerKey)) {
+                    return;
+                }
+
+                managedMarker.marker.map = null;
+                markerRefs.current.delete(markerKey);
+                markerDataRef.current.delete(markerKey);
             });
         }
-    }, [google, markers, onMarkerClick]);
+    }, [google, markers]);
 
     useEffect(() => {
         if (googleMapRef.current) {
@@ -136,7 +173,7 @@ const Map: React.FC<MapProps> = ({
 
     useEffect(() => {
         return () => {
-            markerRefs.current.forEach((marker) => {
+            markerRefs.current.forEach(({ marker }) => {
                 marker.map = null;
             });
             if (routePolylineRef.current) {
