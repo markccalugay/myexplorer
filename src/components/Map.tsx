@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { AppRoute, getRoutePath } from '../lib/googleRoutes';
+import { getGoogleMapsMapId } from '../lib/googleMapsConfig';
 import './SearchBar.css';
 
 interface MapMarker {
@@ -38,7 +39,7 @@ const Map: React.FC<MapProps> = ({
     const markerRefs = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
     const routePolylineRef = useRef<google.maps.Polyline | null>(null);
     const { google } = useGoogleMaps();
-    const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
+    const mapId = getGoogleMapsMapId() || 'DEMO_MAP_ID';
 
     useEffect(() => {
         if (google && mapRef.current && !googleMapRef.current) {

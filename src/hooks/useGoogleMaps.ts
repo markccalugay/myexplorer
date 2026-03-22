@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getGoogleMapsApiKey } from '../lib/googleMapsConfig';
 
 type GoogleMapsApi = typeof google;
 type GoogleMapsWindow = Window & typeof globalThis & {
@@ -7,10 +8,9 @@ type GoogleMapsWindow = Window & typeof globalThis & {
 };
 
 const getGoogleMapsApi = () => (window as GoogleMapsWindow).google;
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? '';
 const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-js-api';
 const GOOGLE_MAPS_MISSING_KEY_ERROR = new Error(
-    'Google Maps API key is missing. Set VITE_GOOGLE_MAPS_API_KEY to enable maps, places, and routing.'
+    'Google Maps API key is missing. Set VITE_GOOGLE_MAPS_API_KEY, then restart the Vite server or rebuild to enable maps, places, and routing.'
 );
 
 export const isGoogleMapsConfigurationError = (error: Error | null | undefined) =>
@@ -70,7 +70,8 @@ const loadGoogleMapsApi = (): Promise<GoogleMapsApi> => {
         return googleMapsLoadPromise;
     }
 
-    if (!GOOGLE_MAPS_API_KEY) {
+    const googleMapsApiKey = getGoogleMapsApiKey();
+    if (!googleMapsApiKey) {
         return Promise.reject(GOOGLE_MAPS_MISSING_KEY_ERROR);
     }
 
@@ -109,7 +110,7 @@ const loadGoogleMapsApi = (): Promise<GoogleMapsApi> => {
 
         const script = document.createElement('script');
         const params = new URLSearchParams({
-            key: GOOGLE_MAPS_API_KEY,
+            key: googleMapsApiKey,
             v: 'weekly',
             loading: 'async',
             libraries: 'maps,places,marker,routes',
@@ -139,8 +140,9 @@ export const retryGoogleMapsLoad = () => {
 };
 
 export const useGoogleMaps = () => {
+    const googleMapsApiKey = getGoogleMapsApiKey();
     const [googleMapsApi, setGoogleMapsApi] = useState<GoogleMapsApi | null>(() => getGoogleMapsApi() ?? null);
-    const [isLoading, setIsLoading] = useState(() => !getGoogleMapsApi() && Boolean(GOOGLE_MAPS_API_KEY));
+    const [isLoading, setIsLoading] = useState(() => !getGoogleMapsApi() && Boolean(googleMapsApiKey));
     const [error, setError] = useState<Error | null>(null);
     const [loaderGeneration, setLoaderGeneration] = useState(googleMapsLoaderGeneration);
 
