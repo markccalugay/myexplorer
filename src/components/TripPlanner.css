@@ -48,7 +48,7 @@
 .planner-tools {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 14px;
 }
 
 .planner-toolbox-shell {
@@ -129,7 +129,10 @@
 }
 
 .planner-toolbox-tabs {
-    display: none;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    padding: 0 20px 20px;
 }
 
 .planner-toolbox-panel {
@@ -138,6 +141,26 @@
 
 .planner-toolbox-panel.is-hidden {
     display: none;
+}
+
+.planner-toolbox-tab {
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 14px;
+    padding: 13px 12px;
+    background: rgba(255, 255, 255, 0.82);
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.planner-toolbox-tab.is-active {
+    background: linear-gradient(180deg, var(--explorer-blue) 0%, var(--deep-ocean) 100%);
+    color: #ffffff;
+    border-color: rgba(13, 71, 161, 0.22);
+    box-shadow: 0 10px 22px rgba(13, 71, 161, 0.18);
 }
 
 .favorites-panel {
@@ -261,22 +284,27 @@
 }
 
 .suggestions-teaser {
-    padding: 24px;
+    padding: 20px 22px;
     border-radius: 18px 18px 0 0;
-    border-top: 1px solid #eee;
-    background: #fcfcfc;
+    border: 1px solid rgba(26, 115, 232, 0.12);
+    border-bottom: none;
+    background:
+        radial-gradient(circle at top right, rgba(26, 115, 232, 0.14), transparent 38%),
+        linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
 }
 
 .suggestions-teaser h3 {
     margin: 0 0 8px 0;
     font-size: 16px;
-    font-weight: 600;
+    font-weight: 700;
+    color: var(--explorer-blue);
 }
 
 .suggestions-teaser p {
     margin: 0;
     font-size: 13px;
-    color: #888;
+    color: #5e738d;
+    line-height: 1.5;
 }
 
 .timeline-placeholder {
@@ -764,6 +792,7 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
+    min-width: 0;
 }
 
 .route-recommendation-card__title-group {
@@ -794,6 +823,14 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.08em;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.route-recommendation-card__title-group > div,
+.route-recommendation-vote-row__name {
+    min-width: 0;
 }
 
 .route-recommendation-card__header h4,
@@ -808,6 +845,8 @@
     margin-top: 10px;
     font-size: 20px;
     color: #1f2937;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .route-recommendation-card__timer {
@@ -835,6 +874,8 @@
     font-size: 14px;
     line-height: 1.55;
     color: #4b5563;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .route-recommendation-card__tally {
@@ -914,11 +955,14 @@
     font-size: 14px;
     font-weight: 700;
     color: #1f2937;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .route-recommendation-vote-row__actions {
     display: flex;
     gap: 8px;
+    flex-shrink: 0;
 }
 
 .route-recommendation-vote-btn {
@@ -1082,12 +1126,11 @@
     }
 
     .planner-toolbox-tabs {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 8px;
         position: sticky;
         bottom: 0;
         z-index: 5;
+        margin: 0 0 6px;
         padding: 8px;
         border-radius: 18px;
         background: rgba(255, 255, 255, 0.94);
@@ -1097,20 +1140,8 @@
     }
 
     .planner-toolbox-tab {
-        border: none;
         border-radius: 12px;
         padding: 12px 10px;
-        background: #f8fafc;
-        color: #64748b;
-        font-size: 12px;
-        font-weight: 800;
-        letter-spacing: 0.04em;
-        cursor: pointer;
-    }
-
-    .planner-toolbox-tab.is-active {
-        background: var(--explorer-blue);
-        color: #ffffff;
     }
 
     .planner-toolbox-panel {
@@ -1138,7 +1169,6 @@
     }
 
     .suggestions-teaser {
-        border-top: none;
         border-radius: 20px 20px 0 0;
     }
 
@@ -1171,5 +1201,15 @@
 
     .route-recommendation-vote-btn {
         flex: 1;
+    }
+}
+
+@media (max-width: 640px) {
+    .planner-toolbox-tabs {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .route-recommendation-card__header h4 {
+        font-size: 18px;
     }
 }

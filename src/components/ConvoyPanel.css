@@ -1,10 +1,12 @@
 .convoy-panel {
-    margin-top: 24px;
-    margin-bottom: 24px;
-    padding: 24px;
-    border-radius: 32px;
-    background: #fff5f1;
-    border: 1px solid rgba(251, 146, 60, 0.12);
+    margin: 0;
+    padding: 18px;
+    border-radius: 18px;
+    background:
+        radial-gradient(circle at top right, rgba(26, 115, 232, 0.14), transparent 38%),
+        linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+    border: 1px solid rgba(26, 115, 232, 0.12);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
 }
 
 .convoy-panel__grid {
@@ -22,14 +24,14 @@
 
 .convoy-panel__header h3 {
     margin: 0;
-    color: #7c2d12;
-    font-size: 22px;
-    font-weight: 900;
+    color: var(--explorer-blue);
+    font-size: 18px;
+    font-weight: 800;
 }
 
 .convoy-panel__header p {
     margin: 0;
-    color: #7c5c4b;
+    color: #5e738d;
     font-size: 13px;
     line-height: 1.5;
 }
@@ -37,30 +39,31 @@
 .convoy-summary-card {
     grid-column: span 1;
     min-height: 96px;
-    border-radius: 24px;
+    border-radius: 18px;
     padding: 16px;
     background: #ffffff;
-    border: 1px solid #f1f5f9;
+    border: 1px solid rgba(26, 115, 232, 0.1);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 8px;
     text-align: center;
+    box-shadow: 0 8px 20px rgba(18, 57, 102, 0.06);
 }
 
 .convoy-summary-card__label {
     font-size: 10px;
     font-weight: 700;
-    color: rgba(124, 45, 18, 0.5);
+    color: #5e738d;
     letter-spacing: 0.2em;
     text-transform: uppercase;
 }
 
 .convoy-summary-card strong {
     font-size: 24px;
-    font-weight: 900;
-    color: #1f2937;
+    font-weight: 800;
+    color: var(--deep-ocean);
     line-height: 1;
 }
 
@@ -78,7 +81,7 @@
 .convoy-action-btn {
     grid-column: span 2;
     min-height: 96px;
-    border-radius: 24px;
+    border-radius: 18px;
     padding: 18px;
     display: flex;
     align-items: center;
@@ -90,28 +93,29 @@
 }
 
 .convoy-action-btn--primary {
-    background: #e35d1c;
+    background: linear-gradient(180deg, var(--explorer-blue) 0%, var(--deep-ocean) 100%);
     color: #ffffff;
-    box-shadow: 0 12px 28px rgba(227, 93, 28, 0.2);
+    box-shadow: 0 12px 28px rgba(13, 71, 161, 0.18);
 }
 
 .convoy-action-btn--secondary {
-    background: rgba(227, 93, 28, 0.08);
-    color: #e35d1c;
-    border: 1px solid rgba(227, 93, 28, 0.14);
+    background: rgba(255, 255, 255, 0.86);
+    color: var(--deep-ocean);
+    border: 1px solid rgba(26, 115, 232, 0.14);
 }
 
 .convoy-primary-btn {
-    background: linear-gradient(135deg, #f97316, #c2410c);
+    background: linear-gradient(180deg, var(--explorer-blue) 0%, var(--deep-ocean) 100%);
     color: #fff;
     padding: 12px 14px;
-    box-shadow: 0 10px 24px rgba(194, 65, 12, 0.18);
+    box-shadow: 0 10px 24px rgba(13, 71, 161, 0.18);
 }
 
 .convoy-secondary-btn {
-    background: rgba(154, 52, 18, 0.08);
-    color: #9a3412;
+    background: rgba(255, 255, 255, 0.86);
+    color: var(--deep-ocean);
     padding: 10px 12px;
+    border: 1px solid rgba(26, 115, 232, 0.12);
 }
 
 .convoy-panel__notice,
@@ -119,8 +123,8 @@
     margin-top: 14px;
     padding: 12px 14px;
     border-radius: 12px;
-    background: rgba(154, 52, 18, 0.08);
-    color: #8c3b16;
+    background: rgba(26, 115, 232, 0.08);
+    color: #35516d;
     font-size: 13px;
     line-height: 1.5;
 }
@@ -143,7 +147,7 @@
     position: relative;
     width: min(100%, 520px);
     height: 100%;
-    background: #fffdfb;
+    background: #f8fbff;
     box-shadow: -20px 0 50px rgba(15, 23, 42, 0.16);
     display: flex;
     flex-direction: column;
@@ -151,7 +155,7 @@
 
 .convoy-overlay__header {
     padding: 24px;
-    border-bottom: 1px solid rgba(154, 52, 18, 0.12);
+    border-bottom: 1px solid rgba(26, 115, 232, 0.12);
     display: flex;
     justify-content: space-between;
     gap: 16px;
@@ -159,13 +163,13 @@
 
 .convoy-overlay__header h4 {
     margin: 0;
-    color: #7c2d12;
+    color: var(--deep-ocean);
     font-size: 22px;
 }
 
 .convoy-overlay__header p {
     margin: 8px 0 0;
-    color: #7c5c4b;
+    color: #5e738d;
     font-size: 13px;
     line-height: 1.5;
 }
@@ -206,7 +210,7 @@
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #9a3412;
+    color: var(--explorer-blue);
 }
 
 .convoy-form-grid input,
@@ -215,7 +219,7 @@
     width: 100%;
     padding: 12px 14px;
     border-radius: 12px;
-    border: 1px solid rgba(154, 52, 18, 0.16);
+    border: 1px solid rgba(26, 115, 232, 0.16);
     background: #fff;
     font-size: 14px;
 }
@@ -231,7 +235,7 @@
 .convoy-vehicle-card,
 .convoy-roster-section {
     border-radius: 16px;
-    border: 1px solid rgba(154, 52, 18, 0.1);
+    border: 1px solid rgba(26, 115, 232, 0.1);
     background: #fff;
     padding: 16px;
 }
@@ -244,7 +248,7 @@
 
 .convoy-vehicle-card strong,
 .convoy-roster-section h5 {
-    color: #7c2d12;
+    color: var(--deep-ocean);
 }
 
 .convoy-vehicle-card p,
@@ -265,8 +269,9 @@
 .convoy-vehicle-card__actions button,
 .convoy-toggle-group button {
     padding: 10px 12px;
-    background: rgba(154, 52, 18, 0.08);
-    color: #9a3412;
+    background: rgba(26, 115, 232, 0.08);
+    color: var(--deep-ocean);
+    border: 1px solid rgba(26, 115, 232, 0.12);
 }
 
 .convoy-vehicle-card__actions button:disabled {
@@ -281,7 +286,7 @@
 }
 
 .convoy-toggle-group button.is-active {
-    background: linear-gradient(135deg, #f97316, #c2410c);
+    background: linear-gradient(180deg, var(--explorer-blue) 0%, var(--deep-ocean) 100%);
     color: #fff;
 }
 
@@ -290,8 +295,8 @@
     margin-top: 10px;
     padding: 6px 10px;
     border-radius: 999px;
-    background: rgba(217, 119, 6, 0.12);
-    color: #b45309;
+    background: rgba(255, 112, 67, 0.12);
+    color: #c2410c;
     font-size: 12px;
     font-weight: 800;
 }

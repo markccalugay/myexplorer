@@ -12,6 +12,13 @@ import {
 } from '../types/trip';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { BASIC_PLACE_FIELDS, toAppPlace, fetchPlaceFromPrediction } from '../lib/googlePlaces';
+import {
+    buildAutoPitstopId,
+    getAutoPitstopFractions,
+    getPitstopPlanningStops,
+    getPitstopRouteKey,
+    mergeAutoPitstopsIntoTrip,
+} from '../lib/autoPitstops';
 import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
 import { getStopColor } from '../lib/stopColors';
 import { AppRoute, AppRouteStep, computeDrivingRoute, getRouteDistanceKm, getRouteDurationMinutes, getRoutePath, getRouteSteps } from '../lib/googleRoutes';
@@ -463,25 +470,6 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         });
     }, []);
 
-    const stripAutoSuggestedStops = useCallback((stops: Stop[]) => (
-        stops.filter((stop) => !stop.isAutoSuggested)
-    ), []);
-
-    const getEndpointRouteKey = useCallback((stops: Stop[]) => {
-        if (stops.length < 2) return null;
-
-        const start = stops[0]?.location;
-        const destination = stops[stops.length - 1]?.location;
-        if (!start || !destination) return null;
-
-        return [
-            start.lat.toFixed(6),
-            start.lng.toFixed(6),
-            destination.lat.toFixed(6),
-            destination.lng.toFixed(6),
-        ].join(':');
-    }, []);
-
     // ── Recalculate journey times + distances ──────────────────────────────────
     const calculateJourneyDetails = useCallback((stops: Stop[]) => {
         if (!google || stops.length < 2) return;
@@ -546,142 +534,106 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     const autoInsertPitstops = useCallback((stops: Stop[]) => {
         if (!google || stops.length < 2) return;
 
-        const start = stops[0];
-        const dest = stops[stops.length - 1];
-        const routeKey = getEndpointRouteKey(stops);
+        const baseStops = getPitstopPlanningStops(stops);
+        if (baseStops.length < 2) return;
+
+        const routeKey = getPitstopRouteKey(baseStops);
         if (!routeKey) return;
 
         autoPitstopInFlightRouteKeyRef.current = routeKey;
         const requestId = autoPitstopRequestIdRef.current + 1;
         autoPitstopRequestIdRef.current = requestId;
 
-        computeDrivingRoute(google, start.location, dest.location)
-            .then((route) => {
-                if (
-                    autoPitstopRequestIdRef.current !== requestId ||
-                    autoPitstopInFlightRouteKeyRef.current !== routeKey
-                ) {
-                    return;
-                }
+        const isStaleRequest = () => (
+            autoPitstopRequestIdRef.current !== requestId ||
+            autoPitstopInFlightRouteKeyRef.current !== routeKey
+        );
 
-                const durationMins = getRouteDurationMinutes(route);
-                const baseStops = stripAutoSuggestedStops(stops);
-
-                // Only insert pitstops for trips > 90 minutes
-                if (durationMins < 90) {
-                    autoPitstopRouteKeyRef.current = routeKey;
-                    autoPitstopInFlightRouteKeyRef.current = null;
-                    updateTrip((prev) => {
-                        const retyped = retypeStops(baseStops);
-                        return hasSameStopSequence(prev.stops, retyped)
-                            ? prev
-                            : { ...prev, stops: retyped };
-                    });
-                    return;
-                }
-
-                const path = getRoutePath(route).map((point) => new google.maps.LatLng(point));
-                if (!path.length) {
-                    autoPitstopRouteKeyRef.current = routeKey;
-                    autoPitstopInFlightRouteKeyRef.current = null;
-                    updateTrip((prev) => {
-                        const retyped = retypeStops(baseStops);
-                        return hasSameStopSequence(prev.stops, retyped)
-                            ? prev
-                            : { ...prev, stops: retyped };
-                    });
-                    return;
-                }
-
-                const fractions = durationMins >= 180 ? [1 / 3, 2 / 3] : [1 / 2];
-
-                const pitstopPromises: Promise<Stop | null>[] = fractions.map(async (fraction) => {
-                    const midpoint = interpolatePath(path, fraction);
-                    try {
-                        const response = await google.maps.places.Place.searchNearby({
-                            fields: [...BASIC_PLACE_FIELDS, 'primaryType'],
-                            includedPrimaryTypes: ['gas_station'],
-                            locationRestriction: {
-                                center: midpoint,
-                                radius: 5000,
-                            },
-                            maxResultCount: 1,
-                            rankPreference: google.maps.places.SearchNearbyRankPreference.DISTANCE,
-                            language: 'en',
-                            region: 'ph',
-                        });
-
-                        const place = response.places?.[0];
-                        const appPlace = place ? toAppPlace(place) : null;
-                        if (!appPlace) {
-                            return null;
+        google.maps.importLibrary('places')
+            .then(async () => {
+                const { Place, SearchNearbyRankPreference } = google.maps.places;
+                const pitstopsByLeg = await Promise.all(
+                    baseStops.slice(0, -1).map(async (startStop, index) => {
+                        const nextStop = baseStops[index + 1];
+                        const route = await computeDrivingRoute(google, startStop.location, nextStop.location);
+                        if (isStaleRequest()) {
+                            return [];
                         }
 
-                        const pitstop: Stop = {
-                            id: Math.random().toString(36).substr(2, 9),
-                            name: appPlace.name,
-                            formattedAddress: appPlace.formattedAddress,
-                            location: appPlace.location,
-                            type: 'stop',
-                            source: 'auto-pitstop',
-                            isAutoSuggested: true,
-                            category: 'Gas Station',
-                            googleMapsUri: appPlace.googleMapsUri,
-                        };
-                        return pitstop;
-                    } catch (error) {
-                        console.error('Failed to load an auto-suggested pitstop:', error);
-                        return null;
-                    }
-                });
+                        const fractions = getAutoPitstopFractions(getRouteDurationMinutes(route));
+                        if (!fractions.length) {
+                            return [];
+                        }
 
-                Promise.all(pitstopPromises).then((pitstops) => {
-                    if (
-                        autoPitstopRequestIdRef.current !== requestId ||
-                        autoPitstopInFlightRouteKeyRef.current !== routeKey
-                    ) {
-                        return;
-                    }
+                        const path = getRoutePath(route).map((point) => new google.maps.LatLng(point));
+                        if (!path.length) {
+                            return [];
+                        }
 
-                    const valid = pitstops
-                        .filter((pitstop): pitstop is Stop => pitstop !== null)
-                        .filter(
-                            (pitstop, index, list) =>
-                                list.findIndex(
-                                    (candidate) =>
-                                        candidate.location.lat === pitstop.location.lat &&
-                                        candidate.location.lng === pitstop.location.lng
-                                ) === index
-                        );
+                        const pitstops = await Promise.all(fractions.map(async (fraction) => {
+                            const midpoint = interpolatePath(path, fraction);
+                            try {
+                                const response = await Place.searchNearby({
+                                    fields: [...BASIC_PLACE_FIELDS, 'primaryType'],
+                                    includedPrimaryTypes: ['gas_station'],
+                                    locationRestriction: {
+                                        center: midpoint,
+                                        radius: 5000,
+                                    },
+                                    maxResultCount: 1,
+                                    rankPreference: SearchNearbyRankPreference.DISTANCE,
+                                    language: 'en',
+                                    region: 'ph',
+                                });
 
-                    updateTrip(prev => {
-                        // Insert pitstops between start and destination, preserving any manually-added stops.
-                        const manualStops = baseStops.filter((s) => s.type === 'stop');
-                        const newStops = [
-                            baseStops[0],
-                            ...manualStops,
-                            ...valid,
-                            baseStops[baseStops.length - 1],
-                        ];
-                        const retyped = retypeStops(newStops);
-                        autoPitstopRouteKeyRef.current = routeKey;
-                        autoPitstopInFlightRouteKeyRef.current = null;
-                        return hasSameStopSequence(prev.stops, retyped)
-                            ? prev
-                            : { ...prev, stops: retyped };
-                    });
+                                const place = response.places?.[0];
+                                const appPlace = place ? toAppPlace(place) : null;
+                                if (!appPlace) {
+                                    return null;
+                                }
+
+                                const pitstop: Stop = {
+                                    id: buildAutoPitstopId(appPlace),
+                                    name: appPlace.name,
+                                    formattedAddress: appPlace.formattedAddress,
+                                    location: appPlace.location,
+                                    type: 'stop',
+                                    source: 'auto-pitstop',
+                                    isAutoSuggested: true,
+                                    category: 'Gas Station',
+                                    googleMapsUri: appPlace.googleMapsUri,
+                                };
+                                return pitstop;
+                            } catch (error) {
+                                console.error('Failed to load an auto-suggested pitstop:', error);
+                                return null;
+                            }
+                        }));
+
+                        return pitstops.filter((pitstop): pitstop is Stop => pitstop !== null);
+                    })
+                );
+
+                if (isStaleRequest()) {
+                    return;
+                }
+
+                updateTrip((prev) => {
+                    const retyped = retypeStops(mergeAutoPitstopsIntoTrip(baseStops, pitstopsByLeg));
+                    autoPitstopRouteKeyRef.current = routeKey;
+                    autoPitstopInFlightRouteKeyRef.current = null;
+                    return hasSameStopSequence(prev.stops, retyped)
+                        ? prev
+                        : { ...prev, stops: retyped };
                 });
             })
             .catch((error) => {
-                if (
-                    autoPitstopRequestIdRef.current === requestId &&
-                    autoPitstopInFlightRouteKeyRef.current === routeKey
-                ) {
+                if (!isStaleRequest()) {
                     autoPitstopInFlightRouteKeyRef.current = null;
                 }
                 console.error('Failed to compute auto-pitstop route:', error);
             });
-    }, [google, getEndpointRouteKey, retypeStops, stripAutoSuggestedStops, updateTrip]);
+    }, [google, retypeStops, updateTrip]);
 
     // Trigger calculations whenever stops change (≥ 2)
     useEffect(() => {
@@ -689,7 +641,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         calculateJourneyDetails(trip.stops);
     }, [google, trip.stops, calculateJourneyDetails]);
 
-    // Trigger auto-pitstop insertion when we have exactly start + destination
+    // Trigger auto-pitstop insertion when the manual route shape changes
     useEffect(() => {
         if (!google || trip.stops.length < 2) {
             autoPitstopRouteKeyRef.current = null;
@@ -698,16 +650,17 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             return;
         }
 
-        const hasStart = trip.stops[0]?.type === 'start';
-        const hasDest = trip.stops[trip.stops.length - 1]?.type === 'destination';
-        const routeKey = getEndpointRouteKey(trip.stops);
+        const planningStops = getPitstopPlanningStops(trip.stops);
+        const hasStart = planningStops[0]?.type === 'start';
+        const hasDest = planningStops[planningStops.length - 1]?.type === 'destination';
+        const routeKey = getPitstopRouteKey(trip.stops);
         const shouldRefreshAutoPitstops =
             routeKey !== autoPitstopRouteKeyRef.current &&
             routeKey !== autoPitstopInFlightRouteKeyRef.current;
         if (hasStart && hasDest && shouldRefreshAutoPitstops) {
             autoInsertPitstops(trip.stops);
         }
-    }, [google, trip.stops, autoInsertPitstops, getEndpointRouteKey]);
+    }, [google, trip.stops, autoInsertPitstops]);
 
     // ── Handlers ──────────────────────────────────────────────────────────────
     const handleRemoveStop = (id: string) => {
@@ -1236,11 +1189,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     ];
     const isConvoyRecommendation = activeConvoyParticipants.length > 0;
     const showRecommendationCard = Boolean(recommendationSession && nextStop);
-    const showMobileToolbox = isMobilePlannerLayout && !isNavigating;
     const toolboxSections: PlannerToolboxSection[] = ['route-recs', 'saved-places', 'convoy'];
-    const openDesktopToolboxSections = isToolboxCollapsed ? [] : toolboxSections;
-    const visibleDesktopToolboxSections = showMobileToolbox ? [] : openDesktopToolboxSections;
-    const toolboxSummary = `${visibleDesktopToolboxSections.length || toolboxSections.length} panels`;
+    const toolboxSummary = `${toolboxSections.length} panels`;
     const saveButtonTitle = isDirty
         ? isSavedTrip
             ? 'Unsaved trip changes'
@@ -1581,139 +1531,137 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                     </button>
 
                                     {!isToolboxCollapsed && (
-                                        <div className={`planner-tools${showMobileToolbox ? ' planner-tools--mobile' : ''}`}>
-                                            {showMobileToolbox && (
-                                                <div className="planner-toolbox-tabs">
-                                                    <button
-                                                        type="button"
-                                                        className={activeMobileToolboxTab === 'route-recs' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
-                                                        onClick={() => setActiveMobileToolboxTab('route-recs')}
-                                                    >
-                                                        Route Recs
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className={activeMobileToolboxTab === 'saved-places' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
-                                                        onClick={() => setActiveMobileToolboxTab('saved-places')}
-                                                    >
-                                                        Saved Places
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className={activeMobileToolboxTab === 'convoy' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
-                                                        onClick={() => setActiveMobileToolboxTab('convoy')}
-                                                    >
-                                                        Convoy
-                                                    </button>
-                                                </div>
-                                            )}
-
-                                            <div className={showMobileToolbox && activeMobileToolboxTab !== 'convoy'
-                                                ? 'planner-toolbox-panel is-hidden'
-                                                : visibleDesktopToolboxSections.includes('convoy')
-                                                ? 'planner-toolbox-panel'
-                                                : 'planner-toolbox-panel is-hidden'}>
-                                        <ConvoyPanel
-                                            trip={trip}
-                                            defaultOverlay={convoyDefaultOverlay}
-                                            onOverlayHandled={onConvoyOverlayHandled}
-                                            onTripChange={updateTrip}
-                                        />
-                                    </div>
-
-                                            <div className={showMobileToolbox && activeMobileToolboxTab !== 'saved-places'
-                                                ? 'planner-toolbox-panel is-hidden'
-                                                : visibleDesktopToolboxSections.includes('saved-places')
-                                                ? 'planner-toolbox-panel'
-                                                : 'planner-toolbox-panel is-hidden'}>
-                                        <div className="favorites-panel">
-                                            <div className="favorites-panel__header">
-                                                <div>
-                                                    <h3>Saved Places</h3>
-                                                    <p>Save labels like Home, Office, or Grandpa's Place for one-tap route planning.</p>
-                                                </div>
-                                            </div>
-
-                                            <div className="favorites-panel__form">
-                                                <input
-                                                    type="text"
-                                                    className="favorite-label-input"
-                                                    placeholder="Favorite label"
-                                                    value={favoriteLabel}
-                                                    onChange={(event) => setFavoriteLabel(event.target.value)}
-                                                />
-                                                <PlaceAutocompleteInput
-                                                    key={favoriteInputKey}
-                                                    className="favorite-place-input"
-                                                    placeholder="Search for a favorite address"
-                                                    defaultValue={favoriteSearchValue}
-                                                    onSelect={async (prediction) => {
-                                                        const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
-                                                        if (!place) return;
-                                                        setFavoritePlaceDraft(place);
-                                                        setFavoriteSearchValue(place.name);
-                                                    }}
-                                                />
+                                        <div className={`planner-tools${isMobilePlannerLayout ? ' planner-tools--mobile' : ''}`}>
+                                            <div className="planner-toolbox-tabs" role="tablist" aria-label="Trip tools">
                                                 <button
-                                                    className="favorite-save-btn"
-                                                    onClick={handleSaveFavorite}
-                                                    disabled={!favoriteLabel.trim() || !favoritePlaceDraft}
+                                                    type="button"
+                                                    role="tab"
+                                                    aria-selected={activeMobileToolboxTab === 'route-recs'}
+                                                    className={activeMobileToolboxTab === 'route-recs' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
+                                                    onClick={() => setActiveMobileToolboxTab('route-recs')}
                                                 >
-                                                    Save Favorite
+                                                    Route Recs
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    role="tab"
+                                                    aria-selected={activeMobileToolboxTab === 'saved-places'}
+                                                    className={activeMobileToolboxTab === 'saved-places' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
+                                                    onClick={() => setActiveMobileToolboxTab('saved-places')}
+                                                >
+                                                    Saved Places
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    role="tab"
+                                                    aria-selected={activeMobileToolboxTab === 'convoy'}
+                                                    className={activeMobileToolboxTab === 'convoy' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
+                                                    onClick={() => setActiveMobileToolboxTab('convoy')}
+                                                >
+                                                    Convoy
                                                 </button>
                                             </div>
 
-                                            {favorites.length > 0 ? (
-                                                <div className="favorite-chip-grid">
-                                                    {favorites.map((favorite) => (
-                                                        <div className="favorite-chip" key={favorite.id}>
-                                                            <button
-                                                                type="button"
-                                                                className="favorite-chip__main"
-                                                                onClick={() => handleAddPlaceAsStop(favorite.place)}
-                                                            >
-                                                                <span className="favorite-chip__label">{favorite.label}</span>
-                                                                <span className="favorite-chip__address">
-                                                                    {favorite.place.formattedAddress || favorite.place.name}
-                                                                </span>
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                className="favorite-chip__remove"
-                                                                onClick={() => handleRemoveFavorite(favorite.id)}
-                                                                aria-label={`Remove ${favorite.label}`}
-                                                            >
-                                                                ×
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <p className="favorites-empty">
-                                                    No saved places yet. Add one above to reuse it for your origin, destination, or extra stops.
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                            <div className={showMobileToolbox && activeMobileToolboxTab !== 'route-recs'
-                                                ? 'planner-toolbox-panel is-hidden'
-                                                : visibleDesktopToolboxSections.includes('route-recs')
+                                            <div className={activeMobileToolboxTab === 'convoy'
                                                 ? 'planner-toolbox-panel'
                                                 : 'planner-toolbox-panel is-hidden'}>
-                                        <div className="suggestions-teaser">
-                                            <h3>Route Recommendations</h3>
-                                            <p>
-                                                {canRecommendPitstops
-                                                    ? selectedRecommendationCount > 0
-                                                        ? `With ${selectedRecommendationCount} travel preference${selectedRecommendationCount === 1 ? '' : 's'} selected, we will bias pitstop recommendations toward those needs along the drive.`
-                                                        : 'With an origin and final destination in place, we can recommend pitstops along the drive.'
-                                                    : 'Set your origin and final destination first, then we will recommend pitstops between them.'}
-                                            </p>
-                                        </div>
+                                                <ConvoyPanel
+                                                    trip={trip}
+                                                    defaultOverlay={convoyDefaultOverlay}
+                                                    onOverlayHandled={onConvoyOverlayHandled}
+                                                    onTripChange={updateTrip}
+                                                />
+                                            </div>
 
-                                        <FilterPanel onFilterChange={handleFilterChange} />
-                                    </div>
+                                            <div className={activeMobileToolboxTab === 'saved-places'
+                                                ? 'planner-toolbox-panel'
+                                                : 'planner-toolbox-panel is-hidden'}>
+                                                <div className="favorites-panel">
+                                                    <div className="favorites-panel__header">
+                                                        <div>
+                                                            <h3>Saved Places</h3>
+                                                            <p>Save labels like Home, Office, or Grandpa's Place for one-tap route planning.</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="favorites-panel__form">
+                                                        <input
+                                                            type="text"
+                                                            className="favorite-label-input"
+                                                            placeholder="Favorite label"
+                                                            value={favoriteLabel}
+                                                            onChange={(event) => setFavoriteLabel(event.target.value)}
+                                                        />
+                                                        <PlaceAutocompleteInput
+                                                            key={favoriteInputKey}
+                                                            className="favorite-place-input"
+                                                            placeholder="Search for a favorite address"
+                                                            defaultValue={favoriteSearchValue}
+                                                            onSelect={async (prediction) => {
+                                                                const place = await fetchPlaceFromPrediction(prediction, BASIC_PLACE_FIELDS);
+                                                                if (!place) return;
+                                                                setFavoritePlaceDraft(place);
+                                                                setFavoriteSearchValue(place.name);
+                                                            }}
+                                                        />
+                                                        <button
+                                                            className="favorite-save-btn"
+                                                            onClick={handleSaveFavorite}
+                                                            disabled={!favoriteLabel.trim() || !favoritePlaceDraft}
+                                                        >
+                                                            Save Favorite
+                                                        </button>
+                                                    </div>
+
+                                                    {favorites.length > 0 ? (
+                                                        <div className="favorite-chip-grid">
+                                                            {favorites.map((favorite) => (
+                                                                <div className="favorite-chip" key={favorite.id}>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="favorite-chip__main"
+                                                                        onClick={() => handleAddPlaceAsStop(favorite.place)}
+                                                                    >
+                                                                        <span className="favorite-chip__label">{favorite.label}</span>
+                                                                        <span className="favorite-chip__address">
+                                                                            {favorite.place.formattedAddress || favorite.place.name}
+                                                                        </span>
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="favorite-chip__remove"
+                                                                        onClick={() => handleRemoveFavorite(favorite.id)}
+                                                                        aria-label={`Remove ${favorite.label}`}
+                                                                    >
+                                                                        ×
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="favorites-empty">
+                                                            No saved places yet. Add one above to reuse it for your origin, destination, or extra stops.
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className={activeMobileToolboxTab === 'route-recs'
+                                                ? 'planner-toolbox-panel'
+                                                : 'planner-toolbox-panel is-hidden'}>
+                                                <div className="suggestions-teaser">
+                                                    <h3>Route Recommendations</h3>
+                                                    <p>
+                                                        {canRecommendPitstops
+                                                            ? selectedRecommendationCount > 0
+                                                                ? `With ${selectedRecommendationCount} travel preference${selectedRecommendationCount === 1 ? '' : 's'} selected, we will bias pitstop recommendations toward those needs along the drive.`
+                                                                : 'With an origin and final destination in place, we can recommend pitstops along the drive.'
+                                                            : 'Set your origin and final destination first, then we will recommend pitstops between them.'}
+                                                    </p>
+                                                </div>
+
+                                                <FilterPanel onFilterChange={handleFilterChange} />
+                                            </div>
                                         </div>
                                     )}
                                 </section>
