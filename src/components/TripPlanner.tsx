@@ -55,6 +55,7 @@ interface RecommendationFilters {
 }
 
 type MobileToolboxTab = 'route-recs' | 'saved-places' | 'convoy';
+type PlannerToolboxSection = MobileToolboxTab;
 
 // Helper: interpolate a fraction (0–1) along an encoded polyline path
 const interpolatePath = (
@@ -352,6 +353,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         essentials: [],
     });
     const [activeMobileToolboxTab, setActiveMobileToolboxTab] = useState<MobileToolboxTab>('route-recs');
+    const [isToolboxCollapsed, setIsToolboxCollapsed] = useState(false);
     const [isMobilePlannerLayout, setIsMobilePlannerLayout] = useState(false);
     const [recommendationSession, setRecommendationSession] = useState<ActiveNavigationRecommendationSession | null>(null);
     const [recommendationNowMs, setRecommendationNowMs] = useState(() => Date.now());
@@ -413,6 +415,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             essentials: [],
         });
         setActiveMobileToolboxTab('route-recs');
+        setIsToolboxCollapsed(false);
         setRecommendationSession(null);
         setRecommendationNowMs(Date.now());
         autoPitstopRouteKeyRef.current = null;
@@ -1234,6 +1237,25 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     const isConvoyRecommendation = activeConvoyParticipants.length > 0;
     const showRecommendationCard = Boolean(recommendationSession && nextStop);
     const showMobileToolbox = isMobilePlannerLayout && !isNavigating;
+    const toolboxSections: PlannerToolboxSection[] = ['route-recs', 'saved-places', 'convoy'];
+    const openDesktopToolboxSections = isToolboxCollapsed ? [] : toolboxSections;
+    const visibleDesktopToolboxSections = showMobileToolbox ? [] : openDesktopToolboxSections;
+    const toolboxSummary = `${visibleDesktopToolboxSections.length || toolboxSections.length} panels`;
+    const saveButtonTitle = isDirty
+        ? isSavedTrip
+            ? 'Unsaved trip changes'
+            : 'Save this trip to Bookings'
+        : isSavedTrip
+        ? 'All trip changes saved'
+        : 'Save this trip to Bookings';
+    const saveButtonDescription = isDirty
+        ? 'Save before leaving if you want these route updates available from Bookings.'
+        : isSavedTrip
+        ? 'You can reopen this trip from Bookings and start it later with one tap.'
+        : 'You can reopen this trip from Bookings and start it later with one tap.';
+    const saveButtonLabel = isSavedTrip
+        ? (isDirty ? 'Save trip changes' : 'Trip saved')
+        : 'Save trip';
 
     return (
         <div className="trip-planner-view">
@@ -1541,36 +1563,56 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                     </div>
                                 )}
 
-                                <div className={`planner-tools${showMobileToolbox ? ' planner-tools--mobile' : ''}`}>
-                                    {showMobileToolbox && (
-                                        <div className="planner-toolbox-tabs">
-                                            <button
-                                                type="button"
-                                                className={activeMobileToolboxTab === 'route-recs' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
-                                                onClick={() => setActiveMobileToolboxTab('route-recs')}
-                                            >
-                                                Route Recs
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={activeMobileToolboxTab === 'saved-places' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
-                                                onClick={() => setActiveMobileToolboxTab('saved-places')}
-                                            >
-                                                Saved Places
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={activeMobileToolboxTab === 'convoy' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
-                                                onClick={() => setActiveMobileToolboxTab('convoy')}
-                                            >
-                                                Convoy
-                                            </button>
+                                <section className={isToolboxCollapsed ? 'planner-toolbox-shell is-collapsed' : 'planner-toolbox-shell'}>
+                                    <button
+                                        type="button"
+                                        className="planner-toolbox-toggle"
+                                        aria-expanded={!isToolboxCollapsed}
+                                        onClick={() => setIsToolboxCollapsed((previous) => !previous)}
+                                    >
+                                        <div className="planner-toolbox-toggle__copy">
+                                            <span className="planner-toolbox-toggle__eyebrow">Trip tools</span>
+                                            <strong>Convoy, saved places, and route recommendations</strong>
                                         </div>
-                                    )}
+                                        <div className="planner-toolbox-toggle__meta">
+                                            <span className="planner-toolbox-toggle__summary">{toolboxSummary}</span>
+                                            <span className="planner-toolbox-toggle__chevron" aria-hidden="true">⌄</span>
+                                        </div>
+                                    </button>
 
-                                    <div className={showMobileToolbox && activeMobileToolboxTab !== 'convoy'
-                                        ? 'planner-toolbox-panel is-hidden'
-                                        : 'planner-toolbox-panel'}>
+                                    {!isToolboxCollapsed && (
+                                        <div className={`planner-tools${showMobileToolbox ? ' planner-tools--mobile' : ''}`}>
+                                            {showMobileToolbox && (
+                                                <div className="planner-toolbox-tabs">
+                                                    <button
+                                                        type="button"
+                                                        className={activeMobileToolboxTab === 'route-recs' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
+                                                        onClick={() => setActiveMobileToolboxTab('route-recs')}
+                                                    >
+                                                        Route Recs
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className={activeMobileToolboxTab === 'saved-places' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
+                                                        onClick={() => setActiveMobileToolboxTab('saved-places')}
+                                                    >
+                                                        Saved Places
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className={activeMobileToolboxTab === 'convoy' ? 'planner-toolbox-tab is-active' : 'planner-toolbox-tab'}
+                                                        onClick={() => setActiveMobileToolboxTab('convoy')}
+                                                    >
+                                                        Convoy
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            <div className={showMobileToolbox && activeMobileToolboxTab !== 'convoy'
+                                                ? 'planner-toolbox-panel is-hidden'
+                                                : visibleDesktopToolboxSections.includes('convoy')
+                                                ? 'planner-toolbox-panel'
+                                                : 'planner-toolbox-panel is-hidden'}>
                                         <ConvoyPanel
                                             trip={trip}
                                             defaultOverlay={convoyDefaultOverlay}
@@ -1579,9 +1621,11 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                         />
                                     </div>
 
-                                    <div className={showMobileToolbox && activeMobileToolboxTab !== 'saved-places'
-                                        ? 'planner-toolbox-panel is-hidden'
-                                        : 'planner-toolbox-panel'}>
+                                            <div className={showMobileToolbox && activeMobileToolboxTab !== 'saved-places'
+                                                ? 'planner-toolbox-panel is-hidden'
+                                                : visibleDesktopToolboxSections.includes('saved-places')
+                                                ? 'planner-toolbox-panel'
+                                                : 'planner-toolbox-panel is-hidden'}>
                                         <div className="favorites-panel">
                                             <div className="favorites-panel__header">
                                                 <div>
@@ -1652,9 +1696,11 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                         </div>
                                     </div>
 
-                                    <div className={showMobileToolbox && activeMobileToolboxTab !== 'route-recs'
-                                        ? 'planner-toolbox-panel is-hidden'
-                                        : 'planner-toolbox-panel'}>
+                                            <div className={showMobileToolbox && activeMobileToolboxTab !== 'route-recs'
+                                                ? 'planner-toolbox-panel is-hidden'
+                                                : visibleDesktopToolboxSections.includes('route-recs')
+                                                ? 'planner-toolbox-panel'
+                                                : 'planner-toolbox-panel is-hidden'}>
                                         <div className="suggestions-teaser">
                                             <h3>Route Recommendations</h3>
                                             <p>
@@ -1668,7 +1714,9 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
                                         <FilterPanel onFilterChange={handleFilterChange} />
                                     </div>
-                                </div>
+                                        </div>
+                                    )}
+                                </section>
                             </div>
                         </>
                     )}
@@ -1705,22 +1753,6 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                         )}
 
                         <div className="planner-save-bar">
-                            <div className="planner-save-copy">
-                                <span className="planner-save-title">
-                                    {isDirty
-                                        ? isSavedTrip
-                                            ? 'Unsaved trip changes'
-                                            : 'Trip not saved yet'
-                                        : isSavedTrip
-                                        ? 'All trip changes saved'
-                                        : 'Save this trip to Bookings'}
-                                </span>
-                                <span className="planner-save-description">
-                                    {isDirty
-                                        ? 'Save before leaving if you want these route updates available from Bookings.'
-                                        : 'You can reopen this trip from Bookings and start it later with one tap.'}
-                                </span>
-                            </div>
                             <div className="planner-primary-actions">
                                 <button
                                     className="start-trip-btn planner-start-trip-btn"
@@ -1733,15 +1765,43 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                         ? 'Start Trip'
                                         : 'Add Destination to Start'}
                                 </button>
-                                <button
-                                    type="button"
-                                    className="save-trip-btn save-trip-btn--compact"
-                                    onClick={() => onSaveTrip(trip)}
-                                    disabled={!isDirty && isSavedTrip}
-                                    aria-label={isSavedTrip ? (isDirty ? 'Save changes' : 'Saved') : 'Save trip'}
-                                >
-                                    {isSavedTrip ? (isDirty ? 'Save' : '✓') : 'Save'}
-                                </button>
+                                <div className="save-trip-button-wrap">
+                                    <button
+                                        type="button"
+                                        className="save-trip-btn save-trip-btn--compact"
+                                        onClick={() => onSaveTrip(trip)}
+                                        disabled={!isDirty && isSavedTrip}
+                                        aria-label={saveButtonLabel}
+                                    >
+                                        <svg
+                                            className="save-trip-btn__icon"
+                                            viewBox="0 0 24 24"
+                                            aria-hidden="true"
+                                        >
+                                            <path
+                                                d="M7 4.75h10a1.25 1.25 0 0 1 1.25 1.25v13.86a.4.4 0 0 1-.66.3L12 15.36l-5.59 4.8a.4.4 0 0 1-.66-.3V6A1.25 1.25 0 0 1 7 4.75Z"
+                                                fill={isSavedTrip && !isDirty ? 'currentColor' : 'none'}
+                                                stroke="currentColor"
+                                                strokeWidth="1.7"
+                                                strokeLinejoin="round"
+                                            />
+                                            {isSavedTrip && !isDirty && (
+                                                <path
+                                                    d="m9.3 10.9 1.8 1.8 3.6-3.9"
+                                                    fill="none"
+                                                    stroke="#1a73e8"
+                                                    strokeWidth="1.9"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                />
+                                            )}
+                                        </svg>
+                                    </button>
+                                    <div className="save-trip-tooltip" role="tooltip">
+                                        <span className="save-trip-tooltip__title">{saveButtonTitle}</span>
+                                        <span className="save-trip-tooltip__description">{saveButtonDescription}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
