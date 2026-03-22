@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     Convoy,
     ConvoyInviteMethod,
@@ -66,9 +66,11 @@ export const ConvoyPanel: React.FC<ConvoyPanelProps> = ({
     onTripChange,
 }) => {
     const [activeOverlay, setActiveOverlay] = useState<ConvoyOverlay>(defaultOverlay);
+    const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [seatCapacityDraft, setSeatCapacityDraft] = useState('');
     const [vehicleNotesDraft, setVehicleNotesDraft] = useState('');
     const [inviteDraft, setInviteDraft] = useState<InviteDraft>(createEmptyInviteDraft);
+    const helpRef = useRef<HTMLDivElement | null>(null);
 
     const convoy = trip.convoy;
     const vehicles = useMemo(() => sortVehicles(convoy?.vehicles ?? []), [convoy?.vehicles]);
@@ -221,11 +223,76 @@ export const ConvoyPanel: React.FC<ConvoyPanelProps> = ({
           createMembers(inviteDraft.memberNames).length > 0 &&
           vehicles.length > 0;
 
+    useEffect(() => {
+        if (!isHelpOpen) return;
+
+        const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+            if (!helpRef.current?.contains(event.target as Node)) {
+                setIsHelpOpen(false);
+            }
+        };
+
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setIsHelpOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('touchstart', handlePointerDown);
+        document.addEventListener('keydown', handleEscape);
+
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('touchstart', handlePointerDown);
+            document.removeEventListener('keydown', handleEscape);
+        };
+    }, [isHelpOpen]);
+
     return (
         <div className="convoy-panel">
             <div className="convoy-panel__grid">
                 <div className="convoy-panel__header">
-                    <h3>Convoy</h3>
+                    <div className="convoy-panel__heading-row">
+                        <h3>Convoy</h3>
+                        <div
+                            ref={helpRef}
+                            className={isHelpOpen ? 'convoy-help is-open' : 'convoy-help'}
+                        >
+                            <button
+                                type="button"
+                                className="convoy-help__trigger"
+                                aria-expanded={isHelpOpen}
+                                aria-haspopup="dialog"
+                                aria-controls="convoy-help-popover"
+                                aria-label="How convoy works"
+                                onClick={() => setIsHelpOpen((current) => !current)}
+                            >
+                                i
+                            </button>
+                            <div
+                                id="convoy-help-popover"
+                                className="convoy-help__popover"
+                                role="dialog"
+                                aria-label="How to use convoy"
+                            >
+                                <div className="convoy-help__popover-header">
+                                    <strong>How convoy works</strong>
+                                    <button
+                                        type="button"
+                                        className="convoy-help__close"
+                                        aria-label="Close convoy help"
+                                        onClick={() => setIsHelpOpen(false)}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                                <p>Use Convoy to organize multiple cars for one trip and keep everyone assigned.</p>
+                                <p>Start by adding your vehicles, then invite solo travelers or families, and finally review assignments to place each person in the right car.</p>
+                                <p>The summary cards show how many vehicles and travelers you have, how many are already assigned, and whether any seat-capacity warnings still need attention.</p>
+                            </div>
+                        </div>
+                    </div>
                     <p>Coordinate vehicles, add people, and let families place themselves into the convoy.</p>
                 </div>
 
