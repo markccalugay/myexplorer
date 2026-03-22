@@ -62,7 +62,6 @@ interface RecommendationFilters {
 }
 
 type MobileToolboxTab = 'route-recs' | 'saved-places' | 'convoy';
-type PlannerToolboxSection = MobileToolboxTab;
 
 // Helper: interpolate a fraction (0–1) along an encoded polyline path
 const interpolatePath = (
@@ -1189,8 +1188,6 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     ];
     const isConvoyRecommendation = activeConvoyParticipants.length > 0;
     const showRecommendationCard = Boolean(recommendationSession && nextStop);
-    const toolboxSections: PlannerToolboxSection[] = ['route-recs', 'saved-places', 'convoy'];
-    const toolboxSummary = `${toolboxSections.length} panels`;
     const saveButtonTitle = isDirty
         ? isSavedTrip
             ? 'Unsaved trip changes'
@@ -1525,7 +1522,6 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                             <strong>Convoy, saved places, and route recommendations</strong>
                                         </div>
                                         <div className="planner-toolbox-toggle__meta">
-                                            <span className="planner-toolbox-toggle__summary">{toolboxSummary}</span>
                                             <span className="planner-toolbox-toggle__chevron" aria-hidden="true">⌄</span>
                                         </div>
                                     </button>

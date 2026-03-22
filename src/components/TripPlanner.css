@@ -103,18 +103,8 @@
 .planner-toolbox-toggle__meta {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 0;
     flex-shrink: 0;
-}
-
-.planner-toolbox-toggle__summary {
-    padding: 8px 12px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.86);
-    border: 1px solid rgba(148, 163, 184, 0.18);
-    font-size: 12px;
-    font-weight: 700;
-    color: #49627f;
 }
 
 .planner-toolbox-toggle__chevron {

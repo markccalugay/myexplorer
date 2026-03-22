@@ -229,21 +229,29 @@ export const ConvoyPanel: React.FC<ConvoyPanelProps> = ({
                     <p>Coordinate vehicles, add people, and let families place themselves into the convoy.</p>
                 </div>
 
-                <div className="convoy-summary-card">
+                <div className="convoy-summary-stat">
                     <span className="convoy-summary-card__label">Vehicles</span>
-                    <strong>{vehicles.length}</strong>
+                    <div className="convoy-summary-card">
+                        <strong>{vehicles.length}</strong>
+                    </div>
                 </div>
-                <div className="convoy-summary-card">
+                <div className="convoy-summary-stat">
                     <span className="convoy-summary-card__label">Travelers</span>
-                    <strong>{totalMembers}</strong>
+                    <div className="convoy-summary-card">
+                        <strong>{totalMembers}</strong>
+                    </div>
                 </div>
-                <div className="convoy-summary-card">
+                <div className="convoy-summary-stat">
                     <span className="convoy-summary-card__label">Assigned</span>
-                    <strong>{assignedMembers}</strong>
+                    <div className="convoy-summary-card">
+                        <strong>{assignedMembers}</strong>
+                    </div>
                 </div>
-                <div className="convoy-summary-card">
+                <div className="convoy-summary-stat">
                     <span className="convoy-summary-card__label">Warnings</span>
-                    <strong>{warnings}</strong>
+                    <div className="convoy-summary-card">
+                        <strong>{warnings}</strong>
+                    </div>
                 </div>
 
                 <button type="button" className="convoy-action-btn convoy-action-btn--primary" onClick={() => openOverlay('vehicles')}>
