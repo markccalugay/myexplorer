@@ -9,7 +9,7 @@ import { TripPlanner } from './components/TripPlanner';
 import { ExplorePage } from './components/ExplorePage';
 import { Bookings } from './components/Bookings';
 import { BrandLogo } from './components/BrandLogo';
-import { useGoogleMaps } from './hooks/useGoogleMaps';
+import { isGoogleMapsConfigurationError, useGoogleMaps } from './hooks/useGoogleMaps';
 import { usePlaces } from './hooks/usePlaces';
 import { usePitstops } from './hooks/usePitstops';
 import { Convoy, Trip } from './types/trip';
@@ -89,6 +89,7 @@ const App = () => {
         isLoading: googleMapsIsLoading,
         retry: retryGoogleMaps,
     } = useGoogleMaps();
+    const isGoogleMapsConfigError = isGoogleMapsConfigurationError(googleMapsError);
 
     const setCurrentTrip = (updater: Trip | ((previousTrip: Trip) => Trip)) => {
         setTripState((previousState) => ({
@@ -271,14 +272,16 @@ const App = () => {
                         <strong>Maps services are unavailable.</strong>
                         <span>{googleMapsError.message}</span>
                     </div>
-                    <button
-                        type="button"
-                        className="maps-alert__retry"
-                        onClick={retryGoogleMaps}
-                        disabled={googleMapsIsLoading}
-                    >
-                        {googleMapsIsLoading ? 'Retrying...' : 'Retry Maps'}
-                    </button>
+                    {!isGoogleMapsConfigError && (
+                        <button
+                            type="button"
+                            className="maps-alert__retry"
+                            onClick={retryGoogleMaps}
+                            disabled={googleMapsIsLoading}
+                        >
+                            {googleMapsIsLoading ? 'Retrying...' : 'Retry Maps'}
+                        </button>
+                    )}
                 </div>
             )}
 

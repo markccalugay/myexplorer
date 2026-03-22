@@ -13,6 +13,9 @@ const GOOGLE_MAPS_MISSING_KEY_ERROR = new Error(
     'Google Maps API key is missing. Set VITE_GOOGLE_MAPS_API_KEY to enable maps, places, and routing.'
 );
 
+export const isGoogleMapsConfigurationError = (error: Error | null | undefined) =>
+    error?.message === GOOGLE_MAPS_MISSING_KEY_ERROR.message;
+
 let googleMapsLoadPromise: Promise<GoogleMapsApi> | null = null;
 let googleMapsScriptElement: HTMLScriptElement | null = null;
 let googleMapsLoadRequestId = 0;
@@ -43,6 +46,10 @@ const subscribeGoogleMapsLoader = (listener: () => void) => {
 };
 
 const reportGoogleMapsError = (error: Error) => {
+    if (isGoogleMapsConfigurationError(error)) {
+        return;
+    }
+
     const errorKey = `${googleMapsLoadRequestId}:${error.message}`;
     if (googleMapsLastLoggedErrorKey === errorKey) {
         return;
@@ -133,7 +140,7 @@ export const retryGoogleMapsLoad = () => {
 
 export const useGoogleMaps = () => {
     const [googleMapsApi, setGoogleMapsApi] = useState<GoogleMapsApi | null>(() => getGoogleMapsApi() ?? null);
-    const [isLoading, setIsLoading] = useState(() => !getGoogleMapsApi());
+    const [isLoading, setIsLoading] = useState(() => !getGoogleMapsApi() && Boolean(GOOGLE_MAPS_API_KEY));
     const [error, setError] = useState<Error | null>(null);
     const [loaderGeneration, setLoaderGeneration] = useState(googleMapsLoaderGeneration);
 
