@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useCallback } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { Navbar } from './components/Navbar';
 import { SearchBar } from './components/SearchBar';
 import { DestinationCard } from './components/Card';
@@ -379,6 +380,8 @@ const App = () => {
                     <span className="footer-copy">© 2026 MyExplorer. All rights reserved.</span>
                 </div>
             </footer>
+            
+            <Analytics />
         </div>
     );
 };
