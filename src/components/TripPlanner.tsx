@@ -26,6 +26,13 @@ import { AppRoute, AppRouteStep, computeDrivingRoute, getRouteDistanceKm, getRou
 import { AppPlace } from '../types/place';
 import { ConvoyPanel } from './ConvoyPanel';
 import { RecommendationIcon, resolveRecommendationIcon } from './RecommendationIcon';
+import {
+    createStopFromPlace,
+    hasJourneyDetailsChanged,
+    hasSameStopSequence,
+    resetJourneyFields,
+    retypeStops,
+} from '../lib/stopSequence';
 import './TripPlanner.css';
 
 interface TripPlannerProps {
@@ -123,30 +130,6 @@ const formatCountdown = (remainingMs: number) => {
     const seconds = totalSeconds % 60;
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
-
-const hasJourneyDetailsChanged = (previousStops: Stop[], nextStops: Stop[]) =>
-    previousStops.length !== nextStops.length ||
-    previousStops.some((stop, index) => {
-        const nextStop = nextStops[index];
-        return (
-            stop.distanceFromPrevious !== nextStop.distanceFromPrevious ||
-            stop.durationFromPrevious !== nextStop.durationFromPrevious ||
-            stop.arrivalTime !== nextStop.arrivalTime
-        );
-    });
-
-const hasSameStopSequence = (previousStops: Stop[], nextStops: Stop[]) =>
-    previousStops.length === nextStops.length &&
-    previousStops.every((stop, index) => {
-        const nextStop = nextStops[index];
-        return (
-            stop.id === nextStop.id &&
-            stop.type === nextStop.type &&
-            stop.isAutoSuggested === nextStop.isAutoSuggested &&
-            stop.location.lat === nextStop.location.lat &&
-            stop.location.lng === nextStop.location.lng
-        );
-    });
 
 const stripInstructionMarkup = (instruction?: string | null) => {
     if (!instruction) return 'Continue on the current road';
@@ -307,25 +290,6 @@ const reverseGeocodeLocation = async (
     }
 };
 
-const createStopFromPlace = (
-    place: Pick<AppPlace, 'name' | 'formattedAddress' | 'location'>,
-    type: Stop['type']
-): Stop => ({
-    id: Math.random().toString(36).substr(2, 9),
-    name: place.name,
-    formattedAddress: place.formattedAddress,
-    location: place.location,
-    type,
-    source: 'manual',
-});
-
-const resetJourneyFields = (stop: Stop): Stop => ({
-    ...stop,
-    distanceFromPrevious: undefined,
-    durationFromPrevious: undefined,
-    arrivalTime: undefined,
-});
-
 export const TripPlanner: React.FC<TripPlannerProps> = ({
     trip: initialTrip,
     onTripChange,
@@ -461,15 +425,6 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     }, [isNavigating, tripStartedAt]);
 
     // ── Retype stops so first=start, last=destination ─────────────────────────
-    const retypeStops = useCallback((stops: Stop[]): Stop[] => {
-        if (stops.length === 0) return stops;
-        return stops.map((s, i) => {
-            if (i === 0) return { ...s, type: 'start' };
-            if (i === stops.length - 1) return { ...s, type: 'destination' };
-            return { ...s, type: 'stop' };
-        });
-    }, []);
-
     // ── Recalculate journey times + distances ──────────────────────────────────
     const calculateJourneyDetails = useCallback((stops: Stop[]) => {
         if (!google || stops.length < 2) return;
@@ -644,7 +599,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                 }
                 console.error('Failed to compute auto-pitstop route:', error);
             });
-    }, [google, retypeStops, updateTrip]);
+    }, [google, updateTrip]);
 
     // Trigger calculations whenever stops change (≥ 2)
     useEffect(() => {
@@ -716,7 +671,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         });
         setOriginLocationError(null);
         setIsAddingStop(false);
-    }, [retypeStops, updateTrip]);
+    }, [updateTrip]);
 
     const handleUseCurrentLocationAsOrigin = useCallback(async () => {
         if (trip.stops.length > 0) return;
@@ -858,7 +813,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                 resultLabel,
             };
         });
-    }, [activeConvoyParticipants.length, retypeStops, updateTrip]);
+    }, [activeConvoyParticipants.length, updateTrip]);
 
     const handleVoteRecommendation = useCallback((participantId: string, vote: RecommendationVote) => {
         setRecommendationSession((current) => {

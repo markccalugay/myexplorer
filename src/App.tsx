@@ -12,9 +12,10 @@ import { BrandLogo } from './components/BrandLogo';
 import { isGoogleMapsConfigurationError, useGoogleMaps } from './hooks/useGoogleMaps';
 import { usePlaces } from './hooks/usePlaces';
 import { usePitstops } from './hooks/usePitstops';
-import { Convoy, Trip } from './types/trip';
+import { Trip } from './types/trip';
 import { AppPlace } from './types/place';
 import { AppRoute } from './lib/googleRoutes';
+import { createEmptyTrip, cloneTrip, normalizeLoadedTrip, normalizeTrip, type LegacyTrip } from './lib/tripDocument';
 import './App.css';
 
 import hotelImg from './assets/hotel.png';
@@ -28,15 +29,6 @@ interface TripState {
     tripBaselineSnapshot: string | null;
 }
 type PlannerOverlayIntent = 'vehicles' | 'invite' | 'assignments' | null;
-type LegacyTrip = Trip & { convey?: Convoy };
-
-const createTripId = () => `trip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-const createEmptyTrip = (): Trip => ({
-    id: createTripId(),
-    name: 'New Adventure',
-    stops: [],
-});
 
 const createInitialTripState = (): TripState => {
     const trip = createEmptyTrip();
@@ -45,22 +37,6 @@ const createInitialTripState = (): TripState => {
         tripBaselineSnapshot: normalizeTrip(trip),
     };
 };
-
-const normalizeLoadedTrip = (trip: LegacyTrip): Trip => {
-    const { convey, ...rest } = trip;
-    return {
-        ...rest,
-        convoy: trip.convoy ?? convey,
-    };
-};
-
-const cloneTrip = (trip: LegacyTrip): Trip => normalizeLoadedTrip(JSON.parse(JSON.stringify(trip)) as LegacyTrip);
-
-const normalizeTrip = (trip: LegacyTrip) => JSON.stringify({
-    ...normalizeLoadedTrip(trip),
-    savedAt: undefined,
-    updatedAt: undefined,
-});
 
 const App = () => {
     const [center, setCenter] = useState({ lat: 14.5995, lng: 120.9842 });
