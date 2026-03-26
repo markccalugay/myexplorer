@@ -1,4 +1,5 @@
 import UIKit
+import CarPlay
 import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
@@ -30,6 +31,26 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     )
 
     return true
+  }
+
+  func application(
+    _ application: UIApplication,
+    configurationForConnecting connectingSceneSession: UISceneSession,
+    options: UIScene.ConnectionOptions
+  ) -> UISceneConfiguration {
+    if connectingSceneSession.role == .carTemplateApplication {
+      let configuration = UISceneConfiguration(
+        name: "CarPlay Configuration",
+        sessionRole: connectingSceneSession.role
+      )
+      configuration.delegateClass = CarPlaySceneDelegate.self
+      return configuration
+    }
+
+    return UISceneConfiguration(
+      name: "Default Configuration",
+      sessionRole: connectingSceneSession.role
+    )
   }
 }
 

@@ -1,0 +1,76 @@
+
+  <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#EFF6F8" />
+        <stop offset="100%" stop-color="#DCEBF0" />
+      </linearGradient>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#19303D" flood-opacity="0.18" />
+      </filter>
+    </defs>
+    <rect width="1080" height="1920" fill="url(#bg)" />
+    <circle cx="870" cy="1680" r="230" fill="#0F3D56" opacity="0.12" />
+    <circle cx="180" cy="1600" r="180" fill="#FFFFFF" opacity="0.24" />
+    <path d="M 0 1380 C 230 1300, 390 1470, 560 1410 S 860 1260, 1080 1360 L 1080 1920 L 0 1920 Z" fill="#FFFFFF" opacity="0.20" />
+    <rect x="86" y="118" width="210" height="48" rx="24" fill="#0F3D56" opacity="0.16" />
+    <text x="191" y="150" text-anchor="middle" font-size="24" font-weight="700" fill="#18313F" font-family="Arial, sans-serif">Bookings</text>
+    <text x="86" y="254" class="title"><tspan x="86" dy="0">Your next getaway</tspan><tspan x="86" dy="74">stays ready.</tspan></text>
+    <text x="86" y="470" class="subtitle"><tspan x="86" dy="0">Save trips, reopen them</tspan><tspan x="86" dy="40">later, and head out with</tspan><tspan x="86" dy="40">confidence.</tspan></text>
+    
+    <g filter="url(#shadow)">
+      
+    <g>
+      <rect x="130" y="520" width="820" height="1180" rx="96" fill="#101A22" />
+      <rect x="152" y="542" width="776" height="1136" rx="78" fill="#FFFFFF" />
+      <rect x="472" y="538" width="136" height="18" rx="9" fill="#101A22" opacity="0.92" />
+      <g transform="translate(152, 542)">
+        
+    
+    <rect x="0" y="0" width="776" height="88" fill="#0A2B3D" />
+    <circle cx="48" cy="44" r="14" fill="#F3E7D3" opacity="0.9" />
+    <text x="84" y="53" font-size="30" font-weight="700" fill="#FFFFFF" font-family="Arial, sans-serif">Bookings</text>
+  
+    
+    <g>
+      <rect x="34" y="118" width="708" height="214" rx="28" fill="#DCECF2" />
+      <rect x="58" y="142" width="660" height="120" rx="24" fill="#FFFFFF" opacity="0.55" />
+      <rect x="58" y="146" width="120" height="34" rx="17" fill="#FFFFFF" />
+      <text x="118" y="169" text-anchor="middle" font-size="18" font-weight="700" fill="#18313F" font-family="Arial, sans-serif">Trip</text>
+      <text x="58" y="260" font-size="28" font-weight="700" fill="#18313F" font-family="Arial, sans-serif">La Union weekend</text>
+      <text x="58" y="294" font-size="20" fill="#18313F" opacity="0.78" font-family="Arial, sans-serif">Saved yesterday</text>
+    </g>
+  
+    
+    <g>
+      <rect x="34" y="360" width="708" height="214" rx="28" fill="#F7E3D9" />
+      <rect x="58" y="384" width="660" height="120" rx="24" fill="#FFFFFF" opacity="0.55" />
+      <rect x="58" y="388" width="120" height="34" rx="17" fill="#FFFFFF" />
+      <text x="118" y="411" text-anchor="middle" font-size="18" font-weight="700" fill="#18313F" font-family="Arial, sans-serif">Trip</text>
+      <text x="58" y="502" font-size="28" font-weight="700" fill="#18313F" font-family="Arial, sans-serif">Bohol family trip</text>
+      <text x="58" y="536" font-size="20" fill="#18313F" opacity="0.78" font-family="Arial, sans-serif">Reopen and continue</text>
+    </g>
+  
+    
+    <g>
+      <rect x="34" y="602" width="708" height="500" rx="28" fill="#E5ECD8" />
+      <rect x="58" y="626" width="660" height="225" rx="24" fill="#FFFFFF" opacity="0.55" />
+      <rect x="58" y="630" width="120" height="34" rx="17" fill="#FFFFFF" />
+      <text x="118" y="653" text-anchor="middle" font-size="18" font-weight="700" fill="#18313F" font-family="Arial, sans-serif">Ready</text>
+      <text x="58" y="1030" font-size="28" font-weight="700" fill="#18313F" font-family="Arial, sans-serif">Ready when you are</text>
+      <text x="58" y="1064" font-size="20" fill="#18313F" opacity="0.78" font-family="Arial, sans-serif">Stops, routes, and convoy details stay saved</text>
+    </g>
+  
+  
+      </g>
+    </g>
+  
+    </g>
+    <text x="86" y="1780" font-size="28" font-weight="700" fill="#18313F" opacity="0.88" font-family="Arial, sans-serif">MyExplorer</text>
+    <text x="86" y="1822" font-size="22" fill="#18313F" opacity="0.68" font-family="Arial, sans-serif">Trip planning, discovery, and saved routes in one place</text>
+    <style>
+      .title { font: 700 60px Arial, sans-serif; fill: #18313F; }
+      .subtitle { font: 400 28px Arial, sans-serif; fill: #18313F; opacity: 0.82; }
+    </style>
+  </svg>
+  

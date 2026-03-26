@@ -23,6 +23,7 @@ It is not yet wired to shared trip modules or a full mobile navigation experienc
 Current readiness:
 
 - iOS shell scaffolding is in place and can be archived locally
+- iOS now includes a native CarPlay scene scaffold, but it is still waiting on entitlement approval and shared-session wiring
 - Android shell scaffolding is in place, but release signing and runtime config still need to be finished
 - shared planner/session foundations are now being extracted in the main app
 - Android Auto and CarPlay are not implemented yet
@@ -82,6 +83,7 @@ The following still need to be completed before the mobile shell issue can close
 - release signing/provisioning for Android and iOS
 - mobile runtime config wiring for Maps/native secrets
 - shared-domain integration between `apps/mobile` and the extracted planner/session modules
+- CarPlay entitlement approval plus native scene-to-session integration
 - real device/build verification for Android in this repo
 - versioning/release policy for web and mobile builds
 
@@ -127,4 +129,5 @@ If a TestFlight archive reports a missing Hermes dSYM warning, reinstall pods an
 - finish the mobile env/config bridge for Maps and native secrets
 - extend the platform adapters with native mobile implementations
 - continue implementing the durable navigation session state machine
+- keep extending the CarPlay scene scaffold into a real navigation-first template flow
 - define Android Auto and CarPlay template/state flows against that shared foundation

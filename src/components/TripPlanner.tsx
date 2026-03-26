@@ -27,16 +27,17 @@ import { AppPlace } from '../types/place';
 import { ConvoyPanel } from './ConvoyPanel';
 import { RecommendationIcon, resolveRecommendationIcon } from './RecommendationIcon';
 import { applyJourneyDetailsIfChanged, buildJourneyDetails } from '../lib/journeyDetailsEngine';
+import { resolveCurrentLocationOrigin } from '../lib/originSelection';
 import {
-    createNavigationRouteFingerprint,
-    createNavigationSession,
-    getNavigationSessionResumeState,
-    getElapsedNavigationTimeMs,
-    syncNavigationSession,
-    updateNavigationSessionStatus,
-    type NavigationInstructionSnapshot,
     type PersistedNavigationSession,
 } from '../lib/navigationSession';
+import {
+    advanceNavigationSession,
+    endNavigationSession,
+    restoreNavigationSession,
+    startNavigationSession,
+    syncNavigationSessionProgress,
+} from '../lib/navigationSessionController';
 import { createNavigationSessionStore } from '../lib/navigationSessionStore';
 import {
     createStopFromPlace,
@@ -362,26 +363,18 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     useEffect(() => {
         const persistedSession = navigationSessionStore.load();
-        const resumeState = persistedSession
-            ? getNavigationSessionResumeState(persistedSession, initialTrip)
-            : null;
-
-        if (!persistedSession || !resumeState || resumeState.status !== 'resume-ok') {
+        const restored = restoreNavigationSession(persistedSession, initialTrip);
+        if (!restored) {
             return;
         }
 
-        const restoredSession = resumeState.session;
-        if (!restoredSession) {
-            return;
-        }
-
-        navigationSessionRef.current = restoredSession;
-        setCurrentStopIndex(restoredSession.currentStopIndex);
-        setCurrentLocation(restoredSession.currentLocation ?? null);
-        setTripStartedAt(restoredSession.startedAt);
-        setElapsedTimeMs(getElapsedNavigationTimeMs(restoredSession));
+        navigationSessionRef.current = restored.session;
+        setCurrentStopIndex(restored.session.currentStopIndex);
+        setCurrentLocation(restored.session.currentLocation ?? null);
+        setTripStartedAt(restored.session.startedAt);
+        setElapsedTimeMs(restored.elapsedTimeMs);
         setIsNavigating(true);
-        setNavigationNotice('Restored your active trip session.');
+        setNavigationNotice(restored.notice);
     }, [initialTrip]);
 
     useEffect(() => {
@@ -635,8 +628,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         setOriginLocationError(null);
 
         try {
-            const liveLocation = await browserLocationProvider.getCurrentLocation();
-            const originPlace = await geocoder.reverseGeocode(liveLocation);
+            const originPlace = await resolveCurrentLocationOrigin(browserLocationProvider, geocoder);
             handleAddPlaceAsStop(originPlace);
         } catch (error) {
             const message = error instanceof Error
@@ -1016,46 +1008,28 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         setRecommendationNowMs(startedAt);
         offeredRecommendationLegsRef.current = new Set();
 
-        const nextSession = createNavigationSession(trip, {
-            currentStopIndex: 1,
-            currentLegIndex: 0,
-            approvedPitstops: trip.stops.filter((stop) => stop.source === 'auto-pitstop'),
-            routeFingerprint: createNavigationRouteFingerprint(trip),
-            lastSyncSource: 'phone-ui',
-        });
-
         try {
-            const liveLocation = await browserLocationProvider.getCurrentLocation();
-            setCurrentLocation(liveLocation);
-            setNavigationNotice('Using your live location to guide you to the next stop.');
-            navigationSessionRef.current = syncNavigationSession(nextSession, {
-                status: 'active',
-                currentLocation: liveLocation,
-                lastKnownLocationAt: Date.now(),
-                reconnectState: 'restored',
-            });
-        } catch (error) {
-            console.warn('Falling back to the planned trip origin for navigation:', error);
-            setCurrentLocation(null);
-            setNavigationNotice('Live location was unavailable, so navigation starts from your planned origin.');
-            navigationSessionRef.current = syncNavigationSession(nextSession, {
-                status: 'active',
-                reconnectState: 'pending',
-            });
-        } finally {
+            const started = await startNavigationSession(trip, browserLocationProvider, startedAt);
+            setCurrentLocation(started.currentLocation);
+            setNavigationNotice(started.notice);
+            navigationSessionRef.current = started.session;
             if (navigationSessionRef.current) {
                 navigationSessionStore.save(navigationSessionRef.current);
             }
             setIsNavigating(true);
+            setIsPreparingNavigation(false);
+        } catch (error) {
+            console.error('Failed to start navigation session:', error);
+            setNavigationNotice('We could not start navigation right now.');
             setIsPreparingNavigation(false);
         }
     };
 
     const handleExitNavigation = () => {
         if (navigationSessionRef.current) {
-            navigationSessionRef.current = updateNavigationSessionStatus(
+            navigationSessionRef.current = endNavigationSession(
                 navigationSessionRef.current,
-                hasRemainingStop ? 'abandoned' : 'completed'
+                hasRemainingStop
             );
             navigationSessionStore.clear();
         }
@@ -1086,16 +1060,13 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             setCurrentStopIndex(nextIndex);
             setNavigationRoute(null);
             if (navigationSessionRef.current) {
-                navigationSessionRef.current = updateNavigationSessionStatus(
-                    syncNavigationSession(navigationSessionRef.current, {
-                        currentStopIndex: nextIndex,
-                        currentLegIndex: Math.max(0, nextIndex - 1),
-                        currentLocation: nextStop.location,
-                        lastKnownLocationAt: Date.now(),
-                        reconnectState: 'restored',
-                    }),
-                    'completed'
+                const advanced = advanceNavigationSession(
+                    navigationSessionRef.current,
+                    nextIndex,
+                    nextStop,
+                    stopCount
                 );
+                navigationSessionRef.current = advanced.session;
                 navigationSessionStore.save(navigationSessionRef.current);
             }
             return;
@@ -1103,44 +1074,28 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
         setCurrentStopIndex(nextIndex);
         setNavigationNotice(`Marked ${nextStop.name} as completed. Routing you to the next stop.`);
+        if (navigationSessionRef.current) {
+            const advanced = advanceNavigationSession(
+                navigationSessionRef.current,
+                nextIndex,
+                nextStop,
+                stopCount
+            );
+            navigationSessionRef.current = advanced.session;
+            navigationSessionStore.save(navigationSessionRef.current);
+        }
     };
 
     useEffect(() => {
         if (!isNavigating || !navigationSessionRef.current) return;
 
-        const nextRouteStep = getRouteSteps(navigationRoute)[0];
-        const nextInstruction: NavigationInstructionSnapshot | undefined = nextRouteStep?.navigationInstruction?.instructions
-            ? {
-                text: stripInstructionMarkup(nextRouteStep.navigationInstruction.instructions),
-                distanceMeters: nextRouteStep.distanceMeters ?? undefined,
-                durationSeconds: typeof nextRouteStep.durationMillis === 'number'
-                    ? Math.round(nextRouteStep.durationMillis / 1000)
-                    : undefined,
-            }
-            : undefined;
-        const nextLeg = navigationRoute?.legs?.[0];
-        const remainingDurationSeconds = typeof nextLeg?.durationMillis === 'number'
-            ? Math.round(nextLeg.durationMillis / 1000)
-            : undefined;
-        const eta = remainingDurationSeconds
-            ? new Date(Date.now() + (remainingDurationSeconds * 1000)).toISOString()
-            : undefined;
-
-        navigationSessionRef.current = syncNavigationSession(navigationSessionRef.current, {
-            tripSnapshot: trip,
-            status: hasRemainingStop ? 'active' : 'completed',
+        navigationSessionRef.current = syncNavigationSessionProgress({
+            session: navigationSessionRef.current,
+            trip,
             currentStopIndex,
-            currentLegIndex: Math.max(0, currentStopIndex - 1),
-            currentLocation: currentLocation ?? undefined,
-            lastKnownLocationAt: currentLocation ? Date.now() : undefined,
-            nextInstruction,
-            remainingDistanceMeters: nextLeg?.distanceMeters ?? undefined,
-            remainingDurationSeconds,
-            eta,
-            approvedPitstops: trip.stops.filter((stop) => stop.source === 'auto-pitstop'),
-            routeFingerprint: createNavigationRouteFingerprint(trip),
-            reconnectState: 'restored',
-            lastSyncSource: 'phone-ui',
+            currentLocation,
+            hasRemainingStop,
+            navigationRoute,
         });
         navigationSessionStore.save(navigationSessionRef.current);
     }, [currentLocation, currentStopIndex, hasRemainingStop, isNavigating, navigationRoute, trip]);
