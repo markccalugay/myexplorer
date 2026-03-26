@@ -4,7 +4,8 @@ import './RoutePlanner.css';
 import { AppPlace } from '../types/place';
 import { BASIC_PLACE_FIELDS, fetchPlaceFromPrediction } from '../lib/googlePlaces';
 import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
-import { AppRoute, computeDrivingRoute } from '../lib/googleRoutes';
+import { AppRoute } from '../lib/googleRoutes';
+import { createGoogleMapsRouteProvider } from '../platform/routing/googleMapsRouteProvider';
 
 interface RoutePlannerProps {
     destination: AppPlace;
@@ -22,6 +23,7 @@ const COMMON_ORIGINS = [
 
 export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initialDestination, onClose, onRouteFound }) => {
     const { google } = useGoogleMaps();
+    const routeProvider = createGoogleMapsRouteProvider(google);
 
     const [origin, setOrigin] = useState<google.maps.LatLng | google.maps.LatLngLiteral | null>(null);
     const [destination, setDestination] = useState<AppPlace>(initialDestination);
@@ -30,9 +32,9 @@ export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initial
         start: google.maps.LatLng | google.maps.LatLngLiteral,
         end: google.maps.LatLng | google.maps.LatLngLiteral
     ) => {
-        if (!google) return;
+        if (!routeProvider) return;
 
-        computeDrivingRoute(google, start, end)
+        routeProvider.computeDrivingRoute(start, end)
             .then((route) => {
                 if (route) {
                     onRouteFound(route);
@@ -43,7 +45,7 @@ export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initial
             .catch((error) => {
                 console.error('Routes request failed:', error);
             });
-    }, [google, onRouteFound]);
+    }, [onRouteFound, routeProvider]);
 
     useEffect(() => {
         if (origin) {

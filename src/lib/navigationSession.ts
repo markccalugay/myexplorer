@@ -45,8 +45,35 @@ export interface PersistedNavigationSession {
     lastSyncSource: NavigationSessionSyncSource;
 }
 
+export interface NavigationSessionProgressUpdate {
+    tripSnapshot?: Trip;
+    status?: NavigationSessionStatus;
+    currentStopIndex?: number;
+    currentLegIndex?: number;
+    currentLocation?: google.maps.LatLngLiteral;
+    lastKnownLocationAt?: number;
+    nextInstruction?: NavigationInstructionSnapshot;
+    remainingDistanceMeters?: number;
+    remainingDurationSeconds?: number;
+    eta?: string;
+    approvedPitstops?: Stop[];
+    routeFingerprint?: string;
+    resumeToken?: string;
+    reconnectState?: NavigationSessionReconnectState;
+    lastSyncSource?: NavigationSessionSyncSource;
+}
+
 const createNavigationSessionId = () =>
     `nav-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+export const createNavigationRouteFingerprint = (trip: Trip) => JSON.stringify(
+    trip.stops.map((stop) => ({
+        id: stop.id,
+        type: stop.type,
+        lat: Number(stop.location.lat.toFixed(5)),
+        lng: Number(stop.location.lng.toFixed(5)),
+    }))
+);
 
 export const createNavigationSession = (
     trip: Trip,
@@ -86,6 +113,30 @@ export const updateNavigationSessionStatus = (
 ): PersistedNavigationSession => ({
     ...session,
     status,
+    updatedAt: now,
+});
+
+export const syncNavigationSession = (
+    session: PersistedNavigationSession,
+    updates: NavigationSessionProgressUpdate,
+    now = Date.now()
+): PersistedNavigationSession => ({
+    ...session,
+    ...(updates.tripSnapshot ? { tripSnapshot: updates.tripSnapshot } : {}),
+    ...(updates.status ? { status: updates.status } : {}),
+    ...(typeof updates.currentStopIndex === 'number' ? { currentStopIndex: updates.currentStopIndex } : {}),
+    ...(typeof updates.currentLegIndex === 'number' ? { currentLegIndex: updates.currentLegIndex } : {}),
+    ...(updates.currentLocation ? { currentLocation: updates.currentLocation } : {}),
+    ...(typeof updates.lastKnownLocationAt === 'number' ? { lastKnownLocationAt: updates.lastKnownLocationAt } : {}),
+    ...(updates.nextInstruction ? { nextInstruction: updates.nextInstruction } : {}),
+    ...(typeof updates.remainingDistanceMeters === 'number' ? { remainingDistanceMeters: updates.remainingDistanceMeters } : {}),
+    ...(typeof updates.remainingDurationSeconds === 'number' ? { remainingDurationSeconds: updates.remainingDurationSeconds } : {}),
+    ...(updates.eta ? { eta: updates.eta } : {}),
+    ...(updates.approvedPitstops ? { approvedPitstops: updates.approvedPitstops } : {}),
+    ...(typeof updates.routeFingerprint === 'string' ? { routeFingerprint: updates.routeFingerprint } : {}),
+    ...(typeof updates.resumeToken === 'string' ? { resumeToken: updates.resumeToken } : {}),
+    ...(updates.reconnectState ? { reconnectState: updates.reconnectState } : {}),
+    ...(updates.lastSyncSource ? { lastSyncSource: updates.lastSyncSource } : {}),
     updatedAt: now,
 });
 

@@ -16,6 +16,7 @@ import { Trip } from './types/trip';
 import { AppPlace } from './types/place';
 import { AppRoute } from './lib/googleRoutes';
 import { createEmptyTrip, cloneTrip, normalizeLoadedTrip, normalizeTrip, type LegacyTrip } from './lib/tripDocument';
+import { browserKeyValueStore } from './platform/storage/browserKeyValueStore';
 import './App.css';
 
 import hotelImg from './assets/hotel.png';
@@ -49,7 +50,7 @@ const App = () => {
     const [plannerOverlayIntent, setPlannerOverlayIntent] = useState<PlannerOverlayIntent>(null);
     const [savedTrips, setSavedTrips] = useState<Trip[]>(() => {
         try {
-            const raw = window.localStorage.getItem(SAVED_TRIPS_STORAGE_KEY);
+            const raw = browserKeyValueStore.getItem(SAVED_TRIPS_STORAGE_KEY);
             if (!raw) return [];
 
             const parsed = JSON.parse(raw) as LegacyTrip[];
@@ -95,7 +96,7 @@ const App = () => {
 
     useEffect(() => {
         try {
-            window.localStorage.setItem(SAVED_TRIPS_STORAGE_KEY, JSON.stringify(savedTrips));
+            browserKeyValueStore.setItem(SAVED_TRIPS_STORAGE_KEY, JSON.stringify(savedTrips));
         } catch (error) {
             console.error('Failed to save trips:', error);
         }

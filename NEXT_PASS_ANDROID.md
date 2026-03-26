@@ -1,5 +1,7 @@
 # Android Next Pass
 
+This handoff note has been consolidated into [AUTOMOTIVE_REFERENCE.md](./AUTOMOTIVE_REFERENCE.md) for the current canonical view.
+
 ## Completed In This Pass
 
 - Chose `React Native` as the recommended mobile host path in `MOBILE_HOST_STRATEGY.md`

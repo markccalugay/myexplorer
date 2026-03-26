@@ -1,5 +1,7 @@
 # Android Navigation Session Model
 
+This planning note has been consolidated into [AUTOMOTIVE_REFERENCE.md](./AUTOMOTIVE_REFERENCE.md) for the current canonical view.
+
 ## Purpose
 
 This note defines the minimum persistent navigation-session model MyExplorer will need for an Android app and for future phone-to-car handoff scenarios such as Android Auto or CarPlay.

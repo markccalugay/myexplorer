@@ -22,10 +22,21 @@ import {
 } from '../lib/autoPitstops';
 import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
 import { getStopColor } from '../lib/stopColors';
-import { AppRoute, AppRouteStep, computeDrivingRoute, getRouteDistanceKm, getRouteDurationMinutes, getRoutePath, getRouteSteps } from '../lib/googleRoutes';
+import { AppRoute, AppRouteStep, getRouteDistanceKm, getRouteDurationMinutes, getRoutePath, getRouteSteps } from '../lib/googleRoutes';
 import { AppPlace } from '../types/place';
 import { ConvoyPanel } from './ConvoyPanel';
 import { RecommendationIcon, resolveRecommendationIcon } from './RecommendationIcon';
+import {
+    canResumeNavigationSession,
+    createNavigationRouteFingerprint,
+    createNavigationSession,
+    getElapsedNavigationTimeMs,
+    syncNavigationSession,
+    updateNavigationSessionStatus,
+    type NavigationInstructionSnapshot,
+    type PersistedNavigationSession,
+} from '../lib/navigationSession';
+import { createNavigationSessionStore } from '../lib/navigationSessionStore';
 import {
     createStopFromPlace,
     hasJourneyDetailsChanged,
@@ -33,6 +44,10 @@ import {
     resetJourneyFields,
     retypeStops,
 } from '../lib/stopSequence';
+import { browserKeyValueStore } from '../platform/storage/browserKeyValueStore';
+import { browserLocationProvider } from '../platform/location/browserLocationProvider';
+import { createGoogleMapsGeocoder } from '../platform/geocoding/googleMapsGeocoder';
+import { createGoogleMapsRouteProvider } from '../platform/routing/googleMapsRouteProvider';
 import './TripPlanner.css';
 
 interface TripPlannerProps {
@@ -49,6 +64,7 @@ interface TripPlannerProps {
 // Average fuel efficiency assumed for estimation
 const FUEL_EFFICIENCY_KM_PER_L = 12;
 const FAVORITE_STORAGE_KEY = 'myexplorer.favorite-places';
+const navigationSessionStore = createNavigationSessionStore(browserKeyValueStore);
 const RECOMMENDATION_DISPLAY_DELAY_MS = 5_000;
 const RECOMMENDATION_DECISION_WINDOW_MS = 300_000;
 const RECOMMENDATION_MIN_DISTANCE_KM = 25;
@@ -235,61 +251,6 @@ const getRecommendationTypes = (filters: RecommendationFilters) => {
     return Array.from(preferredTypes).slice(0, 10);
 };
 
-const getGeolocation = () =>
-    new Promise<google.maps.LatLngLiteral>((resolve, reject) => {
-        if (!navigator.geolocation) {
-            reject(new Error('Geolocation is not available on this device.'));
-            return;
-        }
-
-        navigator.geolocation.getCurrentPosition(
-            ({ coords }) => {
-                resolve({
-                    lat: coords.latitude,
-                    lng: coords.longitude,
-                });
-            },
-            (error) => reject(new Error(error.message || 'Unable to access your current location.')),
-            {
-                enableHighAccuracy: true,
-                timeout: 8000,
-                maximumAge: 60_000,
-            }
-        );
-    });
-
-const reverseGeocodeLocation = async (
-    googleMaps: typeof google | null,
-    location: google.maps.LatLngLiteral
-): Promise<Pick<AppPlace, 'name' | 'formattedAddress' | 'location'>> => {
-    if (!googleMaps?.maps?.Geocoder) {
-        return {
-            name: 'Current location',
-            formattedAddress: `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
-            location,
-        };
-    }
-
-    try {
-        const geocoder = new googleMaps.maps.Geocoder();
-        const response = await geocoder.geocode({ location });
-        const topResult = response.results?.[0];
-
-        return {
-            name: topResult?.address_components?.[0]?.long_name || 'Current location',
-            formattedAddress: topResult?.formatted_address || `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
-            location,
-        };
-    } catch (error) {
-        console.warn('Failed to reverse geocode current location:', error);
-        return {
-            name: 'Current location',
-            formattedAddress: `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
-            location,
-        };
-    }
-};
-
 export const TripPlanner: React.FC<TripPlannerProps> = ({
     trip: initialTrip,
     onTripChange,
@@ -329,11 +290,14 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     const [recommendationSession, setRecommendationSession] = useState<ActiveNavigationRecommendationSession | null>(null);
     const [recommendationNowMs, setRecommendationNowMs] = useState(() => Date.now());
     const { google } = useGoogleMaps();
+    const routeProvider = createGoogleMapsRouteProvider(google);
+    const geocoder = createGoogleMapsGeocoder(google);
     const autoPitstopRouteKeyRef = useRef<string | null>(null);
     const autoPitstopInFlightRouteKeyRef = useRef<string | null>(null);
     const autoPitstopRequestIdRef = useRef(0);
     const journeyDetailsRequestIdRef = useRef(0);
     const offeredRecommendationLegsRef = useRef<Set<string>>(new Set());
+    const navigationSessionRef = useRef<PersistedNavigationSession | null>(null);
     const updateTrip = useCallback((updater: Trip | ((previousTrip: Trip) => Trip)) => {
         setTrip((previousTrip) => {
             const nextTrip = typeof updater === 'function'
@@ -346,7 +310,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     useEffect(() => {
         try {
-            const raw = window.localStorage.getItem(FAVORITE_STORAGE_KEY);
+            const raw = browserKeyValueStore.getItem(FAVORITE_STORAGE_KEY);
             if (!raw) return;
 
             const parsed = JSON.parse(raw) as FavoritePlace[];
@@ -360,7 +324,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     useEffect(() => {
         try {
-            window.localStorage.setItem(FAVORITE_STORAGE_KEY, JSON.stringify(favorites));
+            browserKeyValueStore.setItem(FAVORITE_STORAGE_KEY, JSON.stringify(favorites));
         } catch (error) {
             console.error('Failed to save favorite places:', error);
         }
@@ -394,6 +358,22 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         autoPitstopRequestIdRef.current += 1;
         journeyDetailsRequestIdRef.current += 1;
         offeredRecommendationLegsRef.current = new Set();
+        navigationSessionRef.current = null;
+    }, [initialTrip]);
+
+    useEffect(() => {
+        const persistedSession = navigationSessionStore.load();
+        if (!persistedSession || persistedSession.tripId !== initialTrip.id || !canResumeNavigationSession(persistedSession)) {
+            return;
+        }
+
+        navigationSessionRef.current = persistedSession;
+        setCurrentStopIndex(Math.min(Math.max(1, persistedSession.currentStopIndex), Math.max(1, initialTrip.stops.length)));
+        setCurrentLocation(persistedSession.currentLocation ?? null);
+        setTripStartedAt(persistedSession.startedAt);
+        setElapsedTimeMs(getElapsedNavigationTimeMs(persistedSession));
+        setIsNavigating(true);
+        setNavigationNotice('Restored your active trip session.');
     }, [initialTrip]);
 
     useEffect(() => {
@@ -427,14 +407,14 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     // ── Retype stops so first=start, last=destination ─────────────────────────
     // ── Recalculate journey times + distances ──────────────────────────────────
     const calculateJourneyDetails = useCallback((stops: Stop[]) => {
-        if (!google || stops.length < 2) return;
+        if (!routeProvider || stops.length < 2) return;
 
         const requestId = journeyDetailsRequestIdRef.current + 1;
         journeyDetailsRequestIdRef.current = requestId;
 
         Promise.all(
             stops.slice(0, -1).map((stop, index) =>
-                computeDrivingRoute(google, stop.location, stops[index + 1].location)
+                routeProvider.computeDrivingRoute(stop.location, stops[index + 1].location)
             )
         )
             .then((routes) => {
@@ -450,7 +430,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                     arrivalTime: formatTime(currentTime),
                 };
 
-                routes.forEach((route, index) => {
+                routes.forEach((route: AppRoute | null, index: number) => {
                     if (!newStops[index + 1]) return;
 
                     const distKm = getRouteDistanceKm(route);
@@ -483,11 +463,11 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                 }
                 console.error('Failed to calculate trip segment details:', error);
             });
-    }, [google, updateTrip]);
+    }, [routeProvider, updateTrip]);
 
     // ── Auto-pitstop injection ─────────────────────────────────────────────────
     const autoInsertPitstops = useCallback((stops: Stop[]) => {
-        if (!google || stops.length < 2) return;
+        if (!google || !routeProvider || stops.length < 2) return;
 
         const baseStops = getPitstopPlanningStops(stops);
         if (baseStops.length < 2) return;
@@ -509,7 +489,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                 const { Place, SearchNearbyRankPreference } = google.maps.places;
                 const legRoutes = await Promise.all(
                     baseStops.slice(0, -1).map(async (startStop, index) =>
-                        computeDrivingRoute(google, startStop.location, baseStops[index + 1].location)
+                        routeProvider.computeDrivingRoute(startStop.location, baseStops[index + 1].location)
                     )
                 );
 
@@ -518,14 +498,14 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                 }
 
                 const pitstopCountsByLeg = allocateAutoPitstopsByLeg(
-                    legRoutes.map((route) => ({
+                    legRoutes.map((route: AppRoute | null) => ({
                         distanceKm: getRouteDistanceKm(route),
                         durationMins: getRouteDurationMinutes(route),
                     }))
                 );
 
                 const pitstopsByLeg = await Promise.all(
-                    legRoutes.map(async (route, index) => {
+                    legRoutes.map(async (route: AppRoute | null, index: number) => {
                         const fractions = getAutoPitstopFractions(pitstopCountsByLeg[index] ?? 0);
                         if (!fractions.length) {
                             return [];
@@ -599,7 +579,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                 }
                 console.error('Failed to compute auto-pitstop route:', error);
             });
-    }, [google, updateTrip]);
+    }, [google, routeProvider, updateTrip]);
 
     // Trigger calculations whenever stops change (≥ 2)
     useEffect(() => {
@@ -680,8 +660,8 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         setOriginLocationError(null);
 
         try {
-            const liveLocation = await getGeolocation();
-            const originPlace = await reverseGeocodeLocation(google, liveLocation);
+            const liveLocation = await browserLocationProvider.getCurrentLocation();
+            const originPlace = await geocoder.reverseGeocode(liveLocation);
             handleAddPlaceAsStop(originPlace);
         } catch (error) {
             const message = error instanceof Error
@@ -691,7 +671,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         } finally {
             setIsUsingCurrentLocation(false);
         }
-    }, [google, handleAddPlaceAsStop, trip.stops.length]);
+    }, [geocoder, handleAddPlaceAsStop, trip.stops.length]);
 
     const handleSaveFavorite = () => {
         const trimmedLabel = favoriteLabel.trim();
@@ -839,7 +819,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     }, [finalizeRecommendationSession, recommendationSession]);
 
     useEffect(() => {
-        if (!isNavigating || !google || !navigationOrigin || !nextStop || !finalStop) return;
+        if (!isNavigating || !routeProvider || !navigationOrigin || !nextStop || !finalStop) return;
 
         let isCancelled = false;
 
@@ -847,8 +827,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             .slice(currentStopIndex, Math.max(currentStopIndex, stopCount - 1))
             .map((stop) => stop.location);
 
-        computeDrivingRoute(
-            google,
+        routeProvider.computeDrivingRoute(
             navigationOrigin,
             finalStop.location,
             intermediateStops
@@ -868,7 +847,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         return () => {
             isCancelled = true;
         };
-    }, [currentStopIndex, finalStop, google, isNavigating, navigationOrigin, nextStop, stopCount, trip.stops]);
+    }, [currentStopIndex, finalStop, isNavigating, navigationOrigin, nextStop, routeProvider, stopCount, trip.stops]);
 
     useEffect(() => {
         if (!recommendationSession || recommendationSession.status !== 'awaitingDecision') return;
@@ -1051,31 +1030,61 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
     const handleStartTrip = async () => {
         if (!hasTripRoute) return;
 
+        const startedAt = Date.now();
         setIsPreparingNavigation(true);
         setCurrentStopIndex(1);
         setNavigationRoute(null);
         setNavigationNotice(null);
-        setTripStartedAt(Date.now());
+        setTripStartedAt(startedAt);
         setElapsedTimeMs(0);
         setRecommendationSession(null);
-        setRecommendationNowMs(Date.now());
+        setRecommendationNowMs(startedAt);
         offeredRecommendationLegsRef.current = new Set();
 
+        const nextSession = createNavigationSession(trip, {
+            currentStopIndex: 1,
+            currentLegIndex: 0,
+            approvedPitstops: trip.stops.filter((stop) => stop.source === 'auto-pitstop'),
+            routeFingerprint: createNavigationRouteFingerprint(trip),
+            lastSyncSource: 'phone-ui',
+        });
+
         try {
-            const liveLocation = await getGeolocation();
+            const liveLocation = await browserLocationProvider.getCurrentLocation();
             setCurrentLocation(liveLocation);
             setNavigationNotice('Using your live location to guide you to the next stop.');
+            navigationSessionRef.current = syncNavigationSession(nextSession, {
+                status: 'active',
+                currentLocation: liveLocation,
+                lastKnownLocationAt: Date.now(),
+                reconnectState: 'restored',
+            });
         } catch (error) {
             console.warn('Falling back to the planned trip origin for navigation:', error);
             setCurrentLocation(null);
             setNavigationNotice('Live location was unavailable, so navigation starts from your planned origin.');
+            navigationSessionRef.current = syncNavigationSession(nextSession, {
+                status: 'active',
+                reconnectState: 'pending',
+            });
         } finally {
+            if (navigationSessionRef.current) {
+                navigationSessionStore.save(navigationSessionRef.current);
+            }
             setIsNavigating(true);
             setIsPreparingNavigation(false);
         }
     };
 
     const handleExitNavigation = () => {
+        if (navigationSessionRef.current) {
+            navigationSessionRef.current = updateNavigationSessionStatus(
+                navigationSessionRef.current,
+                hasRemainingStop ? 'abandoned' : 'completed'
+            );
+            navigationSessionStore.clear();
+        }
+
         setIsNavigating(false);
         setNavigationRoute(null);
         setNavigationNotice(null);
@@ -1086,6 +1095,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         setRecommendationSession(null);
         setRecommendationNowMs(Date.now());
         offeredRecommendationLegsRef.current = new Set();
+        navigationSessionRef.current = null;
     };
 
     const handleAdvanceToNextStop = () => {
@@ -1100,12 +1110,65 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
             setNavigationNotice(`You have arrived at ${nextStop.name}.`);
             setCurrentStopIndex(nextIndex);
             setNavigationRoute(null);
+            if (navigationSessionRef.current) {
+                navigationSessionRef.current = updateNavigationSessionStatus(
+                    syncNavigationSession(navigationSessionRef.current, {
+                        currentStopIndex: nextIndex,
+                        currentLegIndex: Math.max(0, nextIndex - 1),
+                        currentLocation: nextStop.location,
+                        lastKnownLocationAt: Date.now(),
+                        reconnectState: 'restored',
+                    }),
+                    'completed'
+                );
+                navigationSessionStore.save(navigationSessionRef.current);
+            }
             return;
         }
 
         setCurrentStopIndex(nextIndex);
         setNavigationNotice(`Marked ${nextStop.name} as completed. Routing you to the next stop.`);
     };
+
+    useEffect(() => {
+        if (!isNavigating || !navigationSessionRef.current) return;
+
+        const nextRouteStep = getRouteSteps(navigationRoute)[0];
+        const nextInstruction: NavigationInstructionSnapshot | undefined = nextRouteStep?.navigationInstruction?.instructions
+            ? {
+                text: stripInstructionMarkup(nextRouteStep.navigationInstruction.instructions),
+                distanceMeters: nextRouteStep.distanceMeters ?? undefined,
+                durationSeconds: typeof nextRouteStep.durationMillis === 'number'
+                    ? Math.round(nextRouteStep.durationMillis / 1000)
+                    : undefined,
+            }
+            : undefined;
+        const nextLeg = navigationRoute?.legs?.[0];
+        const remainingDurationSeconds = typeof nextLeg?.durationMillis === 'number'
+            ? Math.round(nextLeg.durationMillis / 1000)
+            : undefined;
+        const eta = remainingDurationSeconds
+            ? new Date(Date.now() + (remainingDurationSeconds * 1000)).toISOString()
+            : undefined;
+
+        navigationSessionRef.current = syncNavigationSession(navigationSessionRef.current, {
+            tripSnapshot: trip,
+            status: hasRemainingStop ? 'active' : 'completed',
+            currentStopIndex,
+            currentLegIndex: Math.max(0, currentStopIndex - 1),
+            currentLocation: currentLocation ?? undefined,
+            lastKnownLocationAt: currentLocation ? Date.now() : undefined,
+            nextInstruction,
+            remainingDistanceMeters: nextLeg?.distanceMeters ?? undefined,
+            remainingDurationSeconds,
+            eta,
+            approvedPitstops: trip.stops.filter((stop) => stop.source === 'auto-pitstop'),
+            routeFingerprint: createNavigationRouteFingerprint(trip),
+            reconnectState: 'restored',
+            lastSyncSource: 'phone-ui',
+        });
+        navigationSessionStore.save(navigationSessionRef.current);
+    }, [currentLocation, currentStopIndex, hasRemainingStop, isNavigating, navigationRoute, trip]);
 
     // ── Summary calculations ───────────────────────────────────────────────────
     const totalDistanceKm = trip.stops.reduce((acc, s) => acc + (s.distanceFromPrevious || 0), 0);

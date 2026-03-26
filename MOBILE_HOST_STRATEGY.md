@@ -1,5 +1,7 @@
 # Mobile Host Strategy
 
+This planning note has been consolidated into [AUTOMOTIVE_REFERENCE.md](./AUTOMOTIVE_REFERENCE.md) for the current canonical view.
+
 ## Decision
 
 MyExplorer should use `React Native` as the mobile host strategy for Android and future in-car support.

@@ -1,5 +1,7 @@
 # CarPlay and Android Auto Preparation
 
+This planning note has been consolidated into [AUTOMOTIVE_REFERENCE.md](./AUTOMOTIVE_REFERENCE.md) for the current canonical view.
+
 ## Purpose
 
 This document captures the initial planning approach for supporting Apple CarPlay and Android Auto in MyExplorer for vehicles where a mobile phone is plugged into the car. This is a planning document only. No implementation work is included here yet.
