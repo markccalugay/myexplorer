@@ -8,7 +8,9 @@
     "pods:install": "cd ios && bundle exec pod install",
     "lint": "eslint .",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "version:sync": "node scripts/sync-version.mjs sync",
+    "version:set": "node scripts/sync-version.mjs set"
   },
   "dependencies": {
     "react": "19.2.3",

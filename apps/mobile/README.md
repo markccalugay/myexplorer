@@ -44,6 +44,37 @@ Before treating this repo as mobile-build ready, make sure the local machine has
 - iOS location permission copy is set for trip-origin and navigation restore use
 - Android location permissions are declared for future planner/navigation use
 
+## Versioning
+
+Mobile native versions now use [`version.json`](/Users/markccalugay/Documents/_business/The%20Still%20Foundation/Products/MyExplorer/myexplorer/apps/mobile/version.json) as the source of truth.
+
+Useful commands from [`apps/mobile`](/Users/markccalugay/Documents/_business/The%20Still%20Foundation/Products/MyExplorer/myexplorer/apps/mobile):
+
+```sh
+npm run version:sync
+```
+
+This syncs the current values in `version.json` into:
+
+- iOS `MARKETING_VERSION`
+- iOS `CURRENT_PROJECT_VERSION`
+- Android `versionName`
+- Android `versionCode`
+
+To set a new release version and sync it in one step:
+
+```sh
+npm run version:set -- 1.0.1 2
+```
+
+Optional:
+
+```sh
+npm run version:set -- 1.0.1 2 42
+```
+
+The third argument lets Android use a different `versionCode` if you ever need it. If omitted, Android uses the same integer as the iOS build number.
+
 ## Current Gaps
 
 The following still need to be completed before the mobile shell issue can close:

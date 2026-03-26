@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- 2026-03-26: Added a single-source mobile versioning workflow under `apps/mobile/version.json`, plus a sync script in `apps/mobile/scripts/sync-version.mjs` and `npm run version:sync` / `npm run version:set` commands so iOS `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` and Android `versionName` / `versionCode` can now be updated together from one place instead of being edited manually in separate native files.
 - 2026-03-26: Added `src/lib/journeyDetailsEngine.ts` and `src/lib/journeyDetailsEngine.test.ts` to move trip distance, duration, and arrival-time enrichment out of `src/components/TripPlanner.tsx` into a shared planner engine, continuing the extraction work needed before the mobile and in-car surfaces can rely on the same trip-domain behavior.
 - 2026-03-26: Consolidated the automotive planning docs into a new canonical `AUTOMOTIVE_REFERENCE.md` so mobile-host, Android Auto, CarPlay, session-model, and next-pass status can be tracked in one place without losing the earlier source documents.
 - 2026-03-26: Added an initial `src/platform` adapter layer for storage, location, geocoding, and routing, then rewired the web app to start consuming those seams from `src/App.tsx`, `src/components/RoutePlanner.tsx`, and `src/components/TripPlanner.tsx` instead of reaching directly into browser globals and Google APIs in the same places.
