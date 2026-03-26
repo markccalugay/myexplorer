@@ -33,16 +33,19 @@ This handoff note has been consolidated into [AUTOMOTIVE_REFERENCE.md](./AUTOMOT
 2. Introduce platform boundaries for storage, location, and geocoding
    Add interfaces for trip persistence, device location, and geocoding so the web app stops depending directly on browser-only APIs like `localStorage` and `navigator.geolocation`.
 
-3. Turn the navigation-session note into a fuller coded state machine
+3. Continue implementing the chosen mobile-native maps and routing strategy
+   The strategy is now documented and issue `#33` is closed, but the shared types and adapters still need to move away from browser-specific `google.maps.*` assumptions.
+
+4. Turn the navigation-session note into a fuller coded state machine
    Add transitions for start, pause, reconnect, advance-leg, skip-stop, complete, and abandon.
 
-4. Define the Android Auto template and state map
+5. Define the Android Auto template and state map
    Build directly from `MOBILE_HOST_STRATEGY.md` and `ANDROID_NAV_SESSION_MODEL.md` so the in-car surface stays narrow and compliant.
 
-5. Verify the generated Android shell and wire runtime config handling
+6. Verify the generated Android shell and wire runtime config handling
    The scaffold now exists, but Android-specific build verification and Maps/runtime config wiring still need to be completed before #25 can close.
 
-6. Verify the generated iOS shell in Xcode/TestFlight
+7. Verify the generated iOS shell in Xcode/TestFlight
    The scaffold and workspace now exist, but simulator/device validation still depends on local Xcode execution outside this environment.
 
 ## Known Remaining Gaps

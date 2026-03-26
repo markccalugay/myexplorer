@@ -63,6 +63,11 @@ export interface NavigationSessionProgressUpdate {
     lastSyncSource?: NavigationSessionSyncSource;
 }
 
+export interface NavigationSessionResumeState {
+    status: 'resume-ok' | 'resume-needs-reroute' | 'resume-reject';
+    session: PersistedNavigationSession | null;
+}
+
 const createNavigationSessionId = () =>
     `nav-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -145,6 +150,43 @@ export const canResumeNavigationSession = (session: PersistedNavigationSession) 
     session.status === 'paused' ||
     session.status === 'reconnecting' ||
     session.status === 'preparing';
+
+export const getNavigationSessionResumeState = (
+    session: PersistedNavigationSession,
+    trip: Trip
+): NavigationSessionResumeState => {
+    if (!canResumeNavigationSession(session) || session.tripId !== trip.id) {
+        return {
+            status: 'resume-reject',
+            session: null,
+        };
+    }
+
+    const currentFingerprint = createNavigationRouteFingerprint(trip);
+    if (session.routeFingerprint && session.routeFingerprint !== currentFingerprint) {
+        return {
+            status: 'resume-needs-reroute',
+            session: null,
+        };
+    }
+
+    const maxStopIndex = Math.max(1, trip.stops.length);
+    const currentStopIndex = Math.min(Math.max(1, session.currentStopIndex), maxStopIndex);
+    const currentLegIndex = Math.min(
+        Math.max(0, session.currentLegIndex),
+        Math.max(0, maxStopIndex - 1)
+    );
+
+    return {
+        status: 'resume-ok',
+        session: {
+            ...session,
+            tripSnapshot: trip,
+            currentStopIndex,
+            currentLegIndex,
+        },
+    };
+};
 
 export const getElapsedNavigationTimeMs = (
     session: Pick<PersistedNavigationSession, 'startedAt' | 'status'>,

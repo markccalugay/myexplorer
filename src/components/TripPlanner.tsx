@@ -26,10 +26,11 @@ import { AppRoute, AppRouteStep, getRouteDistanceKm, getRouteDurationMinutes, ge
 import { AppPlace } from '../types/place';
 import { ConvoyPanel } from './ConvoyPanel';
 import { RecommendationIcon, resolveRecommendationIcon } from './RecommendationIcon';
+import { applyJourneyDetailsIfChanged, buildJourneyDetails } from '../lib/journeyDetailsEngine';
 import {
-    canResumeNavigationSession,
     createNavigationRouteFingerprint,
     createNavigationSession,
+    getNavigationSessionResumeState,
     getElapsedNavigationTimeMs,
     syncNavigationSession,
     updateNavigationSessionStatus,
@@ -39,9 +40,7 @@ import {
 import { createNavigationSessionStore } from '../lib/navigationSessionStore';
 import {
     createStopFromPlace,
-    hasJourneyDetailsChanged,
     hasSameStopSequence,
-    resetJourneyFields,
     retypeStops,
 } from '../lib/stopSequence';
 import { browserKeyValueStore } from '../platform/storage/browserKeyValueStore';
@@ -363,15 +362,24 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     useEffect(() => {
         const persistedSession = navigationSessionStore.load();
-        if (!persistedSession || persistedSession.tripId !== initialTrip.id || !canResumeNavigationSession(persistedSession)) {
+        const resumeState = persistedSession
+            ? getNavigationSessionResumeState(persistedSession, initialTrip)
+            : null;
+
+        if (!persistedSession || !resumeState || resumeState.status !== 'resume-ok') {
             return;
         }
 
-        navigationSessionRef.current = persistedSession;
-        setCurrentStopIndex(Math.min(Math.max(1, persistedSession.currentStopIndex), Math.max(1, initialTrip.stops.length)));
-        setCurrentLocation(persistedSession.currentLocation ?? null);
-        setTripStartedAt(persistedSession.startedAt);
-        setElapsedTimeMs(getElapsedNavigationTimeMs(persistedSession));
+        const restoredSession = resumeState.session;
+        if (!restoredSession) {
+            return;
+        }
+
+        navigationSessionRef.current = restoredSession;
+        setCurrentStopIndex(restoredSession.currentStopIndex);
+        setCurrentLocation(restoredSession.currentLocation ?? null);
+        setTripStartedAt(restoredSession.startedAt);
+        setElapsedTimeMs(getElapsedNavigationTimeMs(restoredSession));
         setIsNavigating(true);
         setNavigationNotice('Restored your active trip session.');
     }, [initialTrip]);
@@ -412,50 +420,17 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         const requestId = journeyDetailsRequestIdRef.current + 1;
         journeyDetailsRequestIdRef.current = requestId;
 
-        Promise.all(
-            stops.slice(0, -1).map((stop, index) =>
-                routeProvider.computeDrivingRoute(stop.location, stops[index + 1].location)
-            )
-        )
-            .then((routes) => {
+        buildJourneyDetails(stops, routeProvider, { formatTime })
+            .then((nextStops) => {
                 if (journeyDetailsRequestIdRef.current !== requestId) {
                     return;
                 }
-
-                const newStops = stops.map(resetJourneyFields);
-                let currentTime = new Date();
-                currentTime.setHours(8, 0, 0, 0);
-                newStops[0] = {
-                    ...newStops[0],
-                    arrivalTime: formatTime(currentTime),
-                };
-
-                routes.forEach((route: AppRoute | null, index: number) => {
-                    if (!newStops[index + 1]) return;
-
-                    const distKm = getRouteDistanceKm(route);
-                    const durMins = getRouteDurationMinutes(route);
-                    newStops[index + 1] = {
-                        ...newStops[index + 1],
-                        distanceFromPrevious: distKm,
-                        durationFromPrevious: durMins,
-                    };
-                    currentTime = new Date(currentTime.getTime() + (durMins + 30) * 60_000);
-                    newStops[index + 1] = {
-                        ...newStops[index + 1],
-                        arrivalTime: formatTime(currentTime),
-                    };
-                });
 
                 if (journeyDetailsRequestIdRef.current !== requestId) {
                     return;
                 }
 
-                updateTrip((prev) => (
-                    hasJourneyDetailsChanged(prev.stops, newStops)
-                        ? { ...prev, stops: newStops }
-                        : prev
-                ));
+                updateTrip((prev) => applyJourneyDetailsIfChanged(prev, nextStops));
             })
             .catch((error) => {
                 if (journeyDetailsRequestIdRef.current !== requestId) {

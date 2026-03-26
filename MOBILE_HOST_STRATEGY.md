@@ -6,6 +6,17 @@ This planning note has been consolidated into [AUTOMOTIVE_REFERENCE.md](./AUTOMO
 
 MyExplorer should use `React Native` as the mobile host strategy for Android and future in-car support.
 
+## Maps And Routing Decision
+
+MyExplorer should use a hybrid maps strategy:
+
+- Google Maps Platform remains the canonical provider for places and route data
+- shared planner and navigation logic should move toward provider-neutral contracts instead of depending on `google.maps.*` browser types
+- React Native phone screens should use native map rendering
+- Android Auto and CarPlay should project shared trip/session state into platform-native automotive surfaces rather than trying to reuse the React Native phone map UI
+
+This means the current Google Maps JavaScript integration is a web adapter, not the long-term shared contract for mobile and in-car projection.
+
 ## Why This Is The Right Fit
 
 The repo is already TypeScript-first, and the most reusable parts of the product are the trip, routing, and navigation rules rather than the current browser UI.

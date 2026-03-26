@@ -26,6 +26,7 @@ Important current files and modules:
 What is already done:
 
 - React Native is the chosen mobile host strategy
+- A hybrid maps and routing strategy is now chosen for web, mobile, and in-car projection
 - The first shared trip helpers have been extracted from the web UI layer
 - A navigation session contract exists in docs and code
 - A React Native mobile host now exists under `apps/mobile`
@@ -64,6 +65,18 @@ Why not separate native shells yet:
 
 - the repo is not mature enough to justify duplicated Android and iOS implementation paths
 - the shared domain layer is not extracted far enough yet
+
+## Maps And Routing Strategy
+
+MyExplorer should keep Google Maps Platform as the canonical provider for place and route data, but the browser Google Maps JavaScript API should no longer be treated as the shared cross-platform contract.
+
+The intended split is:
+
+- web uses the current Google Maps JavaScript adapter
+- React Native phone screens use native map rendering for the phone UI
+- Android Auto and CarPlay consume the shared navigation session and route summary state through platform-native automotive templates
+
+This keeps route/place data consistent while avoiding a design where phone map components are incorrectly reused inside Android Auto or CarPlay.
 
 ## What Can Be Reused
 
@@ -199,6 +212,7 @@ CarPlay support will require:
 Completed:
 
 - chose React Native as the mobile host strategy
+- chose the hybrid maps/routing strategy for web, React Native phone UI, and automotive projection
 - defined the navigation session model
 - added a coded navigation session baseline
 - extracted `tripDocument`, `stopSequence`, and related shared helpers
@@ -219,7 +233,6 @@ Open blockers:
 
 - planner orchestration is still too web-bound
 - platform adapters are only browser-backed so far
-- native maps strategy is still unresolved
 - Android Auto and CarPlay product scope remains doc-level
 - handoff, reconnect, validation, and monitoring work remain open
 
@@ -231,7 +244,6 @@ Open blockers:
 - `#29` Define phone-to-car handoff and reconnect behavior for active trips
 - `#30` Define the in-car test matrix and validation plan for Android Auto and CarPlay
 - `#31` Add operational monitoring and failure reporting for in-car navigation sessions
-- `#33` Choose the mobile-native maps and routing strategy for React Native and in-car projection
 - `#34` Define the CarPlay v1 scope and driver-safety constraints
 - `#35` Implement the navigation session state machine and persistence layer
 - `#36` Add platform adapters for storage, location, geocoding, and routing
@@ -241,6 +253,6 @@ Open blockers:
 
 - too much planner logic still lives in the web UI layer
 - browser-local persistence is still present
-- native maps and routing strategy is unresolved
+- shared models still leak browser `google.maps.*` types
 - platform policy and compliance requirements are not fully settled
 - reconnect and phone-to-car handoff are not fully implemented

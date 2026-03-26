@@ -3,6 +3,7 @@ import {
     canResumeNavigationSession,
     createNavigationRouteFingerprint,
     createNavigationSession,
+    getNavigationSessionResumeState,
     getElapsedNavigationTimeMs,
     syncNavigationSession,
     updateNavigationSessionStatus,
@@ -102,5 +103,58 @@ describe('navigationSession helpers', () => {
             reconnectState: 'restored',
             updatedAt: 999,
         });
+    });
+
+    it('allows session restore only when the trip fingerprint still matches', () => {
+        const trip = {
+            ...createTrip(),
+            stops: [
+                {
+                    id: 'start',
+                    name: 'Start',
+                    location: { lat: 1, lng: 1 },
+                    type: 'start' as const,
+                },
+                {
+                    id: 'end',
+                    name: 'End',
+                    location: { lat: 2, lng: 2 },
+                    type: 'destination' as const,
+                },
+            ],
+        };
+        const session = createNavigationSession(trip, {
+            routeFingerprint: createNavigationRouteFingerprint(trip),
+            currentStopIndex: 99,
+            currentLegIndex: 99,
+        });
+
+        expect(getNavigationSessionResumeState(session, trip)).toMatchObject({
+            status: 'resume-ok',
+            session: {
+                currentStopIndex: 2,
+                currentLegIndex: 1,
+            },
+        });
+
+        const changedTrip = {
+            ...trip,
+            stops: [
+                trip.stops[0],
+                {
+                    id: 'mid',
+                    name: 'Mid',
+                    location: { lat: 1.5, lng: 1.5 },
+                    type: 'stop' as const,
+                },
+                trip.stops[1],
+            ],
+        };
+
+        expect(getNavigationSessionResumeState(session, changedTrip).status).toBe('resume-needs-reroute');
+        expect(getNavigationSessionResumeState(
+            updateNavigationSessionStatus(session, 'completed'),
+            trip
+        ).status).toBe('resume-reject');
     });
 });

@@ -5,6 +5,7 @@ MyExplorer is a next-generation travel application designed for seamless trip pl
 ## Documentation
 
 - [Tech Stack](./TECH_STACK.md)
+- [Automotive Reference](./AUTOMOTIVE_REFERENCE.md)
 
 ## Environment
 
@@ -18,12 +19,25 @@ Create a local `.env.local` file from [`.env.example`](./.env.example) and set `
 - **Trip Planning**: Interactive planning tools to build your perfect journey.
 
 ## Development Status
-This project is currently in the initial setup phase, with a "web-first, mobile-later" development strategy.
+This project started web-first and now includes an in-repo React Native mobile shell under [`apps/mobile`](./apps/mobile). The shared planner/session work needed for Android Auto and CarPlay is underway, but the automotive experience is not implemented yet.
 
 ## Getting Started
 1. `npm install`
 2. Create `.env.local` from [`.env.example`](./.env.example)
 3. `npm run dev`
+
+## Mobile Shell
+
+The repo now includes a first native mobile host in [`apps/mobile`](./apps/mobile).
+
+Current status:
+
+- iOS and Android native projects exist
+- the bundle/application ID is `com.thestillfoundation.myexplorer`
+- the shell is suitable for local builds and internal validation
+- mobile runtime config, release signing, and shared-module integration are still in progress
+
+See [`apps/mobile/README.md`](./apps/mobile/README.md) for local mobile setup details.
 
 ## Verification
 - `npm run lint`
