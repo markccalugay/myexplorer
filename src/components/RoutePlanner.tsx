@@ -6,6 +6,7 @@ import { BASIC_PLACE_FIELDS, fetchPlaceFromPrediction } from '../lib/googlePlace
 import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
 import { AppRoute } from '../lib/googleRoutes';
 import { createGoogleMapsRouteProvider } from '../platform/routing/googleMapsRouteProvider';
+import type { GeoPoint } from '../types/geo';
 
 interface RoutePlannerProps {
     destination: AppPlace;
@@ -25,13 +26,10 @@ export const RoutePlanner: React.FC<RoutePlannerProps> = ({ destination: initial
     const { google } = useGoogleMaps();
     const routeProvider = createGoogleMapsRouteProvider(google);
 
-    const [origin, setOrigin] = useState<google.maps.LatLng | google.maps.LatLngLiteral | null>(null);
+    const [origin, setOrigin] = useState<GeoPoint | null>(null);
     const [destination, setDestination] = useState<AppPlace>(initialDestination);
 
-    const calculateRoute = useCallback((
-        start: google.maps.LatLng | google.maps.LatLngLiteral,
-        end: google.maps.LatLng | google.maps.LatLngLiteral
-    ) => {
+    const calculateRoute = useCallback((start: GeoPoint, end: GeoPoint) => {
         if (!routeProvider) return;
 
         routeProvider.computeDrivingRoute(start, end)

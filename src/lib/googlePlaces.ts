@@ -1,4 +1,5 @@
 import { AppPlace } from '../types/place';
+import type { GeoPoint } from '../types/geo';
 
 export const APP_PLACE_FIELDS = [
     'displayName',
@@ -23,7 +24,7 @@ export const BASIC_PLACE_FIELDS = [
 
 const toLatLngLiteral = (
     location?: google.maps.LatLng | google.maps.LatLngLiteral | null
-): google.maps.LatLngLiteral | null => {
+): GeoPoint | null => {
     if (!location) return null;
     if (typeof (location as google.maps.LatLng).lat === 'function') {
         const latLng = location as google.maps.LatLng;

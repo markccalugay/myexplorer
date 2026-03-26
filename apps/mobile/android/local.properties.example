@@ -1,0 +1,6 @@
+## Copy this file to `apps/mobile/android/local.properties` for local-only Android config.
+## Do not commit the real `local.properties`.
+
+sdk.dir=/Users/your-user/Library/Android/sdk
+myexplorer.mapsApiKey=YOUR_ANDROID_MAPS_API_KEY
+myexplorer.mapsApiBaseUrl=https://maps.googleapis.com

@@ -1,3 +1,5 @@
+import type { GeoPoint } from '../../types/geo';
+
 export interface LocationProvider {
-    getCurrentLocation(): Promise<google.maps.LatLngLiteral>;
+    getCurrentLocation(): Promise<GeoPoint>;
 }

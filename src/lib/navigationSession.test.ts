@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+    beginNavigationReconnect,
     canResumeNavigationSession,
     createNavigationRouteFingerprint,
     createNavigationSession,
+    failNavigationReconnect,
     getNavigationSessionResumeState,
     getElapsedNavigationTimeMs,
+    pauseNavigationSession,
+    resumeNavigationSession,
+    skipNavigationSessionStop,
     syncNavigationSession,
     updateNavigationSessionStatus,
 } from './navigationSession';
@@ -102,6 +107,78 @@ describe('navigationSession helpers', () => {
             remainingDurationSeconds: 789,
             reconnectState: 'restored',
             updatedAt: 999,
+        });
+    });
+
+    it('supports pause, reconnect, resume, and reconnect-failure transitions', () => {
+        const session = createNavigationSession(createTrip());
+        const active = updateNavigationSessionStatus(session, 'active', 100);
+        const paused = pauseNavigationSession(active, 200);
+        const reconnecting = beginNavigationReconnect(paused, 300);
+        const failedReconnect = failNavigationReconnect(reconnecting, 400);
+        const resumed = resumeNavigationSession(failedReconnect, 'vehicle-projection', 500);
+
+        expect(paused).toMatchObject({
+            status: 'paused',
+            updatedAt: 200,
+        });
+        expect(reconnecting).toMatchObject({
+            status: 'reconnecting',
+            reconnectState: 'pending',
+            lastSyncSource: 'background',
+            updatedAt: 300,
+        });
+        expect(failedReconnect).toMatchObject({
+            status: 'paused',
+            reconnectState: 'failed',
+            updatedAt: 400,
+        });
+        expect(resumed).toMatchObject({
+            status: 'active',
+            reconnectState: 'restored',
+            lastSyncSource: 'vehicle-projection',
+            updatedAt: 500,
+        });
+    });
+
+    it('supports skipping ahead to the next stop or completing the session', () => {
+        const trip = {
+            ...createTrip(),
+            stops: [
+                {
+                    id: 'start',
+                    name: 'Start',
+                    location: { lat: 1, lng: 1 },
+                    type: 'start' as const,
+                },
+                {
+                    id: 'mid',
+                    name: 'Mid',
+                    location: { lat: 2, lng: 2 },
+                    type: 'stop' as const,
+                },
+                {
+                    id: 'end',
+                    name: 'End',
+                    location: { lat: 3, lng: 3 },
+                    type: 'destination' as const,
+                },
+            ],
+        };
+        const session = updateNavigationSessionStatus(createNavigationSession(trip), 'active', 100);
+
+        expect(skipNavigationSessionStop(session, 2, trip.stops.length, 200)).toMatchObject({
+            status: 'active',
+            currentStopIndex: 2,
+            currentLegIndex: 1,
+            updatedAt: 200,
+        });
+
+        expect(skipNavigationSessionStop(session, 3, trip.stops.length, 300)).toMatchObject({
+            status: 'completed',
+            currentStopIndex: 3,
+            currentLegIndex: 2,
+            updatedAt: 300,
         });
     });
 

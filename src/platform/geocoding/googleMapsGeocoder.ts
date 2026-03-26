@@ -1,6 +1,7 @@
 import type { ReverseGeocodeResult, Geocoder } from './geocoder';
+import type { GeoPoint } from '../../types/geo';
 
-const formatFallbackLocation = (location: google.maps.LatLngLiteral): ReverseGeocodeResult => ({
+const formatFallbackLocation = (location: GeoPoint): ReverseGeocodeResult => ({
     name: 'Current location',
     formattedAddress: `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
     location,

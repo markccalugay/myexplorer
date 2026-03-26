@@ -23,6 +23,11 @@ ios/DerivedData/
 android/.gradle/
 android/app/build/
 android/build/
+apps/mobile/android/.gradle/
+apps/mobile/android/local.properties
+apps/mobile/android/app/build/
+apps/mobile/android/build/
+apps/mobile/android/app/keystore.properties
 *.pyc
 
 # IDEs

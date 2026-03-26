@@ -11,6 +11,7 @@ import {
 import type { Trip, Stop } from '../types/trip';
 import type { AppRoute, AppRouteStep } from './googleRoutes';
 import type { LocationProvider } from '../platform/location/locationProvider';
+import type { GeoPoint } from '../types/geo';
 
 const getApprovedPitstops = (trip: Trip) => trip.stops.filter((stop) => stop.source === 'auto-pitstop');
 
@@ -22,7 +23,7 @@ export interface RestoredNavigationSessionState {
 
 export interface StartedNavigationSessionState {
     session: PersistedNavigationSession;
-    currentLocation: google.maps.LatLngLiteral | null;
+    currentLocation: GeoPoint | null;
     notice: string;
     startedAt: number;
 }
@@ -36,7 +37,7 @@ export interface SyncNavigationSessionOptions {
     session: PersistedNavigationSession;
     trip: Trip;
     currentStopIndex: number;
-    currentLocation: google.maps.LatLngLiteral | null;
+    currentLocation: GeoPoint | null;
     hasRemainingStop: boolean;
     navigationRoute: AppRoute | null;
     nextInstruction?: NavigationInstructionSnapshot;

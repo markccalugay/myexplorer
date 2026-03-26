@@ -24,7 +24,7 @@ Current readiness:
 
 - iOS shell scaffolding is in place and can be archived locally
 - iOS now includes a native CarPlay scene scaffold, but it is still waiting on entitlement approval and shared-session wiring
-- Android shell scaffolding is in place, but release signing and runtime config still need to be finished
+- Android shell scaffolding is in place, and the repo now includes a defined runtime-config plus release-signing path
 - shared planner/session foundations are now being extracted in the main app
 - Android Auto and CarPlay are not implemented yet
 
@@ -44,6 +44,36 @@ Before treating this repo as mobile-build ready, make sure the local machine has
 - Android application ID: `com.thestillfoundation.myexplorer`
 - iOS location permission copy is set for trip-origin and navigation restore use
 - Android location permissions are declared for future planner/navigation use
+- Android release builds can read a Google Maps API key from `local.properties` or `MYEXPLORER_MAPS_API_KEY`
+- Android release signing can read `apps/mobile/android/app/keystore.properties`
+
+## Native Runtime Config
+
+Android runtime config is now defined through `apps/mobile/android/app/build.gradle`.
+
+The Android app resolves native config in this order:
+
+1. `apps/mobile/android/local.properties`
+2. process environment variables
+
+Current keys:
+
+- `myexplorer.mapsApiKey` or `MYEXPLORER_MAPS_API_KEY`
+- `myexplorer.mapsApiBaseUrl` or `MYEXPLORER_MAPS_API_BASE_URL`
+
+Use [`local.properties.example`](/Users/markccalugay/Documents/_business/The%20Still%20Foundation/Products/MyExplorer/myexplorer/apps/mobile/android/local.properties.example) as the starting point for local Android setup. The values are exposed to Android native code through `BuildConfig`.
+
+For Android native map SDK setup, the Maps API key is also exposed through Android manifest metadata `com.google.android.geo.API_KEY`.
+
+## Android Release Signing
+
+Android release signing is now defined through `apps/mobile/android/app/keystore.properties`.
+
+1. Copy [keystore.properties.example](/Users/markccalugay/Documents/_business/The%20Still%20Foundation/Products/MyExplorer/myexplorer/apps/mobile/android/app/keystore.properties.example) to `apps/mobile/android/app/keystore.properties`
+2. Set `storeFile`, `storePassword`, `keyAlias`, and `keyPassword`
+3. Place the release keystore file at the matching `storeFile` path
+
+If `keystore.properties` is absent, the repo falls back to the debug keystore so local release-style builds can still run while true release signing is being set up.
 
 ## Versioning
 
@@ -80,8 +110,8 @@ The third argument lets Android use a different `versionCode` if you ever need i
 
 The following still need to be completed before the mobile shell issue can close:
 
-- release signing/provisioning for Android and iOS
-- mobile runtime config wiring for Maps/native secrets
+- final release signing/provisioning verification for Android and iOS
+- iOS-native runtime config wiring for Maps/native secrets
 - shared-domain integration between `apps/mobile` and the extracted planner/session modules
 - CarPlay entitlement approval plus native scene-to-session integration
 - real device/build verification for Android in this repo

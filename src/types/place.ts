@@ -1,7 +1,9 @@
+import type { GeoPoint } from './geo';
+
 export interface AppPlace {
     id: string;
     name: string;
-    location: google.maps.LatLngLiteral;
+    location: GeoPoint;
     formattedAddress?: string;
     rating?: number;
     photoUrl?: string;

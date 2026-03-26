@@ -1,3 +1,5 @@
+import type { GeoPoint } from '../types/geo';
+
 export interface AppRouteLeg {
     distanceMeters?: number | null;
     durationMillis?: number | null;
@@ -5,7 +7,7 @@ export interface AppRouteLeg {
 }
 
 export interface AppRoute {
-    path?: Array<google.maps.LatLng | google.maps.LatLngLiteral> | null;
+    path?: GeoPoint[] | null;
     legs?: AppRouteLeg[] | null;
 }
 
@@ -24,11 +26,11 @@ export interface AppRouteStep {
             text?: string | null;
         } | null;
     } | null;
-    startLocation?: google.maps.LatLng | google.maps.LatLngLiteral | null;
-    endLocation?: google.maps.LatLng | google.maps.LatLngLiteral | null;
+    startLocation?: GeoPoint | null;
+    endLocation?: GeoPoint | null;
 }
 
-type RouteRequestLocation = google.maps.LatLng | google.maps.LatLngLiteral;
+type RouteRequestLocation = GeoPoint;
 type RoutePointLike =
     | google.maps.LatLng
     | google.maps.LatLngLiteral
@@ -78,7 +80,7 @@ const toTravelSeconds = (durationMillis?: number | null): number => {
     return Math.round(durationMillis / 1000);
 };
 
-const toLatLngLiteral = (point: RoutePointLike): google.maps.LatLngLiteral | null => {
+const toGeoPoint = (point: RoutePointLike): GeoPoint | null => {
     if (!point) return null;
 
     if (typeof (point as google.maps.LatLng).lat === 'function') {
@@ -109,8 +111,8 @@ const normalizeStep = (step: RouteLegStepLike): AppRouteStep => ({
             text: step.localizedValues?.staticDuration ?? null,
         },
     },
-    startLocation: toLatLngLiteral(step.startLocation),
-    endLocation: toLatLngLiteral(step.endLocation),
+    startLocation: toGeoPoint(step.startLocation),
+    endLocation: toGeoPoint(step.endLocation),
 });
 
 const normalizeLeg = (leg: RouteLegLike): AppRouteLeg => ({
@@ -120,7 +122,7 @@ const normalizeLeg = (leg: RouteLegLike): AppRouteLeg => ({
 });
 
 export const normalizeRoute = (route: RouteLike): AppRoute => ({
-    path: route.path?.map(toLatLngLiteral).filter((point): point is google.maps.LatLngLiteral => Boolean(point)) ?? null,
+    path: route.path?.map(toGeoPoint).filter((point): point is GeoPoint => Boolean(point)) ?? null,
     legs: route.legs?.map(normalizeLeg) ?? null,
 });
 
@@ -142,24 +144,11 @@ export const computeDrivingRoute = async (
     return response.routes?.[0] ? normalizeRoute(response.routes[0]) : null;
 };
 
-export const getRoutePath = (route: AppRoute | null | undefined): google.maps.LatLngLiteral[] => {
+export const getRoutePath = (route: AppRoute | null | undefined): GeoPoint[] => {
     if (!route?.path?.length) return [];
-
     return route.path
-        .map((point) => {
-            if (typeof (point as google.maps.LatLng).lat === 'function') {
-                const latLng = point as google.maps.LatLng;
-                return { lat: latLng.lat(), lng: latLng.lng() };
-            }
-
-            const literal = point as google.maps.LatLngLiteral;
-            if (typeof literal.lat === 'number' && typeof literal.lng === 'number') {
-                return literal;
-            }
-
-            return null;
-        })
-        .filter((point): point is google.maps.LatLngLiteral => Boolean(point));
+        .map((point) => toGeoPoint(point as unknown as RoutePointLike))
+        .filter((point): point is GeoPoint => Boolean(point));
 };
 
 export const getRouteLeg = (route: AppRoute | null | undefined, index = 0): AppRouteLeg | null => {

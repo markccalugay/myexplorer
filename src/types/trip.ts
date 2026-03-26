@@ -1,10 +1,12 @@
+import type { GeoPoint } from './geo';
+
 export type StopSource = 'manual' | 'auto-pitstop' | 'activity-recommendation';
 
 export interface Stop {
     id: string;
     name: string;
     formattedAddress?: string;     // Full Google Places formatted_address
-    location: google.maps.LatLngLiteral;
+    location: GeoPoint;
     type: 'start' | 'stop' | 'destination';
     source?: StopSource;
     isAutoSuggested?: boolean;     // true = inserted automatically
@@ -31,7 +33,7 @@ export interface RecommendationCandidate {
     id: string;
     name: string;
     formattedAddress?: string;
-    location: google.maps.LatLngLiteral;
+    location: GeoPoint;
     category?: string;
     description?: string;
     rating?: number;

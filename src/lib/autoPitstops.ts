@@ -1,11 +1,12 @@
 import type { Stop } from '../types/trip';
 import type { AppPlace } from '../types/place';
+import type { GeoPoint } from '../types/geo';
 
 export const AUTO_PITSTOP_SINGLE_DISTANCE_KM = 50;
 export const AUTO_PITSTOP_DOUBLE_DISTANCE_KM = 100;
 export const AUTO_PITSTOP_SINGLE_DURATION_MINUTES = 60;
 
-const toLocationKey = (location: google.maps.LatLngLiteral) => (
+const toLocationKey = (location: GeoPoint) => (
     `${location.lat.toFixed(6)}:${location.lng.toFixed(6)}`
 );
 
@@ -75,7 +76,7 @@ export const allocateAutoPitstopsByLeg = (
     return counts;
 };
 
-export const dedupeStopsByLocation = <T extends { location: google.maps.LatLngLiteral; googleMapsUri?: string; id: string }>(stops: T[]) => {
+export const dedupeStopsByLocation = <T extends { location: GeoPoint; googleMapsUri?: string; id: string }>(stops: T[]) => {
     const seen = new Set<string>();
 
     return stops.filter((stop) => {

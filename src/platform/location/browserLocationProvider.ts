@@ -1,8 +1,9 @@
 import type { LocationProvider } from './locationProvider';
+import type { GeoPoint } from '../../types/geo';
 
 export const browserLocationProvider: LocationProvider = {
     getCurrentLocation() {
-        return new Promise<google.maps.LatLngLiteral>((resolve, reject) => {
+        return new Promise<GeoPoint>((resolve, reject) => {
             if (!navigator.geolocation) {
                 reject(new Error('Geolocation is not available on this device.'));
                 return;

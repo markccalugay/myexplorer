@@ -1,4 +1,5 @@
 import type { Stop, Trip } from '../types/trip';
+import type { GeoPoint } from '../types/geo';
 
 export type NavigationSessionStatus =
     | 'idle'
@@ -32,7 +33,7 @@ export interface PersistedNavigationSession {
     updatedAt: number;
     currentStopIndex: number;
     currentLegIndex: number;
-    currentLocation?: google.maps.LatLngLiteral;
+    currentLocation?: GeoPoint;
     lastKnownLocationAt?: number;
     nextInstruction?: NavigationInstructionSnapshot;
     remainingDistanceMeters?: number;
@@ -50,7 +51,7 @@ export interface NavigationSessionProgressUpdate {
     status?: NavigationSessionStatus;
     currentStopIndex?: number;
     currentLegIndex?: number;
-    currentLocation?: google.maps.LatLngLiteral;
+    currentLocation?: GeoPoint;
     lastKnownLocationAt?: number;
     nextInstruction?: NavigationInstructionSnapshot;
     remainingDistanceMeters?: number;
@@ -144,6 +145,59 @@ export const syncNavigationSession = (
     ...(updates.lastSyncSource ? { lastSyncSource: updates.lastSyncSource } : {}),
     updatedAt: now,
 });
+
+export const pauseNavigationSession = (
+    session: PersistedNavigationSession,
+    now = Date.now()
+) => syncNavigationSession(session, {
+    status: 'paused',
+}, now);
+
+export const beginNavigationReconnect = (
+    session: PersistedNavigationSession,
+    now = Date.now()
+) => syncNavigationSession(session, {
+    status: 'reconnecting',
+    reconnectState: 'pending',
+    lastSyncSource: 'background',
+}, now);
+
+export const failNavigationReconnect = (
+    session: PersistedNavigationSession,
+    now = Date.now()
+) => syncNavigationSession(session, {
+    status: 'paused',
+    reconnectState: 'failed',
+    lastSyncSource: 'background',
+}, now);
+
+export const resumeNavigationSession = (
+    session: PersistedNavigationSession,
+    syncSource: NavigationSessionSyncSource = 'phone-ui',
+    now = Date.now()
+) => syncNavigationSession(session, {
+    status: 'active',
+    reconnectState: 'restored',
+    lastSyncSource: syncSource,
+}, now);
+
+export const skipNavigationSessionStop = (
+    session: PersistedNavigationSession,
+    nextStopIndex: number,
+    stopCount: number,
+    now = Date.now()
+) => {
+    const nextSession = syncNavigationSession(session, {
+        currentStopIndex: nextStopIndex,
+        currentLegIndex: Math.max(0, nextStopIndex - 1),
+        status: nextStopIndex >= stopCount ? 'completed' : 'active',
+        reconnectState: 'restored',
+    }, now);
+
+    return nextStopIndex >= stopCount
+        ? updateNavigationSessionStatus(nextSession, 'completed', now)
+        : nextSession;
+};
 
 export const canResumeNavigationSession = (session: PersistedNavigationSession) =>
     session.status === 'active' ||

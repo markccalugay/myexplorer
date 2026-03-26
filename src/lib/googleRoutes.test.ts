@@ -87,13 +87,7 @@ describe('googleRoutes', () => {
     it('provides path, distance, and duration helpers from normalized routes', () => {
         const route: AppRoute = {
             path: [
-                {
-                    lat: () => 14.5995,
-                    lng: () => 120.9842,
-                    equals: () => false,
-                    toJSON: () => ({ lat: 14.5995, lng: 120.9842 }),
-                    toUrlValue: () => '14.5995,120.9842',
-                } as unknown as google.maps.LatLng,
+                { lat: 14.5995, lng: 120.9842 },
                 { lat: 10.3157, lng: 123.8854 },
             ],
             legs: [
