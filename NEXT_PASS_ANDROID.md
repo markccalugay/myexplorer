@@ -10,12 +10,18 @@
 - Updated `src/App.tsx` and `src/components/TripPlanner.tsx` to consume those shared helpers
 - Added new tests for the extracted modules
 - Updated GitHub issues `#24`, `#25`, `#26`, `#27`, and `#28` with progress notes
+- Bootstrapped the first React Native native host under `apps/mobile`
+- Wired the iOS bundle ID and Android application ID to `com.thestillfoundation.myexplorer`
+- Added a minimal branded MyExplorer native shell screen and mobile setup docs
+- Made iOS pod installation repeatable through the `apps/mobile` package scripts and Podfile configuration
 
 ## Verified Before Handoff
 
 - `npm test` passed
 - `npm run build` passed
 - `npm run lint` returned only the existing warning in `src/components/Map.tsx`
+- `apps/mobile` React Native test suite passed
+- `apps/mobile` pod install completed successfully
 
 ## Recommended Next Steps
 
@@ -31,13 +37,16 @@
 4. Define the Android Auto template and state map
    Build directly from `MOBILE_HOST_STRATEGY.md` and `ANDROID_NAV_SESSION_MODEL.md` so the in-car surface stays narrow and compliant.
 
-5. Stand up the first React Native Android shell
-   Do this only after the next shared-domain extraction pass is in place, so we build on reusable logic instead of wrapping the browser app.
+5. Verify the generated Android shell and wire runtime config handling
+   The scaffold now exists, but Android-specific build verification and Maps/runtime config wiring still need to be completed before #25 can close.
+
+6. Verify the generated iOS shell in Xcode/TestFlight
+   The scaffold and workspace now exist, but simulator/device validation still depends on local Xcode execution outside this environment.
 
 ## Known Remaining Gaps
 
-- No Android project exists in the repo yet
-- No React Native workspace has been created yet
 - Journey and auto-pitstop orchestration still live inside `src/components/TripPlanner.tsx`
 - Persistence is still browser-local in parts of the app
 - Android Auto remains at planning scope, not implementation
+- Android shell issue `#25` is still open because Android build verification and runtime config wiring remain
+- CarPlay, Android Auto, handoff/reconnect, validation, and monitoring issues remain open
