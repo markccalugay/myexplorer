@@ -2,6 +2,7 @@
 # Force source-based pod installation so iOS setup remains repeatable on this machine.
 ENV['RCT_USE_RN_DEP'] = '0'
 ENV['RCT_USE_PREBUILT_RNCORE'] = '0'
+ENV['RCT_BUILD_HERMES_FROM_SOURCE'] = 'true'
 
 # Resolve react_native_pods.rb with node to allow for hoisting
 require Pod::Executable.execute_command('node', ['-p',
@@ -35,5 +36,13 @@ target 'MyExplorerMobile' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |build_configuration|
+        next unless build_configuration.name == 'Release'
+
+        build_configuration.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
+      end
+    end
   end
 end

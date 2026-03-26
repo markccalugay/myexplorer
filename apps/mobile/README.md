@@ -109,13 +109,17 @@ npm run android
 
 This repo currently lives in a filesystem path with spaces, which breaks React Native's prebuilt pod artifact resolution on this machine.
 
-To keep setup repeatable, the iOS `Podfile` forces source-based installation for React Native Core and React Native Dependencies. If pods need to be refreshed, run:
+To keep setup repeatable, the iOS `Podfile` forces source-based installation for React Native Core and React Native Dependencies. It also forces Hermes to build from source so iOS archives can include Hermes debug symbols instead of depending on a missing prebuilt `hermesvm.framework` dSYM.
+
+If pods need to be refreshed, run:
 
 ```sh
 npm run pods:install
 ```
 
 Open [MyExplorerMobile.xcworkspace](/Users/markccalugay/Documents/_business/The%20Still%20Foundation/Products/MyExplorer/myexplorer/apps/mobile/ios/MyExplorerMobile.xcworkspace) in Xcode after pod install completes.
+
+If a TestFlight archive reports a missing Hermes dSYM warning, reinstall pods and rebuild the archive so Xcode picks up the source-built Hermes framework and refreshed symbol settings.
 
 ## Next Steps
 
