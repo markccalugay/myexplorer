@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      VITE_GOOGLE_MAPS_API_KEY: AIzaSyCIPlaceholderKeyForBuildVerification000
 
     steps:
       - name: Check out code

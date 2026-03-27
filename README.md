@@ -9,9 +9,13 @@ MyExplorer is a next-generation travel application designed for seamless trip pl
 
 ## Environment
 
-Create a local `.env.local` file from [`.env.example`](./.env.example) and set `VITE_GOOGLE_MAPS_API_KEY` before running the app.
+Copy [`.env.example`](./.env.example) to `.env.local` and set `VITE_GOOGLE_MAPS_API_KEY` before running the app.
 
 `VITE_GOOGLE_MAPS_MAP_ID` is optional, but `VITE_GOOGLE_MAPS_API_KEY` is required. The app fails closed if the key is missing instead of falling back to a checked-in credential.
+
+The repo now treats `.env.local` as the canonical local setup path for the web Maps key. `npm run dev` and `npm run build` run a preflight check first, and `npm run maps:doctor` prints which source is currently being used.
+
+Important: Vite reads env at process start. If you change the key, fully restart the dev server before expecting the app to pick it up.
 
 ## Features (Planned)
 - **Venue Booking**: Discover and book stays, restaurants, and experiences.

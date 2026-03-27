@@ -10,7 +10,7 @@ type GoogleMapsWindow = Window & typeof globalThis & {
 const getGoogleMapsApi = () => (window as GoogleMapsWindow).google;
 const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-js-api';
 const GOOGLE_MAPS_MISSING_KEY_ERROR = new Error(
-    'Google Maps API key is missing. Set VITE_GOOGLE_MAPS_API_KEY, then restart the Vite server or rebuild to enable maps, places, and routing.'
+    'Google Maps API key is missing. Copy .env.example to .env.local, set VITE_GOOGLE_MAPS_API_KEY, run npm run maps:doctor, then restart the Vite server or rebuild.'
 );
 
 export const isGoogleMapsConfigurationError = (error: Error | null | undefined) =>

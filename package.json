@@ -4,9 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/require-google-maps-config.mjs dev",
     "dev": "vite",
+    "prebuild": "node scripts/require-google-maps-config.mjs build",
     "lint": "eslint .",
     "build": "tsc && vite build",
+    "maps:doctor": "node scripts/require-google-maps-config.mjs doctor",
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview"
