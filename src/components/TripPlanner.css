@@ -273,6 +273,18 @@
     line-height: 1.5;
 }
 
+.planner-storage-note,
+.planner-attribution-note {
+    margin: 14px 0 0;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(26, 115, 232, 0.06);
+    border: 1px solid rgba(26, 115, 232, 0.1);
+    color: #5e738d;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 .suggestions-teaser {
     padding: 20px 22px;
     border-radius: 18px 18px 0 0;
@@ -616,14 +628,23 @@
 }
 
 .origin-location-hint,
+.origin-location-note,
 .origin-location-error {
     margin: 0;
     font-size: 13px;
     line-height: 1.5;
 }
 
-.origin-location-hint {
+.origin-location-hint,
+.origin-location-note {
     color: #5e738d;
+}
+
+.origin-location-note {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(26, 115, 232, 0.06);
+    border: 1px solid rgba(26, 115, 232, 0.1);
 }
 
 .origin-location-error {

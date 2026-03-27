@@ -44,6 +44,7 @@ import {
     hasSameStopSequence,
     retypeStops,
 } from '../lib/stopSequence';
+import { sanitizePersistedPlace } from '../lib/persistence';
 import { browserKeyValueStore } from '../platform/storage/browserKeyValueStore';
 import { browserLocationProvider } from '../platform/location/browserLocationProvider';
 import { createGoogleMapsGeocoder } from '../platform/geocoding/googleMapsGeocoder';
@@ -315,7 +316,10 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
             const parsed = JSON.parse(raw) as FavoritePlace[];
             if (Array.isArray(parsed)) {
-                setFavorites(parsed);
+                setFavorites(parsed.map((favorite) => ({
+                    ...favorite,
+                    place: sanitizePersistedPlace(favorite.place),
+                })));
             }
         } catch (error) {
             console.error('Failed to load favorite places:', error);
@@ -324,7 +328,13 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     useEffect(() => {
         try {
-            browserKeyValueStore.setItem(FAVORITE_STORAGE_KEY, JSON.stringify(favorites));
+            browserKeyValueStore.setItem(
+                FAVORITE_STORAGE_KEY,
+                JSON.stringify(favorites.map((favorite) => ({
+                    ...favorite,
+                    place: sanitizePersistedPlace(favorite.place),
+                })))
+            );
         } catch (error) {
             console.error('Failed to save favorite places:', error);
         }
@@ -650,7 +660,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
         const favorite: FavoritePlace = {
             id: `${trimmedLabel.toLowerCase()}-${Date.now()}`,
             label: trimmedLabel,
-            place: favoritePlaceDraft,
+            place: sanitizePersistedPlace(favoritePlaceDraft),
         };
 
         setFavorites((prev) => {
@@ -1422,6 +1432,9 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                                         <p className="origin-location-hint">
                                                             We will ask the browser for permission and use that point as your trip origin.
                                                         </p>
+                                                        <p className="origin-location-note">
+                                                            Your live location is only requested for this trip flow, and saved trip data stays on this device.
+                                                        </p>
                                                         {originLocationError && (
                                                             <p className="origin-location-error">{originLocationError}</p>
                                                         )}
@@ -1542,6 +1555,9 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                                             <p>Save labels like Home, Office, or Grandpa's Place for one-tap route planning.</p>
                                                         </div>
                                                     </div>
+                                                    <p className="planner-storage-note">
+                                                        Saved places are stored locally on this device with only the minimum place details MyExplorer needs to reopen them later.
+                                                    </p>
 
                                                     <div className="favorites-panel__form">
                                                         <input
@@ -1616,6 +1632,9 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                                                                 ? `With ${selectedRecommendationCount} travel preference${selectedRecommendationCount === 1 ? '' : 's'} selected, we will bias pitstop recommendations toward those needs along the drive.`
                                                                 : 'With an origin and final destination in place, we can recommend pitstops along the drive.'
                                                             : 'Set your origin and final destination first, then we will recommend pitstops between them.'}
+                                                    </p>
+                                                    <p className="planner-attribution-note">
+                                                        Recommendation results, place labels, and some route-aware details in this panel may come from Google Maps Platform.
                                                     </p>
                                                 </div>
 

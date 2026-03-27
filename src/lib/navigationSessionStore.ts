@@ -2,6 +2,7 @@ import { cloneTrip, normalizeLoadedTrip, type LegacyTrip } from './tripDocument'
 import type { PersistedNavigationSession } from './navigationSession';
 import type { KeyValueStore } from '../platform/storage/keyValueStore';
 import type { GeoPoint } from '../types/geo';
+import { sanitizePersistedNavigationSession, sanitizePersistedStop, sanitizePersistedTrip } from './persistence';
 
 export const NAVIGATION_SESSION_STORAGE_KEY = 'myexplorer.navigation-session';
 
@@ -58,11 +59,13 @@ export const createNavigationSessionStore = (storage: KeyValueStore): Navigation
 
             return {
                 ...parsed,
-                tripSnapshot: parsed.tripSnapshot ? cloneTrip(normalizeLoadedTrip(parsed.tripSnapshot)) : normalizeLoadedTrip({
-                    id: parsed.tripId,
-                    name: 'Recovered trip',
-                    stops: [],
-                }),
+                tripSnapshot: parsed.tripSnapshot
+                    ? sanitizePersistedTrip(cloneTrip(normalizeLoadedTrip(parsed.tripSnapshot)))
+                    : normalizeLoadedTrip({
+                        id: parsed.tripId,
+                        name: 'Recovered trip',
+                        stops: [],
+                    }),
                 status: VALID_STATUSES.has(parsed.status) ? parsed.status : 'preparing',
                 reconnectState: VALID_RECONNECT_STATES.has(parsed.reconnectState)
                     ? parsed.reconnectState
@@ -77,7 +80,9 @@ export const createNavigationSessionStore = (storage: KeyValueStore): Navigation
                     ? Math.max(0, parsed.currentLegIndex)
                     : 0,
                 currentLocation: normalizeGeoPoint(parsed.currentLocation),
-                approvedPitstops: Array.isArray(parsed.approvedPitstops) ? parsed.approvedPitstops : [],
+                approvedPitstops: Array.isArray(parsed.approvedPitstops)
+                    ? parsed.approvedPitstops.map(sanitizePersistedStop)
+                    : [],
             };
         } catch (error) {
             console.error('Failed to load navigation session:', error);
@@ -85,7 +90,10 @@ export const createNavigationSessionStore = (storage: KeyValueStore): Navigation
         }
     },
     save(session) {
-        storage.setItem(NAVIGATION_SESSION_STORAGE_KEY, JSON.stringify(session));
+        storage.setItem(
+            NAVIGATION_SESSION_STORAGE_KEY,
+            JSON.stringify(sanitizePersistedNavigationSession(session))
+        );
     },
     clear() {
         storage.removeItem?.(NAVIGATION_SESSION_STORAGE_KEY);

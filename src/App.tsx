@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navbar } from './components/Navbar';
 import { SearchBar } from './components/SearchBar';
 import { DestinationCard } from './components/Card';
@@ -8,7 +8,8 @@ import { RoutePlanner } from './components/RoutePlanner';
 import { TripPlanner } from './components/TripPlanner';
 import { ExplorePage } from './components/ExplorePage';
 import { Bookings } from './components/Bookings';
-import { BrandLogo } from './components/BrandLogo';
+import { LegalPage } from './components/LegalPage';
+import { SiteFooter } from './components/SiteFooter';
 import { isGoogleMapsConfigurationError, useGoogleMaps } from './hooks/useGoogleMaps';
 import { usePlaces } from './hooks/usePlaces';
 import { usePitstops } from './hooks/usePitstops';
@@ -16,20 +17,59 @@ import { Trip } from './types/trip';
 import { AppPlace } from './types/place';
 import { AppRoute } from './lib/googleRoutes';
 import { createEmptyTrip, cloneTrip, normalizeLoadedTrip, normalizeTrip, type LegacyTrip } from './lib/tripDocument';
+import { sanitizePersistedTrip } from './lib/persistence';
 import { browserKeyValueStore } from './platform/storage/browserKeyValueStore';
+import {
+    mapsAttributionContent,
+    permissionsContent,
+    privacyPolicyContent,
+    supportContent,
+    termsOfServiceContent,
+} from './content/legalContent';
 import './App.css';
 
 import hotelImg from './assets/hotel.png';
 
 const MOCK_LODGING_IMAGE = hotelImg;
 const SAVED_TRIPS_STORAGE_KEY = 'myexplorer.saved-trips';
+const LEGAL_VIEW_HASHES = {
+    privacy: '#privacy-policy',
+    terms: '#terms-of-service',
+    attribution: '#maps-attribution',
+    permissions: '#permissions-device-access',
+    support: '#support',
+} as const;
 
-type AppView = 'explore' | 'discovery' | 'planner' | 'bookings';
+type AppView = 'explore' | 'discovery' | 'planner' | 'bookings' | keyof typeof LEGAL_VIEW_HASHES;
 interface TripState {
     currentTrip: Trip;
     tripBaselineSnapshot: string | null;
 }
 type PlannerOverlayIntent = 'vehicles' | 'invite' | 'assignments' | null;
+
+const getLegalViewForHash = (hash: string): keyof typeof LEGAL_VIEW_HASHES | null => (
+    (Object.entries(LEGAL_VIEW_HASHES).find(([, value]) => value === hash)?.[0] as keyof typeof LEGAL_VIEW_HASHES | undefined)
+        ?? null
+);
+
+const syncHashForView = (view: AppView, replace = false) => {
+    if (typeof window === 'undefined') return;
+
+    const nextHash = view in LEGAL_VIEW_HASHES
+        ? LEGAL_VIEW_HASHES[view as keyof typeof LEGAL_VIEW_HASHES]
+        : '';
+
+    if (window.location.hash === nextHash) {
+        return;
+    }
+
+    if (replace) {
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+        return;
+    }
+
+    window.history.pushState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+};
 
 const createInitialTripState = (): TripState => {
     const trip = createEmptyTrip();
@@ -45,7 +85,13 @@ const App = () => {
     const [selectedPlace, setSelectedPlace] = useState<AppPlace | null>(null);
     const [isPlanning, setIsPlanning] = useState(false);
     const [route, setRoute] = useState<AppRoute | null>(null);
-    const [view, setView] = useState<AppView>('explore');
+    const [view, setView] = useState<AppView>(() => {
+        if (typeof window === 'undefined') {
+            return 'explore';
+        }
+
+        return getLegalViewForHash(window.location.hash) ?? 'explore';
+    });
     const [tripState, setTripState] = useState(createInitialTripState);
     const [plannerOverlayIntent, setPlannerOverlayIntent] = useState<PlannerOverlayIntent>(null);
     const [savedTrips, setSavedTrips] = useState<Trip[]>(() => {
@@ -54,7 +100,9 @@ const App = () => {
             if (!raw) return [];
 
             const parsed = JSON.parse(raw) as LegacyTrip[];
-            return Array.isArray(parsed) ? parsed.map(normalizeLoadedTrip) : [];
+            return Array.isArray(parsed)
+                ? parsed.map((trip) => sanitizePersistedTrip(normalizeLoadedTrip(trip)))
+                : [];
         } catch (error) {
             console.error('Failed to load saved trips:', error);
             return [];
@@ -96,7 +144,10 @@ const App = () => {
 
     useEffect(() => {
         try {
-            browserKeyValueStore.setItem(SAVED_TRIPS_STORAGE_KEY, JSON.stringify(savedTrips));
+            browserKeyValueStore.setItem(
+                SAVED_TRIPS_STORAGE_KEY,
+                JSON.stringify(savedTrips.map(sanitizePersistedTrip))
+            );
         } catch (error) {
             console.error('Failed to save trips:', error);
         }
@@ -114,19 +165,44 @@ const App = () => {
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [hasUnsavedTripChanges, view]);
 
-    const confirmLeavePlanner = () => {
+    const confirmLeavePlanner = useCallback(() => {
         if (view !== 'planner' || !hasUnsavedTripChanges) return true;
 
         return window.confirm(
             'You have unsaved trip changes. Save your trip before leaving this tab, or choose OK to leave without saving.'
         );
-    };
+    }, [hasUnsavedTripChanges, view]);
 
     const navigateToView = (nextView: AppView) => {
         if (nextView === view) return;
         if (!confirmLeavePlanner()) return;
+        if (nextView !== 'discovery') {
+            setSelectedPlace(null);
+            setIsPlanning(false);
+        }
         setView(nextView);
+        syncHashForView(nextView);
     };
+
+    useEffect(() => {
+        const handleHashChange = () => {
+            const nextLegalView = getLegalViewForHash(window.location.hash);
+            const nextView = nextLegalView ?? 'explore';
+            if (nextView === view) return;
+
+            if (view === 'planner' && !confirmLeavePlanner()) {
+                syncHashForView(view, true);
+                return;
+            }
+
+            setSelectedPlace(null);
+            setIsPlanning(false);
+            setView(nextView);
+        };
+
+        window.addEventListener('hashchange', handleHashChange);
+        return () => window.removeEventListener('hashchange', handleHashChange);
+    }, [confirmLeavePlanner, view]);
 
     const handlePlaceSelect = (place: AppPlace) => {
         setCenter(place.location);
@@ -277,6 +353,9 @@ const App = () => {
                             <h1>Places to stay in the Philippines</h1>
                             <p>{places.length} stays found</p>
                         </div>
+                        <p className="results-disclosure">
+                            Place details, ratings, photos, and map links in this discovery view may come from Google Maps Platform.
+                        </p>
 
                         <div className="results-grid">
                             {placesLoading ? (
@@ -350,12 +429,13 @@ const App = () => {
                 </main>
             )}
 
-            <footer className="footer">
-                <div className="footer-content">
-                    <BrandLogo className="footer-logo" />
-                    <span className="footer-copy">© 2026 MyExplorer. All rights reserved.</span>
-                </div>
-            </footer>
+            {view === 'privacy' && <LegalPage content={privacyPolicyContent} />}
+            {view === 'terms' && <LegalPage content={termsOfServiceContent} />}
+            {view === 'attribution' && <LegalPage content={mapsAttributionContent} />}
+            {view === 'permissions' && <LegalPage content={permissionsContent} />}
+            {view === 'support' && <LegalPage content={supportContent} />}
+
+            <SiteFooter onNavigate={navigateToView} />
         </div>
     );
 };

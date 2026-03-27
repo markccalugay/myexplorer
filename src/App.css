@@ -216,6 +216,17 @@
     gap: 24px;
 }
 
+.results-disclosure {
+    margin: -8px 0 20px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(26, 115, 232, 0.06);
+    border: 1px solid rgba(26, 115, 232, 0.1);
+    color: #5e738d;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 .mini-footer {
     padding: 12px 24px;
     background: #fff;

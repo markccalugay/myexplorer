@@ -172,8 +172,10 @@ const Map: React.FC<MapProps> = ({
     }, [center, zoom]);
 
     useEffect(() => {
+        const managedMarkers = markerRefs.current;
+
         return () => {
-            markerRefs.current.forEach(({ marker }) => {
+            managedMarkers.forEach(({ marker }) => {
                 marker.map = null;
             });
             if (routePolylineRef.current) {

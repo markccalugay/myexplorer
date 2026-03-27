@@ -43,6 +43,10 @@ export const LocationDetail: React.FC<LocationDetailProps> = ({ place, onClose, 
                         {place.websiteUri && <p><strong>Website:</strong> <a href={place.websiteUri} target="_blank" rel="noreferrer">Visit website</a></p>}
                     </div>
 
+                    <div className="detail-attribution" role="note">
+                        Place details, ratings, photos, and map-linked metadata in this panel may come from Google Maps Platform.
+                    </div>
+
                     <div className="detail-actions">
                         <Button variant="cta" onClick={() => onPlanTrip(place)}>Plan Trip</Button>
                     </div>

@@ -7,7 +7,7 @@ interface NavbarProps {
     onStartPlanning?: () => void;
     onExplore?: () => void;
     onOpenBookings?: () => void;
-    activeView?: 'explore' | 'discovery' | 'planner' | 'bookings';
+    activeView?: 'explore' | 'discovery' | 'planner' | 'bookings' | 'privacy' | 'terms' | 'attribution' | 'permissions' | 'support';
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onStartPlanning, onExplore, onOpenBookings, activeView }) => {
