@@ -565,6 +565,47 @@ Projected coverage must verify:
 - any change to trip recalculation or pitstop insertion should run planner regression tests
 - any new automotive projection work should be validated against reconnect, stale-session, and stop-progression scenarios before merge
 
+## In-Car Observability And Failure Reporting
+
+### Core Lifecycle Events
+
+- session restored successfully
+- session rejected from restore
+- session needs reroute before resume
+- reconnect started
+- reconnect succeeded
+- reconnect failed
+- stop advanced
+- trip completed
+- trip abandoned
+- projection connected
+- projection disconnected
+
+### Core Failure Events
+
+- route refresh failed during active guidance
+- reconnect failed after projection or app interruption
+- stale-session recovery blocked resume
+- location unavailable during start or reconnect
+- approved pitstop state diverged from the active trip snapshot
+
+### Minimum Metadata
+
+- session id
+- trip id
+- current stop index
+- reconnect state
+- last sync source
+- projection surface when applicable
+- failure category
+- recoverable vs non-recoverable classification
+
+### Initial Implementation Guidance
+
+- instrument these events in the shared session/controller layer where possible so phone and projected surfaces can report consistently
+- keep payloads focused on operational debugging rather than sensitive user content
+- treat this as a separate baseline from generic Maps quota monitoring
+
 ## Android Auto V1 Scope
 
 Android Auto should start from a trip that was already planned on the phone.

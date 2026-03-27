@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
     advanceNavigationSession,
+    attemptRestoreNavigationSession,
+    beginNavigationSessionReconnect,
     endNavigationSession,
+    failNavigationSessionReconnect,
+    pauseActiveNavigationSession,
+    resumeActiveNavigationSession,
     restoreNavigationSession,
+    skipCurrentNavigationStop,
     startNavigationSession,
     syncNavigationSessionProgress,
 } from './navigationSessionController';
@@ -39,6 +45,29 @@ describe('navigationSessionController', () => {
         expect(restoreNavigationSession(session, trip, 5_000)).toMatchObject({
             notice: 'Restored your active trip session.',
             elapsedTimeMs: 0,
+        });
+    });
+
+    it('surfaces explicit restore outcomes for stale and invalid sessions', () => {
+        const trip = createTrip();
+        const staleSession = createNavigationSession(trip, {
+            routeFingerprint: 'stale-route',
+        });
+        const invalidTripSession = {
+            ...createNavigationSession(trip, {
+                routeFingerprint: createNavigationRouteFingerprint(trip),
+            }),
+            tripId: 'different-trip',
+        };
+
+        expect(attemptRestoreNavigationSession(staleSession, trip)).toMatchObject({
+            status: 'needs-reroute',
+            notice: 'Your last active trip needs a route refresh before it can resume.',
+        });
+
+        expect(attemptRestoreNavigationSession(invalidTripSession, trip)).toMatchObject({
+            status: 'rejected',
+            notice: 'Your last active trip is no longer eligible for resume.',
         });
     });
 
@@ -89,6 +118,55 @@ describe('navigationSessionController', () => {
         expect(endNavigationSession(session, true, 999)).toMatchObject({
             status: 'abandoned',
             updatedAt: 999,
+        });
+    });
+
+    it('wraps pause, reconnect, resume, and skip-stop transitions for consumers', () => {
+        const trip = createTrip();
+        const session = createNavigationSession(trip);
+
+        expect(pauseActiveNavigationSession(session, 100)).toMatchObject({
+            notice: 'Paused your active trip session.',
+            session: {
+                status: 'paused',
+                updatedAt: 100,
+            },
+        });
+
+        expect(beginNavigationSessionReconnect(session, 200)).toMatchObject({
+            notice: 'Trying to reconnect your active trip session.',
+            session: {
+                status: 'reconnecting',
+                reconnectState: 'pending',
+                updatedAt: 200,
+            },
+        });
+
+        expect(failNavigationSessionReconnect(session, 300)).toMatchObject({
+            notice: 'We could not reconnect your trip session yet.',
+            session: {
+                status: 'paused',
+                reconnectState: 'failed',
+                updatedAt: 300,
+            },
+        });
+
+        expect(resumeActiveNavigationSession(session, 400)).toMatchObject({
+            notice: 'Resumed your active trip session.',
+            session: {
+                status: 'active',
+                reconnectState: 'restored',
+                updatedAt: 400,
+            },
+        });
+
+        expect(skipCurrentNavigationStop(session, 2, trip.stops.length, 500)).toMatchObject({
+            completed: true,
+            session: {
+                status: 'completed',
+                currentStopIndex: 2,
+                updatedAt: 500,
+            },
         });
     });
 

@@ -1,8 +1,13 @@
 import {
+    beginNavigationReconnect,
     createNavigationRouteFingerprint,
     createNavigationSession,
+    failNavigationReconnect,
     getElapsedNavigationTimeMs,
     getNavigationSessionResumeState,
+    pauseNavigationSession,
+    resumeNavigationSession,
+    skipNavigationSessionStop,
     syncNavigationSession,
     updateNavigationSessionStatus,
     type NavigationInstructionSnapshot,
@@ -21,6 +26,19 @@ export interface RestoredNavigationSessionState {
     elapsedTimeMs: number;
 }
 
+export type NavigationSessionRestoreResult =
+    | ({
+        status: 'restored';
+      } & RestoredNavigationSessionState)
+    | {
+        status: 'needs-reroute';
+        notice: string;
+      }
+    | {
+        status: 'rejected';
+        notice: string;
+      };
+
 export interface StartedNavigationSessionState {
     session: PersistedNavigationSession;
     currentLocation: GeoPoint | null;
@@ -31,6 +49,11 @@ export interface StartedNavigationSessionState {
 export interface NavigationSessionAdvanceResult {
     session: PersistedNavigationSession;
     completed: boolean;
+}
+
+export interface NavigationSessionStatusTransitionResult {
+    session: PersistedNavigationSession;
+    notice: string;
 }
 
 export interface SyncNavigationSessionOptions {
@@ -44,23 +67,54 @@ export interface SyncNavigationSessionOptions {
     now?: number;
 }
 
+export const attemptRestoreNavigationSession = (
+    session: PersistedNavigationSession | null,
+    trip: Trip,
+    now = Date.now()
+): NavigationSessionRestoreResult => {
+    if (!session) {
+        return {
+            status: 'rejected',
+            notice: 'No saved trip session is available to restore.',
+        };
+    }
+
+    const resumeState = getNavigationSessionResumeState(session, trip);
+    if (resumeState.status === 'resume-needs-reroute') {
+        return {
+            status: 'needs-reroute',
+            notice: 'Your last active trip needs a route refresh before it can resume.',
+        };
+    }
+
+    if (resumeState.status !== 'resume-ok' || !resumeState.session) {
+        return {
+            status: 'rejected',
+            notice: 'Your last active trip is no longer eligible for resume.',
+        };
+    }
+
+    return {
+        status: 'restored',
+        session: resumeState.session,
+        notice: 'Restored your active trip session.',
+        elapsedTimeMs: getElapsedNavigationTimeMs(resumeState.session, now),
+    };
+};
+
 export const restoreNavigationSession = (
     session: PersistedNavigationSession | null,
     trip: Trip,
     now = Date.now()
 ): RestoredNavigationSessionState | null => {
-    if (!session) return null;
-
-    const resumeState = getNavigationSessionResumeState(session, trip);
-    if (resumeState.status !== 'resume-ok' || !resumeState.session) {
-        return null;
-    }
-
-    return {
-        session: resumeState.session,
-        notice: 'Restored your active trip session.',
-        elapsedTimeMs: getElapsedNavigationTimeMs(resumeState.session, now),
-    };
+    const result = attemptRestoreNavigationSession(session, trip, now);
+    return result.status === 'restored'
+        ? {
+            session: result.session,
+            notice: result.notice,
+            elapsedTimeMs: result.elapsedTimeMs,
+        }
+        : null;
 };
 
 export const startNavigationSession = async (
@@ -137,6 +191,51 @@ export const advanceNavigationSession = (
     return {
         session: nextSession,
         completed: false,
+    };
+};
+
+export const pauseActiveNavigationSession = (
+    session: PersistedNavigationSession,
+    now = Date.now()
+): NavigationSessionStatusTransitionResult => ({
+    session: pauseNavigationSession(session, now),
+    notice: 'Paused your active trip session.',
+});
+
+export const beginNavigationSessionReconnect = (
+    session: PersistedNavigationSession,
+    now = Date.now()
+): NavigationSessionStatusTransitionResult => ({
+    session: beginNavigationReconnect(session, now),
+    notice: 'Trying to reconnect your active trip session.',
+});
+
+export const failNavigationSessionReconnect = (
+    session: PersistedNavigationSession,
+    now = Date.now()
+): NavigationSessionStatusTransitionResult => ({
+    session: failNavigationReconnect(session, now),
+    notice: 'We could not reconnect your trip session yet.',
+});
+
+export const resumeActiveNavigationSession = (
+    session: PersistedNavigationSession,
+    now = Date.now()
+): NavigationSessionStatusTransitionResult => ({
+    session: resumeNavigationSession(session, 'phone-ui', now),
+    notice: 'Resumed your active trip session.',
+});
+
+export const skipCurrentNavigationStop = (
+    session: PersistedNavigationSession,
+    nextStopIndex: number,
+    stopCount: number,
+    now = Date.now()
+): NavigationSessionAdvanceResult => {
+    const nextSession = skipNavigationSessionStop(session, nextStopIndex, stopCount, now);
+    return {
+        session: nextSession,
+        completed: nextSession.status === 'completed',
     };
 };
 

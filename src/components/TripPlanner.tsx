@@ -33,8 +33,8 @@ import {
 } from '../lib/navigationSession';
 import {
     advanceNavigationSession,
+    attemptRestoreNavigationSession,
     endNavigationSession,
-    restoreNavigationSession,
     startNavigationSession,
     syncNavigationSessionProgress,
 } from '../lib/navigationSessionController';
@@ -363,18 +363,21 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     useEffect(() => {
         const persistedSession = navigationSessionStore.load();
-        const restored = restoreNavigationSession(persistedSession, initialTrip);
-        if (!restored) {
+        const restoreResult = attemptRestoreNavigationSession(persistedSession, initialTrip);
+        if (restoreResult.status !== 'restored') {
+            if (restoreResult.status === 'needs-reroute' || restoreResult.status === 'rejected') {
+                navigationSessionStore.clear();
+            }
             return;
         }
 
-        navigationSessionRef.current = restored.session;
-        setCurrentStopIndex(restored.session.currentStopIndex);
-        setCurrentLocation(restored.session.currentLocation ?? null);
-        setTripStartedAt(restored.session.startedAt);
-        setElapsedTimeMs(restored.elapsedTimeMs);
+        navigationSessionRef.current = restoreResult.session;
+        setCurrentStopIndex(restoreResult.session.currentStopIndex);
+        setCurrentLocation(restoreResult.session.currentLocation ?? null);
+        setTripStartedAt(restoreResult.session.startedAt);
+        setElapsedTimeMs(restoreResult.elapsedTimeMs);
         setIsNavigating(true);
-        setNavigationNotice(restored.notice);
+        setNavigationNotice(restoreResult.notice);
     }, [initialTrip]);
 
     useEffect(() => {

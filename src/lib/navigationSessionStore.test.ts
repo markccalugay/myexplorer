@@ -52,6 +52,33 @@ describe('navigationSessionStore', () => {
         consoleErrorSpy.mockRestore();
     });
 
+    it('normalizes invalid status, reconnect, sync-source, and location values from storage', () => {
+        const session = createNavigationSession(createTrip());
+        const store = createNavigationSessionStore(createMemoryStore({
+            [NAVIGATION_SESSION_STORAGE_KEY]: JSON.stringify({
+                ...session,
+                status: 'mystery',
+                reconnectState: 'unknown',
+                lastSyncSource: 'nowhere',
+                currentStopIndex: -10,
+                currentLegIndex: -5,
+                currentLocation: {
+                    lat: 'bad',
+                    lng: 121,
+                },
+            }),
+        }));
+
+        expect(store.load()).toMatchObject({
+            status: 'preparing',
+            reconnectState: 'pending',
+            lastSyncSource: 'phone-ui',
+            currentStopIndex: 1,
+            currentLegIndex: 0,
+        });
+        expect(store.load()?.currentLocation).toBeUndefined();
+    });
+
     it('clears the stored session', () => {
         const storage = createMemoryStore();
         const store = createNavigationSessionStore(storage);
