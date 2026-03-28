@@ -23,6 +23,18 @@ import {
   type Trip,
 } from './src/planner/domain';
 import {
+  buildRouteKey,
+  createInitialRouteState,
+  formatDistanceKm,
+  formatDuration,
+  routeSnapshotMatchesTrip,
+  type RouteState,
+} from './src/planner/route';
+import {
+  fetchRouteFromRoutingProxy,
+  isRoutingProxyConfigured,
+} from './src/planner/routingProxyClient';
+import {
   loadPlannerState,
   persistDraftTrip,
   persistSavedTrips,
@@ -46,6 +58,9 @@ const EMPTY_STOP_DRAFT: StopDraft = {
   lng: '',
 };
 
+const ROUTE_REFRESH_DEBOUNCE_MS = 800;
+const appConfig = require('./app.json') as {routingProxyUrl?: string};
+
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -55,6 +70,8 @@ function App() {
   const [stopDraft, setStopDraft] = useState<StopDraft>(EMPTY_STOP_DRAFT);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [routeState, setRouteState] = useState<RouteState>(createInitialRouteState);
+  const routingProxyUrl = appConfig.routingProxyUrl?.trim() ?? '';
 
   useEffect(() => {
     let isMounted = true;
@@ -69,6 +86,7 @@ function App() {
       setSavedTrips(state.savedTrips.map(savedTrip => cloneTrip(savedTrip)));
       setCurrentTrip(restoredDraft);
       setTripBaselineSnapshot(normalizeTrip(restoredDraft));
+      setRouteState(getRouteStateForTrip(restoredDraft));
       setHasHydrated(true);
     };
 
@@ -78,6 +96,7 @@ function App() {
         const emptyTrip = createEmptyTrip();
         setCurrentTrip(emptyTrip);
         setTripBaselineSnapshot(normalizeTrip(emptyTrip));
+        setRouteState(getRouteStateForTrip(emptyTrip));
         setHasHydrated(true);
       }
     });
@@ -114,6 +133,84 @@ function App() {
 
     return normalizeTrip(currentTrip) !== tripBaselineSnapshot;
   }, [currentTrip, tripBaselineSnapshot]);
+  const currentRouteKey = useMemo(() => buildRouteKey(currentTrip.stops), [currentTrip.stops]);
+
+  useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
+    if (!currentRouteKey) {
+      setRouteState({
+        status: 'idle',
+        message: 'Add at least two stops to request a route.',
+        activeRouteKey: null,
+      });
+      return;
+    }
+
+    if (!isRoutingProxyConfigured(routingProxyUrl)) {
+      setRouteState({
+        status: currentTrip.routeSnapshot ? 'stale' : 'error',
+        message: 'Set routingProxyUrl in app.json to enable automatic route refresh.',
+        activeRouteKey: currentRouteKey,
+      });
+      return;
+    }
+
+    const hasMatchingSnapshot = routeSnapshotMatchesTrip(currentTrip.routeSnapshot, currentTrip);
+    setRouteState(previousState => ({
+      status: hasMatchingSnapshot ? 'loading' : currentTrip.routeSnapshot ? 'stale' : 'loading',
+      message: hasMatchingSnapshot
+        ? 'Refreshing the route from the routing proxy...'
+        : 'Requesting a route from the routing proxy...',
+      activeRouteKey: currentRouteKey,
+    }));
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(async () => {
+      try {
+        const routeSnapshot = await fetchRouteFromRoutingProxy(
+          routingProxyUrl,
+          currentTrip.stops,
+          controller.signal,
+        );
+
+        setCurrentTrip(previousTrip => {
+          if (buildRouteKey(previousTrip.stops) !== routeSnapshot.routeKey) {
+            return previousTrip;
+          }
+
+          return {
+            ...previousTrip,
+            routeSnapshot,
+          };
+        });
+        setRouteState({
+          status: 'ready',
+          message: 'Route is up to date.',
+          activeRouteKey: routeSnapshot.routeKey,
+        });
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        const errorMessage =
+          error instanceof Error ? error.message : 'Routing proxy refresh failed.';
+        setRouteState({
+          status: currentTrip.routeSnapshot ? 'stale' : 'error',
+          message: errorMessage,
+          activeRouteKey: currentRouteKey,
+        });
+      }
+    }, ROUTE_REFRESH_DEBOUNCE_MS);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeoutId);
+    };
+  }, [currentRouteKey, currentTrip.routeSnapshot?.routeKey, currentTrip.stops, hasHydrated, routingProxyUrl]);
 
   function queueOrRunAction(action: PendingAction) {
     if (hasUnsavedChanges) {
@@ -133,6 +230,7 @@ function App() {
       setCurrentTrip(nextTrip);
       setTripBaselineSnapshot(normalizeTrip(nextTrip));
       setStopDraft(EMPTY_STOP_DRAFT);
+      setRouteState(getRouteStateForTrip(nextTrip));
       return;
     }
 
@@ -145,6 +243,7 @@ function App() {
     setCurrentTrip(nextTrip);
     setTripBaselineSnapshot(normalizeTrip(nextTrip));
     setStopDraft(EMPTY_STOP_DRAFT);
+    setRouteState(getRouteStateForTrip(nextTrip));
   }
 
   function discardPendingAction() {
@@ -262,6 +361,8 @@ function App() {
           onSubmitStop={addStop}
           onTripNameChange={updateTripName}
           pendingAction={pendingAction}
+          routeState={routeState}
+          routingProxyConfigured={isRoutingProxyConfigured(routingProxyUrl)}
           savedTrips={savedTrips}
           stopDraft={stopDraft}
           validationMessage={validationMessage}
@@ -286,6 +387,8 @@ function AppContent({
   onSubmitStop,
   onTripNameChange,
   pendingAction,
+  routeState,
+  routingProxyConfigured,
   savedTrips,
   stopDraft,
   validationMessage,
@@ -304,6 +407,8 @@ function AppContent({
   onSubmitStop: () => void;
   onTripNameChange: (name: string) => void;
   pendingAction: PendingAction | null;
+  routeState: RouteState;
+  routingProxyConfigured: boolean;
   savedTrips: Trip[];
   stopDraft: StopDraft;
   validationMessage: string | null;
@@ -438,9 +543,74 @@ function AppContent({
             ))
           )}
         </SectionCard>
+
+        <SectionCard title="Route Status">
+          <Text style={styles.sectionHint}>
+            Automatic route refresh is {routingProxyConfigured ? 'enabled' : 'waiting for proxy setup'}.
+          </Text>
+          <Text style={styles.tripMeta}>Status: {routeState.status}</Text>
+          <Text style={styles.tripMeta}>
+            {routeState.message ?? 'No route request has been made yet.'}
+          </Text>
+          {currentTrip.routeSnapshot ? (
+            <View style={styles.routeSummaryCard}>
+              <Text style={styles.savedTripTitle}>Last known route</Text>
+              <Text style={styles.savedTripMeta}>
+                Distance {formatDistanceKm(currentTrip.routeSnapshot.totalDistanceMeters)}
+              </Text>
+              <Text style={styles.savedTripMeta}>
+                Duration {formatDuration(currentTrip.routeSnapshot.totalDurationMillis)}
+              </Text>
+              <Text style={styles.savedTripMeta}>
+                Legs {currentTrip.routeSnapshot.legs.length}
+              </Text>
+              <Text style={styles.savedTripMeta}>
+                Refreshed {formatTimestamp(currentTrip.routeSnapshot.refreshedAt)}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.emptyText}>
+              No persisted route payload yet. Once the routing proxy is configured, the app
+              will refresh automatically after structural trip edits.
+            </Text>
+          )}
+        </SectionCard>
       </View>
     </ScrollView>
   );
+}
+
+function getRouteStateForTrip(trip: Trip): RouteState {
+  const routeKey = buildRouteKey(trip.stops);
+  if (!routeKey) {
+    return {
+      status: 'idle',
+      message: 'Add at least two stops to request a route.',
+      activeRouteKey: null,
+    };
+  }
+
+  if (routeSnapshotMatchesTrip(trip.routeSnapshot, trip)) {
+    return {
+      status: 'ready',
+      message: 'Restored the last known route payload from local storage.',
+      activeRouteKey: routeKey,
+    };
+  }
+
+  if (trip.routeSnapshot) {
+    return {
+      status: 'stale',
+      message: 'The saved route payload no longer matches the current stop order.',
+      activeRouteKey: routeKey,
+    };
+  }
+
+  return {
+    status: 'idle',
+    message: 'Route refresh will start automatically once the proxy is configured.',
+    activeRouteKey: routeKey,
+  };
 }
 
 function ActionButton({
@@ -790,6 +960,12 @@ const styles = StyleSheet.create({
     color: '#9fb8cf',
     fontSize: 13,
     lineHeight: 18,
+  },
+  routeSummaryCard: {
+    backgroundColor: '#173553',
+    borderRadius: 20,
+    marginTop: 8,
+    padding: 14,
   },
 });
 

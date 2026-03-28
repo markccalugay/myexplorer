@@ -61,6 +61,19 @@ Current keys:
 - `myexplorer.mapsApiKey` or `MYEXPLORER_MAPS_API_KEY`
 - `myexplorer.mapsApiBaseUrl` or `MYEXPLORER_MAPS_API_BASE_URL`
 
+## Mobile Routing Proxy
+
+The React Native planner now has a mobile-side routing contract and automatic refresh lifecycle, but this repo still does **not** contain the real backend proxy service yet.
+
+Current in-repo behavior:
+
+- the phone app expects a routing proxy URL in `apps/mobile/app.json` as `routingProxyUrl`
+- if `routingProxyUrl` is blank, the planner stays usable but route refresh remains unavailable and the app shows a configuration warning
+- when `routingProxyUrl` is set, the phone app automatically posts structural trip changes to `POST /routes/compute`
+- the app persists the last known normalized route payload locally so resumed trips can reopen with route context
+
+See [`docs/mobile-routing-proxy-contract.md`](/Users/markccalugay/Documents/_business/The%20Still%20Foundation/Products/MyExplorer/myexplorer/docs/mobile-routing-proxy-contract.md) for the current request/response contract the future backend should satisfy.
+
 Use [`local.properties.example`](/Users/markccalugay/Documents/_business/The%20Still%20Foundation/Products/MyExplorer/myexplorer/apps/mobile/android/local.properties.example) as the starting point for local Android setup. The values are exposed to Android native code through `BuildConfig`.
 
 For Android native map SDK setup, the Maps API key is also exposed through Android manifest metadata `com.google.android.geo.API_KEY`.

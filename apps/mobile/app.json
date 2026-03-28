@@ -1,4 +1,5 @@
 {
   "name": "MyExplorerMobile",
-  "displayName": "MyExplorer"
+  "displayName": "MyExplorer",
+  "routingProxyUrl": ""
 }

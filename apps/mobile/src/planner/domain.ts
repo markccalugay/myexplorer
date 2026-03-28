@@ -30,6 +30,7 @@ export interface Trip {
   totalDuration?: number;
   savedAt?: string;
   updatedAt?: string;
+  routeSnapshot?: import('./route').PersistedRoutePayload;
 }
 
 export const createTripId = () =>
@@ -50,6 +51,7 @@ export const cloneTrip = (trip: Trip): Trip =>
 export const normalizeTrip = (trip: Trip) =>
   JSON.stringify({
     ...trip,
+    routeSnapshot: undefined,
     savedAt: undefined,
     updatedAt: undefined,
   });
