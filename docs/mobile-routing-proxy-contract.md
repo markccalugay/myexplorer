@@ -1,36 +1,38 @@
 # Mobile Routing Proxy Contract
 
-This document defines the routing proxy contract the React Native app now expects.
+This document defines the current backend proxy contract for mobile route
+refreshes in MyExplorer.
 
-It is intentionally backend-first:
-
-- the phone app does **not** call Google Routes directly
-- the proxy owns Google credentials, rate limits, retries, logging, and error mapping
-- the mobile app consumes a normalized route payload and persists the last known route locally
+The mobile app now persists normalized route payloads locally and refreshes
+routes automatically after structural trip edits, but the actual route
+computation is intended to happen through a backend proxy instead of through
+direct client-side Google Routes requests.
 
 ## Endpoint
 
-`POST /routes/compute`
+- Method: `POST`
+- Path: `/routes/compute`
+- Content type: `application/json`
 
-## Request Shape
+## Request shape
 
 ```json
 {
-  "routeKey": "stop-a:14.59950,120.98420|stop-b:13.75650,121.05830",
+  "routeKey": "start:14.59950,120.98420|destination:13.75650,121.05830",
   "stops": [
     {
-      "id": "stop-a",
+      "id": "start",
       "name": "Origin",
-      "formattedAddress": "Manila, Philippines",
+      "formattedAddress": "Manila",
       "location": {
         "lat": 14.5995,
         "lng": 120.9842
       }
     },
     {
-      "id": "stop-b",
-      "name": "Destination",
-      "formattedAddress": "Batangas City, Philippines",
+      "id": "destination",
+      "name": "Batangas",
+      "formattedAddress": "Batangas Port",
       "location": {
         "lat": 13.7565,
         "lng": 121.0583
@@ -40,46 +42,54 @@ It is intentionally backend-first:
 }
 ```
 
-## Response Shape
+Rules:
+
+- at least 2 ordered stops are required
+- the mobile planner owns stop order before the request is sent
+- `routeKey` must match the stop sequence used for the request
+
+## Response shape
 
 ```json
 {
   "route": {
     "provider": "google-routes",
-    "refreshedAt": "2026-03-28T01:23:45.000Z",
-    "totalDistanceMeters": 118500,
-    "totalDurationMillis": 7800000,
-    "encodedPolyline": "encoded-polyline-value",
+    "routeKey": "start:14.59950,120.98420|destination:13.75650,121.05830",
+    "refreshedAt": "2026-03-28T01:20:00.000Z",
+    "totalDistanceMeters": 12000,
+    "totalDurationMillis": 960000,
+    "encodedPolyline": "encoded_polyline_here",
     "legs": [
       {
-        "distanceMeters": 118500,
-        "durationMillis": 7800000
+        "distanceMeters": 12000,
+        "durationMillis": 960000
       }
     ]
   }
 }
 ```
 
-## Mobile Expectations
+## Local development
 
-- the mobile app computes and sends the `routeKey`
-- the proxy may validate the incoming `routeKey`, but the client treats the request as source-of-truth for the current stop order
-- the response should stay provider-neutral apart from the explicit `provider` label
-- the mobile app persists:
-  - `routeKey`
-  - `refreshedAt`
-  - `totalDistanceMeters`
-  - `totalDurationMillis`
-  - `encodedPolyline`
-  - `legs`
+The repo now includes a local Node proxy script:
 
-## Failure Semantics
+```sh
+npm run mobile:routing-proxy
+```
 
-The proxy should return normal HTTP failure codes so the mobile client can distinguish:
+Required environment variable:
 
-- invalid trip shape
-- authentication or quota failure
-- upstream Google routing failure
-- transient server failure
+- `MYEXPLORER_GOOGLE_ROUTES_API_KEY`
 
-The current mobile implementation treats any non-`2xx` response as a route-refresh failure and keeps the last known local payload as stale when available.
+Optional:
+
+- `PORT` defaults to `8787`
+
+To point the React Native app at the proxy during development, set
+`routingProxyUrl` in `apps/mobile/app.json`, for example:
+
+```json
+{
+  "routingProxyUrl": "http://127.0.0.1:8787"
+}
+```

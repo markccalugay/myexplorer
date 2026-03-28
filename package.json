@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "build": "tsc && vite build",
     "maps:doctor": "node scripts/require-google-maps-config.mjs doctor",
+    "mobile:routing-proxy": "node scripts/mobile-routing-proxy.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview"

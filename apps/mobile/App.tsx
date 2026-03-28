@@ -306,6 +306,7 @@ function App() {
     setCurrentTrip(previousTrip => ({
       ...previousTrip,
       stops: retypeStops([...previousTrip.stops, nextStop]),
+      routeSnapshot: undefined,
     }));
     setStopDraft(EMPTY_STOP_DRAFT);
     setValidationMessage(null);
@@ -315,6 +316,7 @@ function App() {
     setCurrentTrip(previousTrip => ({
       ...previousTrip,
       stops: retypeStops(previousTrip.stops.filter(stop => stop.id !== stopId)),
+      routeSnapshot: undefined,
     }));
   }
 
@@ -334,6 +336,7 @@ function App() {
       return {
         ...previousTrip,
         stops: retypeStops(nextStops),
+        routeSnapshot: undefined,
       };
     });
   }
