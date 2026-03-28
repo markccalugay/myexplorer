@@ -42,3 +42,4 @@ apps/mobile/android/app/keystore.properties
 logs/
 *.log
 coverage/
+.vercel
