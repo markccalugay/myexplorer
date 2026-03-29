@@ -41,6 +41,9 @@ target 'MyExplorerMobile' do
       target.build_configurations.each do |build_configuration|
         next unless build_configuration.name == 'Release'
 
+        # Keep release archives symbolicated and align with the documented iOS release
+        # workflow: retain the generated .xcarchive and use its dSYMs for follow-up if
+        # TestFlight/App Store Connect reports missing symbols.
         build_configuration.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
       end
     end

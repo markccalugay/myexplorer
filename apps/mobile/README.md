@@ -97,6 +97,11 @@ For Android specifically, the checklist now documents the deobfuscation-file rul
 - with `enableProguardInReleaseBuilds = false`, the Play Console missing-deobfuscation warning is currently expected
 - if Android release obfuscation is later enabled, preserve and upload `apps/mobile/android/app/build/outputs/mapping/release/mapping.txt` with the matching Play release
 
+For iOS specifically, the checklist now documents the symbol-retention rule:
+
+- keep the generated `.xcarchive` for each release so the matching `dSYMs/` directory remains available for crash-symbolication follow-up
+- if TestFlight/App Store Connect reports missing symbols, rebuild first when it traces back to the local Hermes/pod setup; if the warning persists from a fresh archive, retain the archive and extracted dSYMs for follow-up upload or investigation
+
 ## Android Play Release Notes
 
 The Android release build currently keeps `enableProguardInReleaseBuilds = false` in `apps/mobile/android/app/build.gradle`.
@@ -121,6 +126,26 @@ Small release checklist for Android:
 3. Build the signed Android release artifact.
 4. If `enableProguardInReleaseBuilds` is still `false`, treat the Play deobfuscation warning as informational.
 5. If `enableProguardInReleaseBuilds` is `true`, retain and upload `app/build/outputs/mapping/release/mapping.txt` for that exact release.
+
+## iOS Archive And Symbol Notes
+
+The iOS release path currently depends on the source-built pod setup in [`apps/mobile/ios/Podfile`](/Users/markccalugay/Documents/_business/The%20Still%20Foundation/Products/MyExplorer/myexplorer/apps/mobile/ios/Podfile), which forces release builds to use `DEBUG_INFORMATION_FORMAT = dwarf-with-dsym`.
+
+That means:
+
+- release archives should include symbol artifacts inside the generated `.xcarchive`
+- the `.xcarchive` should be retained with the release record so the matching `dSYMs/` directory is available if crash-symbolication follow-up is needed
+
+If a local archive reports a missing Hermes dSYM warning:
+
+- reinstall pods with `npm run pods:install`
+- rebuild the archive before treating it as an App Store Connect-side problem
+
+If TestFlight or App Store Connect still reports missing symbols from a fresh archive:
+
+- retain the full `.xcarchive`
+- inspect or extract the matching files from `.xcarchive/dSYMs/`
+- keep those artifacts attached to the release notes for follow-up upload or investigation
 
 ## Versioning
 
