@@ -85,7 +85,11 @@ react {
 }
 
 /**
- * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
+ * Set this to true to enable R8/ProGuard shrinking for release builds.
+ *
+ * While this stays false, Google Play's "missing deobfuscation file" warning is expected
+ * because no `mapping.txt` is produced for the release build. If this is changed to true,
+ * preserve `app/build/outputs/mapping/release/mapping.txt` and upload it with the release.
  */
 def enableProguardInReleaseBuilds = false
 

@@ -88,6 +88,31 @@ Android release signing is now defined through `apps/mobile/android/app/keystore
 
 If `keystore.properties` is absent, the repo falls back to the debug keystore so local release-style builds can still run while true release signing is being set up.
 
+## Android Play Release Notes
+
+The Android release build currently keeps `enableProguardInReleaseBuilds = false` in `apps/mobile/android/app/build.gradle`.
+
+That means:
+
+- release builds are currently signed, but not minified or obfuscated by R8/ProGuard
+- Google Play's warning about a missing deobfuscation file is expected for the current setup
+- no `mapping.txt` file is generated while obfuscation stays disabled
+
+If Android release obfuscation is enabled later:
+
+- build the release artifact first
+- preserve `apps/mobile/android/app/build/outputs/mapping/release/mapping.txt`
+- upload that `mapping.txt` file alongside the corresponding App Bundle in Play Console
+- keep the mapping file with the same release artifacts so crash and ANR traces remain symbolicated
+
+Small release checklist for Android:
+
+1. Sync the intended mobile version with `npm run version:sync` or `npm run version:set`.
+2. Confirm `apps/mobile/android/app/keystore.properties` points at the intended release keystore.
+3. Build the signed Android release artifact.
+4. If `enableProguardInReleaseBuilds` is still `false`, treat the Play deobfuscation warning as informational.
+5. If `enableProguardInReleaseBuilds` is `true`, retain and upload `app/build/outputs/mapping/release/mapping.txt` for that exact release.
+
 ## Versioning
 
 Mobile native versions now use [`version.json`](/Users/markccalugay/Documents/_business/The%20Still%20Foundation/Products/MyExplorer/myexplorer/apps/mobile/version.json) as the source of truth.
