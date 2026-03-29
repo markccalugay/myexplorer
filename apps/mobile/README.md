@@ -88,6 +88,15 @@ Android release signing is now defined through `apps/mobile/android/app/keystore
 
 If `keystore.properties` is absent, the repo falls back to the debug keystore so local release-style builds can still run while true release signing is being set up.
 
+## Mobile Release Checklist
+
+Use [`RELEASE_CHECKLIST.md`](/Users/markccalugay/Documents/_business/The%20Still%20Foundation/Products/MyExplorer/myexplorer/apps/mobile/RELEASE_CHECKLIST.md) as the current release-prep reference before shipping native builds.
+
+For Android specifically, the checklist now documents the deobfuscation-file rule:
+
+- with `enableProguardInReleaseBuilds = false`, the Play Console missing-deobfuscation warning is currently expected
+- if Android release obfuscation is later enabled, preserve and upload `apps/mobile/android/app/build/outputs/mapping/release/mapping.txt` with the matching Play release
+
 ## Android Play Release Notes
 
 The Android release build currently keeps `enableProguardInReleaseBuilds = false` in `apps/mobile/android/app/build.gradle`.
