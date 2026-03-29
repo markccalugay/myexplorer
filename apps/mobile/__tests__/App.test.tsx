@@ -19,12 +19,12 @@ jest.mock(
 
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaProvider: ({children}: {children: React.ReactNode}) => {
-    const ReactNative = require('react-native');
-    return <ReactNative.View>{children}</ReactNative.View>;
+    const {View: MockView} = jest.requireActual('react-native');
+    return <MockView>{children}</MockView>;
   },
   SafeAreaView: ({children}: {children: React.ReactNode}) => {
-    const ReactNative = require('react-native');
-    return <ReactNative.View>{children}</ReactNative.View>;
+    const {View: MockView} = jest.requireActual('react-native');
+    return <MockView>{children}</MockView>;
   },
 }));
 

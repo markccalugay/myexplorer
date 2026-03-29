@@ -10,6 +10,7 @@ import {
   useColorScheme,
 } from 'react-native';
 import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
+import appConfig from './app.json';
 
 import {
   cloneTrip,
@@ -59,7 +60,6 @@ const EMPTY_STOP_DRAFT: StopDraft = {
 };
 
 const ROUTE_REFRESH_DEBOUNCE_MS = 800;
-const appConfig = require('./app.json') as {routingProxyUrl?: string};
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -140,36 +140,24 @@ function App() {
       return;
     }
 
-    if (!currentRouteKey) {
-      setRouteState({
-        status: 'idle',
-        message: 'Add at least two stops to request a route.',
-        activeRouteKey: null,
-      });
+    if (!currentRouteKey || !isRoutingProxyConfigured(routingProxyUrl)) {
       return;
     }
-
-    if (!isRoutingProxyConfigured(routingProxyUrl)) {
-      setRouteState({
-        status: currentTrip.routeSnapshot ? 'stale' : 'error',
-        message: 'Set routingProxyUrl in app.json to enable automatic route refresh.',
-        activeRouteKey: currentRouteKey,
-      });
-      return;
-    }
-
-    const hasMatchingSnapshot = routeSnapshotMatchesTrip(currentTrip.routeSnapshot, currentTrip);
-    setRouteState(previousState => ({
-      status: hasMatchingSnapshot ? 'loading' : currentTrip.routeSnapshot ? 'stale' : 'loading',
-      message: hasMatchingSnapshot
-        ? 'Refreshing the route from the routing proxy...'
-        : 'Requesting a route from the routing proxy...',
-      activeRouteKey: currentRouteKey,
-    }));
 
     const controller = new AbortController();
     const timeoutId = setTimeout(async () => {
       try {
+        const hasMatchingSnapshot = routeSnapshotMatchesTrip(currentTrip.routeSnapshot, {
+          stops: currentTrip.stops,
+        });
+        setRouteState({
+          status: hasMatchingSnapshot ? 'loading' : currentTrip.routeSnapshot ? 'stale' : 'loading',
+          message: hasMatchingSnapshot
+            ? 'Refreshing the route from the routing proxy...'
+            : 'Requesting a route from the routing proxy...',
+          activeRouteKey: currentRouteKey,
+        });
+
         const routeSnapshot = await fetchRouteFromRoutingProxy(
           routingProxyUrl,
           currentTrip.stops,
@@ -210,7 +198,7 @@ function App() {
       controller.abort();
       clearTimeout(timeoutId);
     };
-  }, [currentRouteKey, currentTrip.routeSnapshot?.routeKey, currentTrip.stops, hasHydrated, routingProxyUrl]);
+  }, [currentRouteKey, currentTrip.routeSnapshot, currentTrip.stops, hasHydrated, routingProxyUrl]);
 
   function queueOrRunAction(action: PendingAction) {
     if (hasUnsavedChanges) {
