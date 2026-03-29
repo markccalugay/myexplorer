@@ -26,7 +26,7 @@ import { AppRoute, AppRouteStep, getRouteDistanceKm, getRouteDurationMinutes, ge
 import { AppPlace } from '../types/place';
 import { ConvoyPanel } from './ConvoyPanel';
 import { RecommendationIcon, resolveRecommendationIcon } from './RecommendationIcon';
-import { applyJourneyDetailsIfChanged, buildJourneyDetails } from '../lib/journeyDetailsEngine';
+import { buildJourneyDetails } from '../lib/journeyDetailsEngine';
 import { resolveCurrentLocationOrigin } from '../lib/originSelection';
 import {
     type PersistedNavigationSession,
@@ -44,6 +44,12 @@ import {
     hasSameStopSequence,
     retypeStops,
 } from '../lib/stopSequence';
+import {
+    applyJourneyDetailsUpdateIfCurrent,
+    removeStopFromTrip,
+    reorderTripStops,
+    replaceStopInTrip,
+} from '../lib/tripPlannerJourney';
 import { sanitizePersistedPlace } from '../lib/persistence';
 import { browserKeyValueStore } from '../platform/storage/browserKeyValueStore';
 import { browserLocationProvider } from '../platform/location/browserLocationProvider';
@@ -432,11 +438,14 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
                     return;
                 }
 
-                if (journeyDetailsRequestIdRef.current !== requestId) {
-                    return;
-                }
-
-                updateTrip((prev) => applyJourneyDetailsIfChanged(prev, nextStops));
+                updateTrip((prev) => (
+                    applyJourneyDetailsUpdateIfCurrent(
+                        prev,
+                        nextStops,
+                        journeyDetailsRequestIdRef.current,
+                        requestId
+                    )
+                ));
             })
             .catch((error) => {
                 if (journeyDetailsRequestIdRef.current !== requestId) {
@@ -591,11 +600,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     // ── Handlers ──────────────────────────────────────────────────────────────
     const handleRemoveStop = (id: string) => {
-        updateTrip(prev => {
-            const filtered = prev.stops.filter(s => s.id !== id);
-            const retyped = retypeStops(filtered);
-            return { ...prev, stops: retyped };
-        });
+        updateTrip((prev) => removeStopFromTrip(prev, id));
     };
 
     const handleEditStop = (id: string) => {
@@ -604,15 +609,11 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({
 
     const handleStopEdited = (id: string, updated: Stop) => {
         setEditingStopId(null);
-        updateTrip(prev => {
-            const newStops = prev.stops.map(s => (s.id === id ? updated : s));
-            const retyped = retypeStops(newStops);
-            return { ...prev, stops: retyped };
-        });
+        updateTrip((prev) => replaceStopInTrip(prev, id, updated));
     };
 
     const handleReorder = (newStops: Stop[]) => {
-        updateTrip(prev => ({ ...prev, stops: newStops }));
+        updateTrip((prev) => reorderTripStops(prev, newStops));
     };
 
     const handleFilterChange = (category: keyof RecommendationFilters, values: string[]) => {
