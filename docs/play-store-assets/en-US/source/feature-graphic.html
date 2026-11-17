@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MyExplorer Feature Graphic (1024x500)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 1024px;
+      height: 500px;
+      overflow: hidden;
+      background: #0f2741;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .canvas {
+      position: relative;
+      width: 1024px;
+      height: 500px;
+      background: linear-gradient(135deg, #0b1d35 0%, #0f2741 52%, #183654 100%);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 56px 68px;
+      overflow: hidden;
+    }
+    /* Subtle topographic / route grid texture */
+    .bg-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 82% 48%, rgba(30, 136, 229, 0.22) 0%, rgba(30, 136, 229, 0) 52%),
+        radial-gradient(circle at 18% 88%, rgba(30, 136, 229, 0.12) 0%, rgba(30, 136, 229, 0) 45%);
+      pointer-events: none;
+    }
+    .route-bg {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .left {
+      position: relative;
+      z-index: 2;
+      max-width: 560px;
+    }
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .brand-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(30, 136, 229, 0.16);
+      border: 1px solid rgba(30, 136, 229, 0.45);
+      color: #7cc4ff;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+    }
+    h1 {
+      color: #f7fbff;
+      font-size: 46px;
+      font-weight: 800;
+      line-height: 1.12;
+      letter-spacing: -0.02em;
+      margin-bottom: 18px;
+    }
+    .accent {
+      color: #4aa8ff;
+    }
+    p.subtitle {
+      color: #bfd3e5;
+      font-size: 20px;
+      font-weight: 400;
+      line-height: 1.45;
+      max-width: 500px;
+    }
+    .right {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 300px;
+    }
+    .logo-card {
+      width: 224px;
+      height: 224px;
+      border-radius: 44px;
+      background: #263238;
+      border: 2px solid rgba(124, 196, 255, 0.28);
+      box-shadow: 0 24px 56px rgba(4, 12, 24, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+    .logo-card img {
+      width: 224px;
+      height: 224px;
+      display: block;
+    }
+    .wordmark {
+      color: #f7fbff;
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+  </style>
+</head>
+<body>
+  <div class="canvas">
+    <div class="bg-grid"></div>
+    <svg class="route-bg" viewBox="0 0 1024 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M-20 420 C 180 390, 260 290, 440 320 C 600 347, 680 180, 890 210 C 970 222, 1020 190, 1060 160"
+            stroke="rgba(74, 168, 255, 0.16)" stroke-width="3" stroke-dasharray="10 10" />
+      <circle cx="440" cy="320" r="6" fill="rgba(74, 168, 255, 0.35)" />
+      <circle cx="675" cy="238" r="6" fill="rgba(74, 168, 255, 0.35)" />
+    </svg>
+
+    <div class="left">
+      <div class="brand-row">
+        <span class="brand-pill">Trip Planner</span>
+      </div>
+      <h1>Plan every stop in <span class="accent">one flow.</span></h1>
+      <p class="subtitle">
+        Order your itinerary, save trips on-device, and reopen routes before you hit the road.
+      </p>
+    </div>
+
+    <div class="right">
+      <div class="logo-card">
+        <img src="../../../../MyExplorer_Logo.png" alt="MyExplorer Logo" />
+      </div>
+      <div class="wordmark">MyExplorer</div>
+    </div>
+  </div>
+</body>
+</html>

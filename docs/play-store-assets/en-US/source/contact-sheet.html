@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MyExplorer Google Play Asset Contact Sheet</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 1600px;
+      padding: 48px;
+      background: #0b1d35;
+      color: #f7fbff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-bottom: 1px solid rgba(124, 196, 255, 0.25);
+      padding-bottom: 20px;
+      margin-bottom: 36px;
+    }
+    h1 { font-size: 32px; font-weight: 800; }
+    .meta { color: #bfd3e5; font-size: 16px; }
+    .top-row {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 32px;
+      margin-bottom: 40px;
+    }
+    .card {
+      background: #0f2741;
+      border: 1px solid rgba(124, 196, 255, 0.22);
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .card img {
+      display: block;
+      border-radius: 10px;
+      background: #16222c;
+    }
+    .icon-img { width: 220px; height: 220px; margin: 0 auto 14px auto; }
+    .fg-img { width: 100%; height: auto; margin-bottom: 14px; }
+    .phones-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+    }
+    .phone-img { width: 100%; height: auto; margin-bottom: 12px; }
+    .label { font-size: 15px; font-weight: 700; color: #f7fbff; margin-bottom: 4px; }
+    .spec { font-size: 13px; color: #7cc4ff; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>MyExplorer — Google Play Store Assets (en-US)</h1>
+    </div>
+    <div class="meta">Android v1.0 (versionCode 2) · Revision 2381679 + RC</div>
+  </header>
+
+  <div class="top-row">
+    <div class="card">
+      <img class="icon-img" src="../app-icon-512.png" alt="App Icon" />
+      <div class="label">app-icon-512.png</div>
+      <div class="spec">512 × 512 · 32-bit RGBA PNG</div>
+    </div>
+    <div class="card">
+      <img class="fg-img" src="../feature-graphic-1024x500.png" alt="Feature Graphic" />
+      <div class="label">feature-graphic-1024x500.png</div>
+      <div class="spec">1024 × 500 · 24-bit RGB PNG (no alpha)</div>
+    </div>
+  </div>
+
+  <div class="phones-row">
+    <div class="card">
+      <img class="phone-img" src="../phone/01-plan-your-trip.png" alt="01" />
+      <div class="label">01-plan-your-trip.png</div>
+      <div class="spec">1080 × 1920 · 24-bit RGB PNG</div>
+    </div>
+    <div class="card">
+      <img class="phone-img" src="../phone/02-order-trip-stops.png" alt="02" />
+      <div class="label">02-order-trip-stops.png</div>
+      <div class="spec">1080 × 1920 · 24-bit RGB PNG</div>
+    </div>
+    <div class="card">
+      <img class="phone-img" src="../phone/03-save-and-reopen-trips.png" alt="03" />
+      <div class="label">03-save-and-reopen-trips.png</div>
+      <div class="spec">1080 × 1920 · 24-bit RGB PNG</div>
+    </div>
+    <div class="card">
+      <img class="phone-img" src="../phone/04-light-and-dark-theme.png" alt="04" />
+      <div class="label">04-light-and-dark-theme.png</div>
+      <div class="spec">1080 × 1920 · 24-bit RGB PNG</div>
+    </div>
+  </div>
+</body>
+</html>
