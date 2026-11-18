@@ -110,3 +110,11 @@ export const formatDuration = (durationMillis?: number | null) => {
   const minutes = totalMinutes % 60;
   return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 };
+
+export const formatDurationSeconds = (durationSeconds?: number | null) => {
+  if (typeof durationSeconds !== 'number') {
+    return 'Unavailable';
+  }
+
+  return formatDuration(durationSeconds * 1000);
+};

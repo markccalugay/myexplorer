@@ -28,6 +28,7 @@ import {
   createInitialRouteState,
   formatDistanceKm,
   formatDuration,
+  formatDurationSeconds,
   routeSnapshotMatchesTrip,
   type RouteState,
 } from './src/planner/route';
@@ -40,6 +41,18 @@ import {
   persistDraftTrip,
   persistSavedTrips,
 } from './src/planner/storage';
+import {
+  IDLE_NAVIGATION_SESSION,
+  pauseNativeNavigation,
+  restoreNavigationSession,
+  resumeOrRetryNavigation,
+  startNativeNavigation,
+  stopNativeNavigation,
+  subscribeToNavigationUpdates,
+  type NavigationSessionSnapshot,
+} from './src/navigation/session';
+import {NavigationMapView} from './src/navigation/NavigationMapView';
+import {openAppPermissionSettings} from './src/navigation/permissions';
 
 type PendingAction =
   | {type: 'new-trip'}
@@ -71,7 +84,22 @@ function App() {
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [routeState, setRouteState] = useState<RouteState>(createInitialRouteState);
+  const [navigationSession, setNavigationSession] = useState<NavigationSessionSnapshot>(
+    IDLE_NAVIGATION_SESSION,
+  );
   const routingProxyUrl = appConfig.routingProxyUrl?.trim() ?? '';
+
+  useEffect(() => {
+    const unsubscribe = subscribeToNavigationUpdates(snapshot => {
+      setNavigationSession(snapshot);
+    });
+    restoreNavigationSession()
+      .then(restored => {
+        setNavigationSession(restored);
+      })
+      .catch(() => {});
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -329,6 +357,56 @@ function App() {
     });
   }
 
+  async function handleStartNavigation() {
+    if (currentTrip.stops.length < 2) {
+      setValidationMessage('Add at least a start and destination stop before starting navigation.');
+      return;
+    }
+    try {
+      const next = await startNativeNavigation(currentTrip);
+      setNavigationSession(next);
+      setValidationMessage(null);
+    } catch (error) {
+      setValidationMessage(
+        error instanceof Error ? error.message : 'Unable to start turn-by-turn navigation.',
+      );
+    }
+  }
+
+  async function handlePauseNavigation() {
+    try {
+      const next = await pauseNativeNavigation();
+      setNavigationSession(next);
+    } catch (error) {
+      setValidationMessage(
+        error instanceof Error ? error.message : 'Unable to pause navigation.',
+      );
+    }
+  }
+
+  async function handleResumeNavigation() {
+    try {
+      const next = await resumeOrRetryNavigation(navigationSession, currentTrip);
+      setNavigationSession(next);
+      setValidationMessage(null);
+    } catch (error) {
+      setValidationMessage(
+        error instanceof Error ? error.message : 'Unable to resume turn-by-turn navigation.',
+      );
+    }
+  }
+
+  async function handleStopNavigation() {
+    try {
+      const next = await stopNativeNavigation();
+      setNavigationSession(next);
+    } catch (error) {
+      setValidationMessage(
+        error instanceof Error ? error.message : 'Unable to stop navigation.',
+      );
+    }
+  }
+
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
@@ -340,14 +418,19 @@ function App() {
         <AppContent
           currentTrip={currentTrip}
           hasUnsavedChanges={hasUnsavedChanges}
+          navigationSession={navigationSession}
           onCreateNewTrip={() => queueOrRunAction({type: 'new-trip'})}
           onDismissPendingAction={() => setPendingAction(null)}
           onDiscardPendingAction={discardPendingAction}
           onMoveStop={moveStop}
           onOpenSavedTrip={tripId => queueOrRunAction({type: 'open-saved', tripId})}
+          onPauseNavigation={handlePauseNavigation}
           onRemoveStop={removeStop}
+          onResumeNavigation={handleResumeNavigation}
           onSaveAndContinue={saveAndContinue}
           onSaveTrip={saveTrip}
+          onStartNavigation={handleStartNavigation}
+          onStopNavigation={handleStopNavigation}
           onStopDraftChange={updateStopDraft}
           onSubmitStop={addStop}
           onTripNameChange={updateTripName}
@@ -366,14 +449,19 @@ function App() {
 function AppContent({
   currentTrip,
   hasUnsavedChanges,
+  navigationSession,
   onCreateNewTrip,
   onDismissPendingAction,
   onDiscardPendingAction,
   onMoveStop,
   onOpenSavedTrip,
+  onPauseNavigation,
   onRemoveStop,
+  onResumeNavigation,
   onSaveAndContinue,
   onSaveTrip,
+  onStartNavigation,
+  onStopNavigation,
   onStopDraftChange,
   onSubmitStop,
   onTripNameChange,
@@ -386,14 +474,19 @@ function AppContent({
 }: {
   currentTrip: Trip;
   hasUnsavedChanges: boolean;
+  navigationSession: NavigationSessionSnapshot;
   onCreateNewTrip: () => void;
   onDismissPendingAction: () => void;
   onDiscardPendingAction: () => void;
   onMoveStop: (stopId: string, direction: -1 | 1) => void;
   onOpenSavedTrip: (tripId: string) => void;
+  onPauseNavigation: () => void;
   onRemoveStop: (stopId: string) => void;
+  onResumeNavigation: () => void;
   onSaveAndContinue: () => void;
   onSaveTrip: () => void;
+  onStartNavigation: () => void;
+  onStopNavigation: () => void;
   onStopDraftChange: (field: keyof StopDraft, value: string) => void;
   onSubmitStop: () => void;
   onTripNameChange: (name: string) => void;
@@ -453,6 +546,63 @@ function AppContent({
             {hasUnsavedChanges ? 'Draft has unsaved changes' : 'Draft is up to date'}
           </Text>
           <Text style={styles.tripMeta}>Stops: {currentTrip.stops.length}</Text>
+        </SectionCard>
+
+        <SectionCard title="Turn-by-Turn Navigation">
+          {navigationSession.status !== 'idle' || currentTrip.stops.length >= 2 ? (
+            <NavigationMapView />
+          ) : null}
+          <Text style={styles.tripMeta}>
+            Session status: {navigationSession.status}
+            {navigationSession.isRerouting ? ' (rerouting)' : ''}
+          </Text>
+          {navigationSession.nextInstructionText ? (
+            <Text style={styles.tripMeta}>
+              Next: {navigationSession.nextInstructionText}
+            </Text>
+          ) : null}
+          {navigationSession.remainingDistanceMeters > 0 ? (
+            <Text style={styles.tripMeta}>
+              Next stop: {formatDistanceKm(navigationSession.remainingDistanceMeters)} ·{' '}
+              {formatDurationSeconds(navigationSession.remainingDurationSeconds)}
+            </Text>
+          ) : null}
+          {navigationSession.finalRemainingDistanceMeters > 0 ? (
+            <Text style={styles.tripMeta}>
+              Final destination:{' '}
+              {formatDistanceKm(navigationSession.finalRemainingDistanceMeters)} ·{' '}
+              {formatDurationSeconds(navigationSession.finalRemainingDurationSeconds)}
+            </Text>
+          ) : null}
+          {navigationSession.lastError ? (
+            <Text style={styles.tripMeta}>Notice: {navigationSession.lastError}</Text>
+          ) : null}
+          <View style={styles.actionRow}>
+            {navigationSession.status === 'active' ||
+            navigationSession.status === 'preparing' ||
+            navigationSession.status === 'reconnecting' ? (
+              <ActionButton compact label="Pause" onPress={onPauseNavigation} />
+            ) : navigationSession.status === 'paused' ? (
+              <ActionButton compact label="Resume Nav" onPress={onResumeNavigation} />
+            ) : (
+              <ActionButton compact label="Start Navigation" onPress={onStartNavigation} />
+            )}
+            {navigationSession.status !== 'idle' &&
+            navigationSession.status !== 'abandoned' &&
+            navigationSession.status !== 'completed' ? (
+              <ActionButton compact label="End Navigation" onPress={onStopNavigation} />
+            ) : null}
+            {navigationSession.permissionStatus === 'permanently-denied' ||
+            navigationSession.permissionStatus === 'approximate-only' ? (
+              <ActionButton
+                compact
+                label="Open Settings"
+                onPress={() => {
+                  openAppPermissionSettings().catch(() => {});
+                }}
+              />
+            ) : null}
+          </View>
         </SectionCard>
 
         <SectionCard title="Add Stop">

@@ -111,6 +111,23 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
+    def debugMapsApiKey = getStringConfig("myexplorer.mapsApiKey.debug", "MYEXPLORER_MAPS_API_KEY_DEBUG")
+    if (debugMapsApiKey.isEmpty()) {
+        debugMapsApiKey = getStringConfig("myexplorer.mapsApiKey", "MYEXPLORER_MAPS_API_KEY")
+    }
+    def releaseMapsApiKey = getStringConfig("myexplorer.mapsApiKey", "MYEXPLORER_MAPS_API_KEY")
+    def isReleaseTaskRequested = gradle.startParameter.taskNames.any {
+        it.toLowerCase().contains("release")
+    }
+    if (isReleaseTaskRequested) {
+        if (!keystorePropertiesFile.exists()) {
+            throw new GradleException("Release build requires apps/mobile/android/app/keystore.properties; debug-signing fallback is disabled.")
+        }
+        if (releaseMapsApiKey.isEmpty()) {
+            throw new GradleException("Release build requires myexplorer.mapsApiKey or MYEXPLORER_MAPS_API_KEY.")
+        }
+    }
+
     namespace "com.thestillfoundation.myexplorer"
     defaultConfig {
         applicationId "com.thestillfoundation.myexplorer"
@@ -118,12 +135,15 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2
         versionName "1.0"
-        manifestPlaceholders = [
-            myExplorerMapsApiKey: getStringConfig("myexplorer.mapsApiKey", "MYEXPLORER_MAPS_API_KEY"),
-        ]
-        resValue "string", "google_maps_api_key", getStringConfig("myexplorer.mapsApiKey", "MYEXPLORER_MAPS_API_KEY")
-        buildConfigField "String", "MYEXPLORER_MAPS_API_KEY", "\"${getStringConfig("myexplorer.mapsApiKey", "MYEXPLORER_MAPS_API_KEY")}\""
         buildConfigField "String", "MYEXPLORER_MAPS_API_BASE_URL", "\"${getStringConfig("myexplorer.mapsApiBaseUrl", "MYEXPLORER_MAPS_API_BASE_URL")}\""
+    }
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
     }
     signingConfigs {
         debug {
@@ -144,11 +164,19 @@ android {
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            manifestPlaceholders = [
+                myExplorerMapsApiKey: debugMapsApiKey,
+            ]
+            resValue "string", "google_maps_api_key", debugMapsApiKey
+            buildConfigField "String", "MYEXPLORER_MAPS_API_KEY", "\"${debugMapsApiKey}\""
         }
         release {
-            signingConfig keystorePropertiesFile.exists()
-                ? signingConfigs.release
-                : signingConfigs.debug
+            signingConfig signingConfigs.release
+            manifestPlaceholders = [
+                myExplorerMapsApiKey: releaseMapsApiKey,
+            ]
+            resValue "string", "google_maps_api_key", releaseMapsApiKey
+            buildConfigField "String", "MYEXPLORER_MAPS_API_KEY", "\"${releaseMapsApiKey}\""
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
@@ -156,8 +184,16 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
+
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation("com.google.android.libraries.navigation:navigation:7.6.1")
+    implementation("androidx.car.app:app:1.7.0")
+    implementation("androidx.car.app:app-projected:1.7.0")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name="com.thestillfoundation.myexplorer.navigation.DebugNavigationTestReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.thestillfoundation.myexplorer.DEBUG_NAV" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

@@ -6,7 +6,7 @@
     "android": "react-native run-android",
     "ios": "react-native run-ios",
     "pods:install": "cd ios && bundle exec pod install",
-    "lint": "eslint .",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint .",
     "start": "react-native start",
     "test": "jest",
     "version:sync": "node scripts/sync-version.mjs sync",

@@ -1,6 +1,7 @@
 import {
   buildRouteKey,
   createRouteSnapshotFromResponse,
+  formatDurationSeconds,
   routeSnapshotMatchesTrip,
 } from './route';
 import {createManualStop, type Trip} from './domain';
@@ -52,4 +53,10 @@ test('routeSnapshotMatchesTrip detects stale route snapshots', () => {
   expect(routeSnapshotMatchesTrip(snapshot, {...trip, stops: [...trip.stops].reverse()})).toBe(
     false,
   );
+});
+
+test('formatDurationSeconds formats 3600 seconds as 1h rather than 1 min', () => {
+  expect(formatDurationSeconds(3600)).toBe('1h');
+  expect(formatDurationSeconds(5400)).toBe('1h 30m');
+  expect(formatDurationSeconds(null)).toBe('Unavailable');
 });
