@@ -43,6 +43,8 @@ import {
 } from './src/planner/storage';
 import {
   IDLE_NAVIGATION_SESSION,
+  isNavigationSessionInProgress,
+  navigationSessionMatchesTrip,
   pauseNativeNavigation,
   restoreNavigationSession,
   resumeOrRetryNavigation,
@@ -229,6 +231,13 @@ function App() {
   }, [currentRouteKey, currentTrip.routeSnapshot, currentTrip.stops, hasHydrated, routingProxyUrl]);
 
   function queueOrRunAction(action: PendingAction) {
+    if (isNavigationSessionInProgress(navigationSession)) {
+      setValidationMessage(
+        'End active or paused navigation before switching or creating a trip.',
+      );
+      return;
+    }
+
     if (hasUnsavedChanges) {
       setPendingAction(action);
       return;
@@ -298,6 +307,13 @@ function App() {
   }
 
   function addStop() {
+    if (isNavigationSessionInProgress(navigationSession)) {
+      setValidationMessage(
+        'End active or paused navigation before editing, reordering, or removing stops.',
+      );
+      return;
+    }
+
     const name = stopDraft.name.trim();
     const lat = Number(stopDraft.lat);
     const lng = Number(stopDraft.lng);
@@ -329,6 +345,13 @@ function App() {
   }
 
   function removeStop(stopId: string) {
+    if (isNavigationSessionInProgress(navigationSession)) {
+      setValidationMessage(
+        'End active or paused navigation before editing, reordering, or removing stops.',
+      );
+      return;
+    }
+
     setCurrentTrip(previousTrip => ({
       ...previousTrip,
       stops: retypeStops(previousTrip.stops.filter(stop => stop.id !== stopId)),
@@ -337,6 +360,13 @@ function App() {
   }
 
   function moveStop(stopId: string, direction: -1 | 1) {
+    if (isNavigationSessionInProgress(navigationSession)) {
+      setValidationMessage(
+        'End active or paused navigation before editing, reordering, or removing stops.',
+      );
+      return;
+    }
+
     setCurrentTrip(previousTrip => {
       const currentIndex = previousTrip.stops.findIndex(stop => stop.id === stopId);
       const nextIndex = currentIndex + direction;
@@ -556,6 +586,17 @@ function AppContent({
             Session status: {navigationSession.status}
             {navigationSession.isRerouting ? ' (rerouting)' : ''}
           </Text>
+          {isNavigationSessionInProgress(navigationSession) && navigationSession.tripName ? (
+            <Text style={styles.tripMeta}>
+              Navigating trip: {navigationSession.tripName}
+            </Text>
+          ) : null}
+          {isNavigationSessionInProgress(navigationSession) &&
+          !navigationSessionMatchesTrip(navigationSession, currentTrip) ? (
+            <Text style={styles.tripMeta}>
+              Notice: Active navigation is running for a different trip ({navigationSession.tripName || navigationSession.tripId}).
+            </Text>
+          ) : null}
           {navigationSession.nextInstructionText ? (
             <Text style={styles.tripMeta}>
               Next: {navigationSession.nextInstructionText}

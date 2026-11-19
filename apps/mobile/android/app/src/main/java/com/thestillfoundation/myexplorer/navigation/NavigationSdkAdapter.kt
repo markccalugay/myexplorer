@@ -135,12 +135,22 @@ class AndroidNavigatorHandle(
   }
 
   override fun registerGuidanceFeed(): Boolean = try {
-    nav.registerServiceForNavUpdates(
+    val options = NavigationUpdatesOptions.builder()
+      .setNumNextStepsToPreview(0)
+      .setGeneratedStepImagesType(NavigationUpdatesOptions.GeneratedStepImagesType.NONE)
+      .setDisplayMetrics(application.resources.displayMetrics)
+      .build()
+    val ok = nav.registerServiceForNavUpdates(
       application.packageName,
       NavigationForegroundService::class.java.name,
-      NavigationUpdatesOptions.builder().build(),
+      options,
     )
-  } catch (_: Throwable) {
+    if (!ok) {
+      android.util.Log.w("MyExplorerNavSdk", "registerServiceForNavUpdates returned false")
+    }
+    ok
+  } catch (t: Throwable) {
+    android.util.Log.w("MyExplorerNavSdk", "registerServiceForNavUpdates threw", t)
     false
   }
 

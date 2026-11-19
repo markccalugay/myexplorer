@@ -7,6 +7,8 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 import {NativeModules, PermissionsAndroid, Platform} from 'react-native';
 import {
   createPreparingSession,
+  isNavigationSessionInProgress,
+  navigationSessionMatchesTrip,
   parseNativeSessionSnapshot,
   restoreNavigationSession,
   resumeNativeNavigation,
@@ -246,5 +248,22 @@ describe('mobile navigation session', () => {
       emptyTrip,
     );
     expect(result.lastError).toContain('at least a start and destination stop');
+  });
+
+  test('isNavigationSessionInProgress and navigationSessionMatchesTrip track active/paused sessions', () => {
+    const base = createPreparingSession(sampleTrip);
+    expect(isNavigationSessionInProgress(base)).toBe(true);
+    expect(isNavigationSessionInProgress({...base, status: 'active'})).toBe(true);
+    expect(isNavigationSessionInProgress({...base, status: 'paused'})).toBe(true);
+    expect(isNavigationSessionInProgress({...base, status: 'reconnecting'})).toBe(true);
+    expect(isNavigationSessionInProgress({...base, status: 'idle'})).toBe(false);
+    expect(isNavigationSessionInProgress({...base, status: 'abandoned'})).toBe(false);
+    expect(isNavigationSessionInProgress({...base, status: 'completed'})).toBe(false);
+
+    expect(navigationSessionMatchesTrip({...base, status: 'active'}, sampleTrip)).toBe(true);
+    expect(
+      navigationSessionMatchesTrip({...base, status: 'active'}, {...sampleTrip, id: 'other-trip'}),
+    ).toBe(false);
+    expect(navigationSessionMatchesTrip({...base, tripId: ''}, sampleTrip)).toBe(false);
   });
 });

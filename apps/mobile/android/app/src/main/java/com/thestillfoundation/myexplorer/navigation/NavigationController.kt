@@ -36,6 +36,9 @@ object NavigationController {
   @Volatile
   private var activeEnv: NavigationEnvironment? = null
 
+  @Volatile
+  internal var environmentFactory: ((Context) -> NavigationEnvironment)? = null
+
   fun hasPreciseLocationPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
       PackageManager.PERMISSION_GRANTED
@@ -51,6 +54,13 @@ object NavigationController {
 
   internal fun resetForProd() {
     dispatcher = AndroidMainThreadDispatcher
+    environmentFactory = null
+  }
+
+  private fun resolveEnvironment(context: Context): NavigationEnvironment? {
+    environmentFactory?.let { return it(context) }
+    val app = context.applicationContext as? Application ?: return activeEnv
+    return AndroidNavigationEnvironment(app, null)
   }
 
   fun startTripNavigation(
@@ -176,7 +186,7 @@ object NavigationController {
   }
 
   fun pauseNavigation(context: Context): NavigationSessionSnapshot {
-    return pauseNavigationWithEnv(null)
+    return pauseNavigationWithEnv(resolveEnvironment(context))
   }
 
   internal fun pauseNavigationWithEnv(env: NavigationEnvironment?): NavigationSessionSnapshot {
@@ -307,9 +317,7 @@ object NavigationController {
   }
 
   fun stopNavigation(context: Context): NavigationSessionSnapshot {
-    val app = context.applicationContext as? Application
-    val env = app?.let { AndroidNavigationEnvironment(it, null) }
-    return stopNavigationWithEnv(env)
+    return stopNavigationWithEnv(resolveEnvironment(context))
   }
 
   fun simulateCurrentRouteForDebug(speedMultiplier: Float): Boolean {

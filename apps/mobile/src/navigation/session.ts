@@ -43,6 +43,22 @@ const EVENT_NAME = 'MyExplorerNavigationStateChanged';
 
 let operationGeneration = 0;
 
+export function isNavigationSessionInProgress(session: NavigationSessionSnapshot): boolean {
+  return (
+    session.status === 'preparing' ||
+    session.status === 'active' ||
+    session.status === 'paused' ||
+    session.status === 'reconnecting'
+  );
+}
+
+export function navigationSessionMatchesTrip(
+  session: NavigationSessionSnapshot,
+  trip: Trip,
+): boolean {
+  return Boolean(session.tripId) && session.tripId === trip.id;
+}
+
 export const IDLE_NAVIGATION_SESSION: NavigationSessionSnapshot = {
   sessionId: '',
   tripId: '',

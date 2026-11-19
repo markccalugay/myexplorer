@@ -124,6 +124,11 @@ class NavigationForegroundService : Service() {
     return START_NOT_STICKY
   }
 
+  override fun onDestroy() {
+    stopForeground(STOP_FOREGROUND_REMOVE)
+    super.onDestroy()
+  }
+
   private fun ensureChannel() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val manager = getSystemService(NotificationManager::class.java)
@@ -180,10 +185,15 @@ class NavigationForegroundService : Service() {
     }
 
     fun stop(context: Context) {
-      val intent = Intent(context, NavigationForegroundService::class.java).apply {
-        action = ACTION_STOP
+      val intent = Intent(context, NavigationForegroundService::class.java)
+      runCatching {
+        context.stopService(intent)
       }
-      runCatching { context.startService(intent) }
+      runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          context.getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+        }
+      }
     }
   }
 }

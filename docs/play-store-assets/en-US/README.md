@@ -42,11 +42,10 @@ Upload-ready Google Play Store asset package for **MyExplorer** (`com.thestillfo
 - `contact-sheet.png` for quick visual review.
 
 ### Pending
-- **Android Auto (`android-auto/`):** **Pending.** Parallel Android release work in the workspace added `auto/MyExplorerCarAppService.kt`, `auto/MyExplorerCarScreen.kt`, and `navigation/NavigationController.kt`, but `NavigationController.kt` currently fails Kotlin compilation (`Unresolved reference 'TurnByTurnManager'`). No DHU or head-unit capture was manufactured. Once the release candidate builds and Android Auto projection is verified on DHU/hardware, capture real car screens into `android-auto/` and update `listing-copy.md` if Android Auto support is shipping in this release.
+- **Android Auto (`android-auto/`):** **Pending.** `auto/MyExplorerCarAppService.kt`, `auto/MyExplorerCarScreen.kt`, and `navigation/NavigationController.kt` now compile and pass unit tests/release bundling, but Android Auto DHU projection has not yet been tested because a compatible physical projection phone is unavailable. Once Android Auto projection is verified on DHU/hardware, capture real car screens into `android-auto/` and update `listing-copy.md` if Android Auto support is shipping in this release.
 
 ---
 
 ## Owner Review Notes (Reported Separately — Production UI Untouched)
 
 1. **Launcher icon in APK (`apps/mobile/android/app/src/main/res/mipmap-*/ic_launcher*.png`):** Currently still uses the default React Native green Android robot icon rather than `MyExplorer_Logo.png`. The Play Store `app-icon-512.png` uses the official `MyExplorer_Logo.png`, so consider updating the in-APK mipmap icons if desired for consistency.
-2. **Parallel Kotlin build failure:** `apps/mobile/android/app/src/main/java/com/thestillfoundation/myexplorer/navigation/NavigationController.kt` had unresolved references (`TurnByTurnManager`, `NavigationUpdatesOptions`, `NavInfo`) during build inspection. Untouched by this asset task.

@@ -1,5 +1,7 @@
 package com.thestillfoundation.myexplorer.navigation
 
+import android.app.Application
+import android.content.Context
 import com.google.android.libraries.mapsplatform.turnbyturn.model.Maneuver as SdkManeuver
 import com.google.android.libraries.mapsplatform.turnbyturn.model.NavState
 import org.junit.After
@@ -385,5 +387,54 @@ class NavigationControllerTest {
     fakeNav.fireArrival(SdkArrivalInfo("Final Dest", 14.1153, 120.9621))
     assertEquals(NavigationSessionStatus.COMPLETED, NavigationSessionRepository.snapshot().status)
     assertEquals(1, fakeNav.startGuidanceCalls)
+  }
+
+  @Test
+  fun publicPauseNavigationStopsForegroundServicePreservesTripAndAllowsResumeToArrival() {
+    val unsafeClass = Class.forName("sun.misc.Unsafe")
+    val unsafe = unsafeClass.getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
+    val dummyContext = unsafeClass
+      .getMethod("allocateInstance", Class::class.java)
+      .invoke(unsafe, Application::class.java) as Context
+    NavigationController.environmentFactory = { fakeEnv }
+
+    // 1. Start trip -> ACTIVE with foreground service running
+    NavigationController.startTripNavigationWithEnv(fakeEnv, "trip-pause", "Pause Flow", trip1Stops) {}
+    fakeNav.pendingRouteCallback?.invoke(SdkRouteStatus.OK)
+    assertEquals(NavigationSessionStatus.ACTIVE, NavigationSessionRepository.snapshot().status)
+    assertEquals(1, fakeEnv.startForegroundServiceCalls)
+    val stopsBeforePause = fakeEnv.stopForegroundServiceCalls
+
+    // 2. Public pauseNavigation(context) -> PAUSED, foreground service stopped, trip preserved
+    val paused = NavigationController.pauseNavigation(dummyContext)
+    assertEquals(NavigationSessionStatus.PAUSED, paused.status)
+    assertEquals("trip-pause", paused.tripId)
+    assertEquals(2, paused.stops.size)
+    assertFalse(paused.guidanceFeedRegistered)
+    assertEquals(1, fakeNav.stopGuidanceCalls)
+    assertTrue(fakeNav.unregisterFeedCalls >= 1)
+    assertEquals(stopsBeforePause + 1, fakeEnv.stopForegroundServiceCalls)
+
+    // 3. Repeated pauseNavigation(context) is safe and preserves PAUSED state
+    val pausedAgain = NavigationController.pauseNavigation(dummyContext)
+    assertEquals(NavigationSessionStatus.PAUSED, pausedAgain.status)
+    assertEquals("trip-pause", pausedAgain.tripId)
+    assertEquals(2, pausedAgain.stops.size)
+
+    // 4. Resume restarts foreground service and guidance
+    NavigationController.resumeNavigationWithEnv(fakeEnv) {}
+    fakeNav.pendingRouteCallback?.invoke(SdkRouteStatus.OK)
+    val resumed = NavigationSessionRepository.snapshot()
+    assertEquals(NavigationSessionStatus.ACTIVE, resumed.status)
+    assertTrue(resumed.guidanceFeedRegistered)
+    assertEquals(2, fakeEnv.startForegroundServiceCalls)
+    assertEquals(2, fakeNav.startGuidanceCalls)
+
+    // 5. Final arrival completes and stops foreground service again
+    fakeNav.fireArrival(SdkArrivalInfo("Dest 1", 14.1153, 120.9621))
+    val completed = NavigationSessionRepository.snapshot()
+    assertEquals(NavigationSessionStatus.COMPLETED, completed.status)
+    assertFalse(completed.guidanceFeedRegistered)
+    assertTrue(fakeEnv.stopForegroundServiceCalls >= 3)
   }
 }
