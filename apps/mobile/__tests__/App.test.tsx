@@ -4,9 +4,31 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import {Text} from 'react-native';
+import {Platform, Text} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import App from '../App';
+import App, {NativePlannerScreen} from '../App';
+
+jest.mock('../src/web/appInfo', () => {
+  const actual = jest.requireActual('../src/web/appInfo');
+  return {
+    ...actual,
+    getRuntimeAppInfo: jest.fn(async () => ({
+      packageName: 'com.thestillfoundation.myexplorer',
+      versionName: '1.0',
+      versionCode: 4,
+    })),
+  };
+});
+
+jest.mock('../src/web/MyExplorerWebView', () => {
+  const ReactActual = require('react');
+  const {View: MockView} = require('react-native');
+  return {
+    MyExplorerWebView: ReactActual.forwardRef((props: any, _ref: any) => (
+      <MockView testID="mock-webview" {...props} />
+    )),
+  };
+});
 
 jest.mock(
   '@react-native-async-storage/async-storage',
@@ -33,7 +55,7 @@ test('renders a planner-first mobile shell', async () => {
   let renderer: ReactTestRenderer.ReactTestRenderer;
 
   await ReactTestRenderer.act(async () => {
-    renderer = ReactTestRenderer.create(<App />);
+    renderer = ReactTestRenderer.create(<NativePlannerScreen />);
   });
 
   await ReactTestRenderer.act(async () => {
@@ -80,7 +102,7 @@ test('blocks trip switching and stop edits while navigation is active or paused'
 
   let renderer: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
-    renderer = ReactTestRenderer.create(<App />);
+    renderer = ReactTestRenderer.create(<NativePlannerScreen />);
   });
   await ReactTestRenderer.act(async () => {
     await Promise.resolve();
@@ -122,4 +144,46 @@ test('blocks trip switching and stop edits while navigation is active or paused'
   ).toBeTruthy();
 
   getItemMock.mockImplementation(async () => null);
+});
+
+test('launches web experience on Android, shows runtime version in About, and opens Native Nav', async () => {
+  const originalOs = Platform.OS;
+  Platform.OS = 'android';
+  let renderer: ReactTestRenderer.ReactTestRenderer;
+
+  try {
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<App />);
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const webView = renderer!.root.findByProps({testID: 'mock-webview'});
+    expect(webView.props.url).toBe('https://myexplorer-travel.vercel.app');
+
+    const aboutBtn = renderer!.root.findByProps({accessibilityLabel: 'About'});
+    await ReactTestRenderer.act(async () => {
+      aboutBtn.props.onPress();
+    });
+
+    const versionNode = renderer!.root.findByProps({testID: 'app-version-text'});
+    expect(versionNode.props.children).toBe('Version 1.0 (4)');
+
+    const nativeBtn = renderer!.root.findByProps({accessibilityLabel: 'Native Nav'});
+    await ReactTestRenderer.act(async () => {
+      nativeBtn.props.onPress();
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(renderer!.root.findByProps({children: 'Trip Planner'})).toBeTruthy();
+  } finally {
+    Platform.OS = originalOs;
+  }
 });

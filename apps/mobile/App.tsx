@@ -1,5 +1,7 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {
+  BackHandler,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -11,6 +13,7 @@ import {
 } from 'react-native';
 import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
 import appConfig from './app.json';
+import {WebExperienceScreen} from './src/web/WebExperienceScreen';
 
 import {
   cloneTrip,
@@ -76,7 +79,11 @@ const EMPTY_STOP_DRAFT: StopDraft = {
 
 const ROUTE_REFRESH_DEBOUNCE_MS = 800;
 
-function App() {
+export function NativePlannerScreen({
+  onBackToExplore,
+}: {
+  onBackToExplore?: () => void;
+}) {
   const isDarkMode = useColorScheme() === 'dark';
   const [hasHydrated, setHasHydrated] = useState(false);
   const [savedTrips, setSavedTrips] = useState<Trip[]>([]);
@@ -446,6 +453,7 @@ function App() {
           isDarkMode ? styles.safeAreaDark : styles.safeAreaLight,
         ]}>
         <AppContent
+          onBackToExplore={onBackToExplore}
           currentTrip={currentTrip}
           hasUnsavedChanges={hasUnsavedChanges}
           navigationSession={navigationSession}
@@ -480,6 +488,7 @@ function AppContent({
   currentTrip,
   hasUnsavedChanges,
   navigationSession,
+  onBackToExplore,
   onCreateNewTrip,
   onDismissPendingAction,
   onDiscardPendingAction,
@@ -505,6 +514,7 @@ function AppContent({
   currentTrip: Trip;
   hasUnsavedChanges: boolean;
   navigationSession: NavigationSessionSnapshot;
+  onBackToExplore?: () => void;
   onCreateNewTrip: () => void;
   onDismissPendingAction: () => void;
   onDiscardPendingAction: () => void;
@@ -540,6 +550,9 @@ function AppContent({
         </View>
 
         <View style={styles.actionRow}>
+          {onBackToExplore ? (
+            <ActionButton label="Explore (Web)" onPress={onBackToExplore} />
+          ) : null}
           <ActionButton label="New Trip" onPress={onCreateNewTrip} />
           <ActionButton label="Save Trip" onPress={onSaveTrip} />
           <ActionButton label="Resume" onPress={() => onOpenSavedTrip(currentTrip.id)} />
@@ -1150,5 +1163,38 @@ const styles = StyleSheet.create({
     padding: 14,
   },
 });
+
+function App() {
+  const [screen, setScreen] = useState<'web' | 'native'>(
+    Platform.OS === 'android' ? 'web' : 'native',
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || screen !== 'native') {
+      return undefined;
+    }
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setScreen('web');
+      return true;
+    });
+    return () => sub.remove();
+  }, [screen]);
+
+  if (screen === 'web') {
+    return (
+      <SafeAreaProvider>
+        <WebExperienceScreen onOpenNativePlanner={() => setScreen('native')} />
+      </SafeAreaProvider>
+    );
+  }
+
+  return (
+    <NativePlannerScreen
+      onBackToExplore={
+        Platform.OS === 'android' ? () => setScreen('web') : undefined
+      }
+    />
+  );
+}
 
 export default App;

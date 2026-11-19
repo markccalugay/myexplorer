@@ -8,6 +8,7 @@ import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.thestillfoundation.myexplorer.navigation.NavigationPackage
 import com.thestillfoundation.myexplorer.navigation.NavigationSessionRepository
+import com.thestillfoundation.myexplorer.web.MyExplorerUiPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -17,6 +18,7 @@ class MainApplication : Application(), ReactApplication {
       packageList =
         PackageList(this).packages.apply {
           add(NavigationPackage())
+          add(MyExplorerUiPackage())
         },
     )
   }
