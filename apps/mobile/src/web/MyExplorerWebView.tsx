@@ -30,6 +30,10 @@ export type GeolocationRequestEvent = {
   origin: string;
 };
 
+export type TripExportedEvent = {
+  payload: string;
+};
+
 type NativeWebViewProps = ViewProps & {
   url: string;
   onWebLoadStart?: (event: NativeSyntheticEvent<WebLoadEvent>) => void;
@@ -41,6 +45,7 @@ type NativeWebViewProps = ViewProps & {
   onGeolocationPermissionRequested?: (
     event: NativeSyntheticEvent<GeolocationRequestEvent>,
   ) => void;
+  onTripExported?: (event: NativeSyntheticEvent<TripExportedEvent>) => void;
 };
 
 const NativeMyExplorerWebView =
@@ -52,6 +57,7 @@ export type MyExplorerWebViewHandle = {
   goBack: () => void;
   reload: () => void;
   resolveGeolocation: (granted: boolean) => void;
+  exportTrip: () => void;
 };
 
 type Props = {
@@ -61,6 +67,7 @@ type Props = {
   onLoadError?: (error: WebLoadErrorEvent) => void;
   onNavigationStateChange?: (state: WebNavigationStateEvent) => void;
   onGeolocationPermissionRequested?: (origin: string) => void;
+  onTripExported?: (payload: string) => void;
 };
 
 function dispatchWebViewCommand(
@@ -89,6 +96,7 @@ export const MyExplorerWebView = forwardRef<MyExplorerWebViewHandle, Props>(
       onLoadError,
       onNavigationStateChange,
       onGeolocationPermissionRequested,
+      onTripExported,
     },
     ref,
   ) {
@@ -99,6 +107,7 @@ export const MyExplorerWebView = forwardRef<MyExplorerWebViewHandle, Props>(
       reload: () => dispatchWebViewCommand(nativeRef, 'reload'),
       resolveGeolocation: (granted: boolean) =>
         dispatchWebViewCommand(nativeRef, 'resolveGeolocation', [granted]),
+      exportTrip: () => dispatchWebViewCommand(nativeRef, 'exportTrip'),
     }));
 
     if (!NativeMyExplorerWebView) {
@@ -119,6 +128,7 @@ export const MyExplorerWebView = forwardRef<MyExplorerWebViewHandle, Props>(
         onGeolocationPermissionRequested={e =>
           onGeolocationPermissionRequested?.(e.nativeEvent.origin)
         }
+        onTripExported={e => onTripExported?.(e.nativeEvent.payload)}
       />
     );
   },

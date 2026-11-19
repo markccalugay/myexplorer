@@ -81,8 +81,12 @@ const ROUTE_REFRESH_DEBOUNCE_MS = 800;
 
 export function NativePlannerScreen({
   onBackToExplore,
+  handoffTrip,
+  handoffKey,
 }: {
   onBackToExplore?: () => void;
+  handoffTrip?: Trip | null;
+  handoffKey?: number;
 }) {
   const isDarkMode = useColorScheme() === 'dark';
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -97,6 +101,26 @@ export function NativePlannerScreen({
     IDLE_NAVIGATION_SESSION,
   );
   const routingProxyUrl = appConfig.routingProxyUrl?.trim() ?? '';
+
+  useEffect(() => {
+    if (!hasHydrated || !handoffTrip || !handoffKey) {
+      return;
+    }
+    if (isNavigationSessionInProgress(navigationSession)) {
+      setValidationMessage(
+        'End active or paused navigation before loading a trip from web.',
+      );
+      return;
+    }
+    const nextTrip = cloneTrip(handoffTrip);
+    setCurrentTrip(nextTrip);
+    setTripBaselineSnapshot(JSON.stringify(normalizeTrip(nextTrip)));
+    setSavedTrips(prev => upsertSavedTrip(prev, nextTrip));
+    setPendingAction(null);
+    setValidationMessage(
+      `Loaded "${nextTrip.name}" (${nextTrip.stops.length} stops) from web.`,
+    );
+  }, [hasHydrated, handoffKey, handoffTrip, navigationSession]);
 
   useEffect(() => {
     const unsubscribe = subscribeToNavigationUpdates(snapshot => {
@@ -1168,6 +1192,8 @@ function App() {
   const [screen, setScreen] = useState<'web' | 'native'>(
     Platform.OS === 'android' ? 'web' : 'native',
   );
+  const [handoffTrip, setHandoffTrip] = useState<Trip | null>(null);
+  const [handoffKey, setHandoffKey] = useState(0);
 
   useEffect(() => {
     if (Platform.OS !== 'android' || screen !== 'native') {
@@ -1183,13 +1209,23 @@ function App() {
   if (screen === 'web') {
     return (
       <SafeAreaProvider>
-        <WebExperienceScreen onOpenNativePlanner={() => setScreen('native')} />
+        <WebExperienceScreen
+          onOpenNativePlanner={trip => {
+            if (trip) {
+              setHandoffTrip(trip);
+              setHandoffKey(k => k + 1);
+            }
+            setScreen('native');
+          }}
+        />
       </SafeAreaProvider>
     );
   }
 
   return (
     <NativePlannerScreen
+      handoffTrip={handoffTrip}
+      handoffKey={handoffKey}
       onBackToExplore={
         Platform.OS === 'android' ? () => setScreen('web') : undefined
       }

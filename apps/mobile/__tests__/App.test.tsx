@@ -24,9 +24,32 @@ jest.mock('../src/web/MyExplorerWebView', () => {
   const ReactActual = require('react');
   const {View: MockView} = require('react-native');
   return {
-    MyExplorerWebView: ReactActual.forwardRef((props: any, _ref: any) => (
-      <MockView testID="mock-webview" {...props} />
-    )),
+    MyExplorerWebView: ReactActual.forwardRef((props: any, ref: any) => {
+      ReactActual.useImperativeHandle(ref, () => ({
+        goBack: jest.fn(),
+        reload: jest.fn(),
+        resolveGeolocation: jest.fn(),
+        exportTrip: () => {
+          props.onTripExported?.(
+            JSON.stringify({
+              session: null,
+              savedTrips: [
+                {
+                  id: 'web-trip-99',
+                  name: 'Manila Heritage',
+                  updatedAt: '2026-11-19T12:00:00.000Z',
+                  stops: [
+                    {id: 'w1', name: 'Japanese Garden', location: {lat: 14.5839, lng: 120.9794}},
+                    {id: 'w2', name: 'Intramuros', location: {lat: 14.5896, lng: 120.9747}},
+                  ],
+                },
+              ],
+            }),
+          );
+        },
+      }));
+      return <MockView testID="mock-webview" {...props} />;
+    }),
   };
 });
 
@@ -146,7 +169,7 @@ test('blocks trip switching and stop edits while navigation is active or paused'
   getItemMock.mockImplementation(async () => null);
 });
 
-test('launches web experience on Android, shows runtime version in About, and opens Native Nav', async () => {
+test('launches web experience on Android, shows runtime version in hamburger App info, and hands off trip to Native Nav', async () => {
   const originalOs = Platform.OS;
   Platform.OS = 'android';
   let renderer: ReactTestRenderer.ReactTestRenderer;
@@ -164,15 +187,29 @@ test('launches web experience on Android, shows runtime version in About, and op
     const webView = renderer!.root.findByProps({testID: 'mock-webview'});
     expect(webView.props.url).toBe('https://myexplorer-travel.vercel.app');
 
-    const aboutBtn = renderer!.root.findByProps({accessibilityLabel: 'About'});
+    const menuBtn = renderer!.root.findByProps({accessibilityLabel: 'Menu'});
     await ReactTestRenderer.act(async () => {
-      aboutBtn.props.onPress();
+      menuBtn.props.onPress();
+    });
+
+    const appInfoBtn = renderer!.root.findByProps({accessibilityLabel: 'App info'});
+    await ReactTestRenderer.act(async () => {
+      appInfoBtn.props.onPress();
     });
 
     const versionNode = renderer!.root.findByProps({testID: 'app-version-text'});
     expect(versionNode.props.children).toBe('Version 1.0 (4)');
 
-    const nativeBtn = renderer!.root.findByProps({accessibilityLabel: 'Native Nav'});
+    const closeBtn = renderer!.root.findByProps({accessibilityLabel: 'Close App info'});
+    await ReactTestRenderer.act(async () => {
+      closeBtn.props.onPress();
+    });
+
+    await ReactTestRenderer.act(async () => {
+      menuBtn.props.onPress();
+    });
+
+    const nativeBtn = renderer!.root.findByProps({accessibilityLabel: 'Navigate Current Trip'});
     await ReactTestRenderer.act(async () => {
       nativeBtn.props.onPress();
     });
@@ -183,6 +220,8 @@ test('launches web experience on Android, shows runtime version in About, and op
     });
 
     expect(renderer!.root.findByProps({children: 'Trip Planner'})).toBeTruthy();
+    expect(renderer!.root.findByProps({children: 'Japanese Garden'})).toBeTruthy();
+    expect(renderer!.root.findByProps({children: 'Intramuros'})).toBeTruthy();
   } finally {
     Platform.OS = originalOs;
   }

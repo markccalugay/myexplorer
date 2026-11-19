@@ -1111,8 +1111,14 @@
 
     .planner-map-container {
         order: 1;
+        flex: 0 0 50vh;
         min-height: 50vh;
         height: 50vh;
+    }
+
+    .planner-map-container > div {
+        position: absolute;
+        inset: 0;
     }
 
     .planner-timeline {
