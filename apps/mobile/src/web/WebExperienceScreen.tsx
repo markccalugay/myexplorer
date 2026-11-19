@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   ActivityIndicator,
+  Alert,
   BackHandler,
   Modal,
   PermissionsAndroid,
@@ -23,7 +24,7 @@ import {
   type MyExplorerWebViewHandle,
   type WebLoadErrorEvent,
 } from './MyExplorerWebView';
-import {parseWebTripHandoff} from './tripHandoff';
+import {parseWebTripHandoffResult} from './tripHandoff';
 
 export const MYEXPLORER_WEB_URL = 'https://myexplorer-travel.vercel.app';
 
@@ -118,8 +119,12 @@ export function WebExperienceScreen({onOpenNativePlanner}: Props) {
 
   const handleTripExported = useCallback(
     (payload: string) => {
-      const trip = parseWebTripHandoff(payload);
-      onOpenNativePlanner(trip);
+      const result = parseWebTripHandoffResult(payload);
+      if (!result.ok) {
+        Alert.alert('Cannot Hand Off Current Trip', result.error);
+        return;
+      }
+      onOpenNativePlanner(result.trip);
     },
     [onOpenNativePlanner],
   );

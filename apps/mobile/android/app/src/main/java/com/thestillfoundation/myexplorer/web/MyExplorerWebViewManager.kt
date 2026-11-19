@@ -227,12 +227,23 @@ class MyExplorerWebViewManager : SimpleViewManager<WebView>() {
     val script = """
       (function() {
         try {
-          var s = window.localStorage.getItem('myexplorer.navigation-session');
-          var t = window.localStorage.getItem('myexplorer.saved-trips');
-          return JSON.stringify({
-            session: s ? JSON.parse(s) : null,
-            savedTrips: t ? JSON.parse(t) : []
-          });
+          var el = document.querySelector('.trip-planner-view, .trip-planner');
+          var currentTrip = null;
+          if (el) {
+            var fiberKey = Object.keys(el).find(function(k) {
+              return k.indexOf('__reactFiber$') === 0 || k.indexOf('__reactInternalInstance$') === 0;
+            });
+            var fiber = fiberKey ? el[fiberKey] : null;
+            while (fiber) {
+              var props = fiber.memoizedProps;
+              if (props && props.trip && Array.isArray(props.trip.stops)) {
+                currentTrip = props.trip;
+                break;
+              }
+              fiber = fiber.return;
+            }
+          }
+          return JSON.stringify({ currentTrip: currentTrip });
         } catch (e) {
           return '';
         }

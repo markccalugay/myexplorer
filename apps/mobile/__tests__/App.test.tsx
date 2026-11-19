@@ -32,18 +32,15 @@ jest.mock('../src/web/MyExplorerWebView', () => {
         exportTrip: () => {
           props.onTripExported?.(
             JSON.stringify({
-              session: null,
-              savedTrips: [
-                {
-                  id: 'web-trip-99',
-                  name: 'Manila Heritage',
-                  updatedAt: '2026-11-19T12:00:00.000Z',
-                  stops: [
-                    {id: 'w1', name: 'Japanese Garden', location: {lat: 14.5839, lng: 120.9794}},
-                    {id: 'w2', name: 'Intramuros', location: {lat: 14.5896, lng: 120.9747}},
-                  ],
-                },
-              ],
+              currentTrip: {
+                id: 'web-trip-99',
+                name: 'Manila Heritage',
+                updatedAt: '2026-11-19T12:00:00.000Z',
+                stops: [
+                  {id: 'w1', name: 'Japanese Garden', location: {lat: 14.5839, lng: 120.9794}},
+                  {id: 'w2', name: 'Intramuros', location: {lat: 14.5896, lng: 120.9747}},
+                ],
+              },
             }),
           );
         },
