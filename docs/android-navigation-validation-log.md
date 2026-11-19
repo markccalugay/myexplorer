@@ -3,7 +3,7 @@
 - **Date:** 2026-11-19 (Asia/Manila)
 - **Branch:** `main`
 - **Package:** `com.thestillfoundation.myexplorer`
-- **Candidate Version:** `versionCode 2` / `versionName "1.0"` (`enableProguardInReleaseBuilds = false`; no `mapping.txt` produced)
+- **Candidate Version:** `versionCode 3` / `versionName "1.0"` (`enableProguardInReleaseBuilds = false`; no `mapping.txt` produced; owner confirmed `versionCode 2` published)
 - **Device / Emulator:** `emulator-5554` (`Medium_Phone_API_36.1`, `sdk_gphone64_arm64`, API 36, `PAGESIZE=4096`)
 - **DHU Matrix (Issue #74):** See [docs/android-auto-dhu-validation-matrix.md](android-auto-dhu-validation-matrix.md)
 
@@ -31,7 +31,7 @@ All new 2026-11-19 `flow_*.png` captures below were validated programmatically (
 | Fresh-install permission denial → retry → grant (`emulator-5554`) | **RUNTIME PASS** *(2026-11-18)* | Denied location (`docs/validation-evidence/2026-11-18/04_perm_denied.png`), verified `paused` notice, retried via `Resume Nav`, granted `While using the app`. |
 | End during preparation & route replacement A → B (`emulator-5554`) | **RUNTIME PASS** *(2026-11-18)* / **AUTOMATED PASS** | `App.tsx` `try/catch` fix verified on mid-prep `stop`; A → B replacement verified (`docs/validation-evidence/2026-11-18/11_route_b_replacement.png`) and covered by `NavigationControllerTest`. |
 | Android Auto DHU projection (Issue #74 matrix) | **NOT TESTED** | Matrix and procedure documented in [docs/android-auto-dhu-validation-matrix.md](android-auto-dhu-validation-matrix.md). `desktop-head-unit` (`2.0-mac-arm64`) is installed, but no physical Android phone running Android Auto with Head Unit Server enabled is connected (`emulator-5554` lacks a Head Unit Server). |
-| Play Console highest `versionCode` confirmation | **BLOCKED** | `androidpublisher.googleapis.com` is not enabled on `myexplorer-489610` and no Play Developer API credentials are configured; owner must confirm highest uploaded `versionCode` in Play Console before uploading. |
+| Play Console highest `versionCode` confirmation | **OWNER CONFIRMED (`v2`)** *(API unavailable)* | `androidpublisher.googleapis.com` is not enabled on `myexplorer-489610`; owner confirmed `versionCode 2` is published, so candidate was bumped to `versionCode 3` / `versionName "1.0"`. |
 | 16 KB ELF `LOAD` alignment, APK ZIP alignment & 16 KB runtime | **AUTOMATED PASS** *(static & ZIP)* / **NOT TESTED** *(16 KB runtime)* | Static ELF (`0/28` 64-bit `.so` `< 0x4000`, unchanged native libs) and `zipalign -c -P 16 -v 4` on `universal.apk` from final AAB (`Verification successful`); `emulator-5554` runs `PAGESIZE=4096` (16 KB runtime not tested). |
 
 ## Automated Checks & Release Artifact
@@ -39,7 +39,8 @@ All new 2026-11-19 `flow_*.png` captures below were validated programmatically (
 - `cd apps/mobile && npm test -- --watchAll=false`: **4 suites passed, 15 tests passed**.
 - `cd apps/mobile && npx tsc --noEmit`: **Passed** (`0` errors).
 - `cd apps/mobile && npm run lint`: **Passed** (`0` errors, `1` warning in generated `apps/mobile/android/app/build/reports/tests/testDebugUnitTest/js/report.js`).
-- `cd apps/mobile/android && ./gradlew testDebugUnitTest assembleDebug bundleRelease --no-daemon`: **BUILD SUCCESSFUL**; JUnit **13/13 tests passed**.
-- **Final Signed AAB:** `apps/mobile/android/app/build/outputs/bundle/release/app-release.aab` (`67M`, `versionCode 2` / `versionName "1.0"`)
-  - **SHA-256:** `147562a4c627aa0c3b2f9d8750bd116d177bb19f0ddd97800ffa45ddd7785bb5`
-  - **Signer:** `CN=The Still Foundation, OU=MyExplorer, O=The Still Foundation, L=Manila, ST=Metro Manila, C=PH` (`jarsigner -verify` → `jar verified.`)
+- `cd apps/mobile/android && ./gradlew testDebugUnitTest bundleRelease --no-daemon`: **BUILD SUCCESSFUL**; JUnit **13/13 tests passed** (`0` failures, `0` errors, `0` skipped).
+- **Final Signed AAB (`versionCode 3`):** `apps/mobile/android/app/build/outputs/bundle/release/myexplorer-v3-1.0-internal.aab` (`67M`, `versionCode 3` / `versionName "1.0"`, package `com.thestillfoundation.myexplorer`)
+  - **SHA-256:** `7c274d182600885f90e7e41b62dc36016e97ab749b3e2e016d534186d6c33af8`
+  - **Signer:** `CN=The Still Foundation, OU=MyExplorer, O=The Still Foundation, L=Manila, ST=Metro Manila, C=PH`, SHA-1 `AA:C6:57:A8:DE:5D:4F:F6:9F:3D:68:11:BE:2D:37:1C:8C:F8:A0:FF` (`jarsigner -verify` → `jar verified.`)
+- **Preserved Previous AAB (`versionCode 2`):** `apps/mobile/android/app/build/outputs/bundle/release/app-release-v2-1.0.aab` (SHA-256 `147562a4c627aa0c3b2f9d8750bd116d177bb19f0ddd97800ffa45ddd7785bb5`)
