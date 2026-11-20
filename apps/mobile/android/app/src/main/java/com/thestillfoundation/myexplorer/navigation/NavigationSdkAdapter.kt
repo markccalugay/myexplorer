@@ -82,6 +82,7 @@ class AndroidNavigatorHandle(
         .build()
     }
     nav.setDestinations(sdkWaypoints).setOnResultListener { routeStatus ->
+      android.util.Log.i("MyExplorerNavDiag", "setDestinations routeStatus=$routeStatus")
       if (routeStatus == Navigator.RouteStatus.OK) {
         onResult(SdkRouteStatus.OK)
       } else {
@@ -177,32 +178,44 @@ class AndroidNavigationEnvironment(
     ContextCompat.checkSelfPermission(application, Manifest.permission.ACCESS_FINE_LOCATION) ==
       PackageManager.PERMISSION_GRANTED
 
-  override fun areTermsAccepted(): Boolean = NavigationApi.areTermsAccepted(application)
+  override fun areTermsAccepted(): Boolean {
+    val accepted = NavigationApi.areTermsAccepted(application)
+    android.util.Log.i("MyExplorerNavDiag", "areTermsAccepted=$accepted")
+    return accepted
+  }
 
   override fun showTermsDialog(title: String, onResult: (Boolean) -> Unit) {
     val hostActivity = activity
+    android.util.Log.i("MyExplorerNavDiag", "showTermsDialog hostActivity=${hostActivity != null}")
     if (hostActivity == null) {
       onResult(false)
       return
     }
     NavigationApi.showTermsAndConditionsDialog(hostActivity, title) { accepted ->
+      android.util.Log.i("MyExplorerNavDiag", "showTermsDialog result accepted=$accepted areTermsAccepted=${NavigationApi.areTermsAccepted(application)}")
       onResult(accepted)
     }
   }
 
   override fun acquireNavigator(onResult: (Result<NavigatorHandle>) -> Unit) {
-    NavigationApi.getNavigator(
-      application,
-      object : NavigationApi.NavigatorListener {
-        override fun onNavigatorReady(nav: Navigator) {
-          onResult(Result.success(AndroidNavigatorHandle(application, nav)))
-        }
+    android.util.Log.i("MyExplorerNavDiag", "acquireNavigator calling getNavigator activity=${activity != null}")
+    val listener = object : NavigationApi.NavigatorListener {
+      override fun onNavigatorReady(nav: Navigator) {
+        android.util.Log.i("MyExplorerNavDiag", "getNavigator onNavigatorReady")
+        onResult(Result.success(AndroidNavigatorHandle(application, nav)))
+      }
 
-        override fun onError(errorCode: Int) {
-          onResult(Result.failure(IllegalStateException("Navigation SDK error code: $errorCode")))
-        }
-      },
-    )
+      override fun onError(errorCode: Int) {
+        android.util.Log.e("MyExplorerNavDiag", "getNavigator onError errorCode=$errorCode")
+        onResult(Result.failure(IllegalStateException("Navigation SDK error code: $errorCode")))
+      }
+    }
+    val hostActivity = activity
+    if (hostActivity != null) {
+      NavigationApi.getNavigator(hostActivity, listener)
+    } else {
+      NavigationApi.getNavigator(application, listener)
+    }
   }
 
   override fun startForegroundService(): Result<Unit> =
