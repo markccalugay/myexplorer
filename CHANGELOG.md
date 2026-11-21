@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- 2026-11-21: Added a draft unified [design direction](docs/design-guide.md) covering existing brand assets and tokens, phone/web/car patterns, accessibility, and trip recovery. Product-owner review, user research, and a full Mobbin travel-screen comparison remain outstanding; no product interface was changed.
+
 ### Fixed
 - 2026-11-19: Fixed current-trip handoff defects in `apps/mobile` (`versionCode 4`, `versionName "1.0"`) and rebuilt [`myexplorer-v4-1.0-internal.aab`](apps/mobile/android/app/build/outputs/bundle/release/myexplorer-v4-1.0-internal.aab) (SHA-256 `15adea320de6832ba23f1f79b9d2b42921d72fb73d85cbd87d878e93dc43a5ab`, signer SHA-1 `AA:C6:57:A8:DE:5D:4F:F6:9F:3D:68:11:BE:2D:37:1C:8C:F8:A0:FF`):
   - **Exact current web trip only (no stale fallback):** Updated `MyExplorerWebViewManager.kt` (`exportTripFromWebStorage`) to read the live `trip` object directly from the mounted `.trip-planner-view` / `.trip-planner` React fiber, and rewrote `apps/mobile/src/web/tripHandoff.ts` (`parseWebTripHandoffResult` / `parseWebTripHandoff`) so handoff **only** uses `currentTrip` (including unsaved trips) and never falls back to `savedTrips` or `session`. `WebExperienceScreen.tsx` now displays an actionable alert and aborts handoff if `currentTrip` is unavailable or invalid.

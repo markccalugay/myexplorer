@@ -4,6 +4,7 @@ MyExplorer is a next-generation travel application designed for seamless trip pl
 
 ## Documentation
 
+- [Design direction and guidelines](./docs/design-guide.md)
 - [Tech Stack](./TECH_STACK.md)
 - [Automotive Reference](./AUTOMOTIVE_REFERENCE.md)
 
