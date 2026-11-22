@@ -103,6 +103,31 @@ export const upsertSavedTrip = (savedTrips: Trip[], trip: Trip): Trip[] => {
   return [nextTrip, ...savedTrips.filter(savedTrip => savedTrip.id !== trip.id)];
 };
 
+export const insertStopIntoTripStops = (stops: Stop[], newStop: Stop): Stop[] => {
+  if (stops.length < 2) {
+    return retypeStops([...stops, newStop]);
+  }
+  const head = stops.slice(0, -1);
+  const destination = stops[stops.length - 1];
+  return retypeStops([...head, newStop, destination]);
+};
+
+export const parseManualCoordinate = (
+  raw: string,
+  min: number,
+  max: number,
+): number | null => {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    return null;
+  }
+  return parsed;
+};
+
 export const formatStopTypeLabel = (type: Stop['type']) => {
   switch (type) {
     case 'start':

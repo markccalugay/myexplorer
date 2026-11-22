@@ -22,7 +22,9 @@ import {
   createEmptyTrip,
   createManualStop,
   formatStopTypeLabel,
+  insertStopIntoTripStops,
   normalizeTrip,
+  parseManualCoordinate,
   retypeStops,
   upsertSavedTrip,
   type Stop,
@@ -106,9 +108,11 @@ export function NativePlannerScreen({
   const [stopDraft, setStopDraft] = useState<StopDraft>(EMPTY_STOP_DRAFT);
   const [placeQuery, setPlaceQuery] = useState('');
   const [placeSearchResults, setPlaceSearchResults] = useState<PlaceSearchResult[]>([]);
+  const [resultsForQuery, setResultsForQuery] = useState('');
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
   const [placeSearchError, setPlaceSearchError] = useState<string | null>(null);
   const [hasSearchedPlaces, setHasSearchedPlaces] = useState(false);
+  const searchRequestSeqRef = useRef(0);
   const [showPlaceSearch, setShowPlaceSearch] = useState(true);
   const [showManualCoordinates, setShowManualCoordinates] = useState(false);
   const [lastRemovedStop, setLastRemovedStop] = useState<{
@@ -455,6 +459,16 @@ export function NativePlannerScreen({
     setPlaceSearchError(null);
   }
 
+  function handlePlaceQueryChange(nextQuery: string) {
+    searchRequestSeqRef.current += 1;
+    setPlaceQuery(nextQuery);
+    setPlaceSearchResults([]);
+    setResultsForQuery('');
+    setPlaceSearchError(null);
+    setHasSearchedPlaces(false);
+    setIsSearchingPlaces(false);
+  }
+
   async function handleSearchPlaces() {
     if (isNavigationSessionInProgress(navigationSession)) {
       setValidationMessage(
@@ -462,11 +476,17 @@ export function NativePlannerScreen({
       );
       return;
     }
+    const requestId = ++searchRequestSeqRef.current;
+    const submittedQuery = placeQuery.trim();
     setIsSearchingPlaces(true);
     setPlaceSearchError(null);
     try {
-      const response = await searchPlacesByQuery(placeQuery);
+      const response = await searchPlacesByQuery(submittedQuery);
+      if (requestId !== searchRequestSeqRef.current) {
+        return;
+      }
       setPlaceSearchResults(response.results);
+      setResultsForQuery(submittedQuery);
       setHasSearchedPlaces(true);
       if (response.invalidCount > 0 && response.results.length > 0) {
         setValidationMessage(
@@ -474,7 +494,11 @@ export function NativePlannerScreen({
         );
       }
     } catch (error) {
+      if (requestId !== searchRequestSeqRef.current) {
+        return;
+      }
       setPlaceSearchResults([]);
+      setResultsForQuery(submittedQuery);
       setHasSearchedPlaces(true);
       setPlaceSearchError(
         error instanceof Error
@@ -482,7 +506,9 @@ export function NativePlannerScreen({
           : 'Place search failed. Check your connection and try again.',
       );
     } finally {
-      setIsSearchingPlaces(false);
+      if (requestId === searchRequestSeqRef.current) {
+        setIsSearchingPlaces(false);
+      }
     }
   }
 
@@ -491,6 +517,11 @@ export function NativePlannerScreen({
       setValidationMessage(
         'End active or paused navigation before editing, reordering, or removing stops.',
       );
+      return;
+    }
+    if (placeQuery.trim() !== resultsForQuery) {
+      setPlaceSearchResults([]);
+      setHasSearchedPlaces(false);
       return;
     }
     let nextStop: Stop;
@@ -502,17 +533,20 @@ export function NativePlannerScreen({
       );
       return;
     }
-    const nextStops = retypeStops([...currentTrip.stops, nextStop]);
+    const nextStops = insertStopIntoTripStops(currentTrip.stops, nextStop);
     setCurrentTrip(previousTrip => ({
       ...previousTrip,
       stops: nextStops,
       routeSnapshot: undefined,
     }));
     invalidateRouteForStops(nextStops);
+    searchRequestSeqRef.current += 1;
     setPlaceQuery('');
     setPlaceSearchResults([]);
+    setResultsForQuery('');
     setPlaceSearchError(null);
     setHasSearchedPlaces(false);
+    setIsSearchingPlaces(false);
     setLastRemovedStop(null);
     setValidationMessage(`Added "${nextStop.name}" to trip.`);
   }
@@ -526,22 +560,15 @@ export function NativePlannerScreen({
     }
 
     const name = stopDraft.name.trim();
-    const lat = Number(stopDraft.lat);
-    const lng = Number(stopDraft.lng);
+    const lat = parseManualCoordinate(stopDraft.lat, -90, 90);
+    const lng = parseManualCoordinate(stopDraft.lng, -180, 180);
 
     if (!name) {
       setValidationMessage('Add a stop name before saving it to the trip.');
       return;
     }
 
-    if (
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lng) ||
-      lat < -90 ||
-      lat > 90 ||
-      lng < -180 ||
-      lng > 180
-    ) {
+    if (lat === null || lng === null) {
       setValidationMessage('Valid latitude (-90..90) and longitude (-180..180) are required.');
       return;
     }
@@ -553,7 +580,7 @@ export function NativePlannerScreen({
       lng,
     });
 
-    const nextStops = retypeStops([...currentTrip.stops, nextStop]);
+    const nextStops = insertStopIntoTripStops(currentTrip.stops, nextStop);
     setCurrentTrip(previousTrip => ({
       ...previousTrip,
       stops: nextStops,
@@ -782,7 +809,7 @@ export function NativePlannerScreen({
             );
           }}
           onOpenPlaceSearch={handleOpenPlaceSearch}
-          onPlaceQueryChange={setPlaceQuery}
+          onPlaceQueryChange={handlePlaceQueryChange}
           onSearchPlaces={handleSearchPlaces}
           onSelectPlaceResult={handleSelectPlaceResult}
           onToggleManualCoordinates={() => setShowManualCoordinates(prev => !prev)}

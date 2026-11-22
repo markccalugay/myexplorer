@@ -739,3 +739,199 @@ test('searches places without coordinates, adds stops in order, reorders, remove
     Platform.OS = originalOs;
   }
 });
+
+test('prevents stale/out-of-order search results, preserves destination on intermediate add, and rejects blank manual coords', async () => {
+  const originalOs = Platform.OS;
+  Platform.OS = 'android';
+
+  type Deferred<T> = {
+    promise: Promise<T>;
+    resolve: (value: T) => void;
+    reject: (error: Error) => void;
+  };
+  const createDeferred = <T,>(): Deferred<T> => {
+    let resolve!: (value: T) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return {promise, resolve, reject};
+  };
+
+  const req1 = createDeferred<string>();
+  const req2 = createDeferred<string>();
+  const req3 = createDeferred<string>();
+
+  const searchPlacesMock = jest
+    .fn()
+    .mockReturnValueOnce(req1.promise)
+    .mockReturnValueOnce(req2.promise)
+    .mockReturnValueOnce(req3.promise)
+    .mockResolvedValueOnce(
+      JSON.stringify([
+        {id: 'p-start', name: 'Manila', formattedAddress: 'Metro Manila', lat: 14.5995, lng: 120.9842},
+      ]),
+    )
+    .mockResolvedValueOnce(
+      JSON.stringify([
+        {id: 'p-dest', name: 'Tagaytay', formattedAddress: 'Cavite', lat: 14.1153, lng: 120.9621},
+      ]),
+    )
+    .mockResolvedValueOnce(
+      JSON.stringify([
+        {id: 'p-mid', name: 'Nuvali', formattedAddress: 'Laguna', lat: 14.239, lng: 121.057},
+      ]),
+    );
+
+  (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+    addListener: jest.fn(),
+    removeListeners: jest.fn(),
+    getSessionState: jest.fn().mockResolvedValue(JSON.stringify({status: 'idle'})),
+    searchPlaces: searchPlacesMock,
+  };
+
+  let renderer: ReactTestRenderer.ReactTestRenderer;
+  try {
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<NativePlannerScreen />);
+    });
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const hasText = (expected: string) =>
+      renderer!.root
+        .findAllByType(Text)
+        .some(node =>
+          (Array.isArray(node.props.children)
+            ? node.props.children.join('')
+            : String(node.props.children ?? '')) === expected,
+        );
+
+    const findBtn = (label: string) => {
+      const node = renderer!.root.findByProps({children: label});
+      let parent = node.parent;
+      while (parent && typeof parent.props.onPress !== 'function') {
+        parent = parent.parent;
+      }
+      return parent!;
+    };
+
+    const searchInput = renderer!.root.findByProps({
+      placeholder: 'Search by place name or street address',
+    });
+
+    // 1. Overlapping out-of-order searches: req1 started first, req2 started second
+    await ReactTestRenderer.act(async () => {
+      searchInput.props.onChangeText('Old Query');
+    });
+    await ReactTestRenderer.act(async () => {
+      findBtn('Search').props.onPress();
+    });
+    await ReactTestRenderer.act(async () => {
+      searchInput.props.onChangeText('New Query');
+    });
+    await ReactTestRenderer.act(async () => {
+      findBtn('Search').props.onPress();
+    });
+
+    // req2 finishes first -> shown
+    await ReactTestRenderer.act(async () => {
+      req2.resolve(
+        JSON.stringify([
+          {id: 'new-1', name: 'New Place', formattedAddress: 'New Addr', lat: 14.5, lng: 121.0},
+        ]),
+      );
+      await Promise.resolve();
+    });
+    expect(hasText('New Place')).toBe(true);
+
+    // req1 finishes late (error or result) -> ignored!
+    await ReactTestRenderer.act(async () => {
+      req1.reject(new Error('Old query failed late'));
+      await Promise.resolve();
+    });
+    expect(hasText('New Place')).toBe(true);
+    expect(hasText('Old query failed late')).toBe(false);
+
+    // Editing query clears stale results immediately
+    await ReactTestRenderer.act(async () => {
+      searchInput.props.onChangeText('Edited');
+    });
+    expect(hasText('New Place')).toBe(false);
+
+    // Clearing while req3 is pending ignores late req3 resolution
+    await ReactTestRenderer.act(async () => {
+      findBtn('Search').props.onPress();
+    });
+    await ReactTestRenderer.act(async () => {
+      findBtn('Clear').props.onPress();
+    });
+    await ReactTestRenderer.act(async () => {
+      req3.resolve(
+        JSON.stringify([
+          {id: 'stale-3', name: 'Stale Place 3', formattedAddress: 'Addr', lat: 14.6, lng: 121.1},
+        ]),
+      );
+      await Promise.resolve();
+    });
+    expect(hasText('Stale Place 3')).toBe(false);
+
+    // 2. Adding 3rd stop via search preserves existing destination ("Tagaytay")
+    for (const q of ['Manila', 'Tagaytay', 'Nuvali']) {
+      await ReactTestRenderer.act(async () => {
+        searchInput.props.onChangeText(q);
+      });
+      await ReactTestRenderer.act(async () => {
+        await findBtn('Search').props.onPress();
+      });
+      await ReactTestRenderer.act(async () => {
+        findBtn('Add').props.onPress();
+      });
+    }
+    expect(hasText('Stops: 3')).toBe(true);
+    // Destination must still be Tagaytay (last stop), with Nuvali inserted before it
+    const stopTitles = renderer!.root
+      .findAllByType(Text)
+      .map(n => (typeof n.props.children === 'string' ? n.props.children : ''))
+      .filter(t => t === 'Manila' || t === 'Nuvali' || t === 'Tagaytay');
+    expect(stopTitles).toEqual(['Manila', 'Nuvali', 'Tagaytay']);
+
+    // 3. Manual coordinates: reject blank/whitespace, allow explicit 0,0
+    await ReactTestRenderer.act(async () => {
+      findBtn('Enter coordinates manually').props.onPress();
+    });
+    const stopNameInput = renderer!.root.findByProps({placeholder: 'Batangas Port'});
+    const latInput = renderer!.root.findByProps({placeholder: '13.7565'});
+    const lngInput = renderer!.root.findByProps({placeholder: '121.0583'});
+
+    await ReactTestRenderer.act(async () => {
+      stopNameInput.props.onChangeText('Blank Coords Stop');
+      latInput.props.onChangeText('   ');
+      lngInput.props.onChangeText('');
+    });
+    await ReactTestRenderer.act(async () => {
+      findBtn('Add Stop to Trip').props.onPress();
+    });
+    expect(
+      hasText('Valid latitude (-90..90) and longitude (-180..180) are required.'),
+    ).toBe(true);
+    expect(hasText('Stops: 3')).toBe(true);
+
+    // Explicit 0, 0 is accepted and inserted before destination
+    await ReactTestRenderer.act(async () => {
+      stopNameInput.props.onChangeText('Null Island');
+      latInput.props.onChangeText('0');
+      lngInput.props.onChangeText('0');
+    });
+    await ReactTestRenderer.act(async () => {
+      findBtn('Add Stop to Trip').props.onPress();
+    });
+    expect(hasText('Stops: 4')).toBe(true);
+    expect(hasText('Null Island')).toBe(true);
+  } finally {
+    Platform.OS = originalOs;
+  }
+});
