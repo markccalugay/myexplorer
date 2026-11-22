@@ -207,4 +207,99 @@ class NavigationSessionRepositoryTest {
       NavigationSessionSnapshot.fromJson(badSnapshotJson)
     }
   }
+
+  @Test
+  fun corruptPersistedSessionSurvivesLaterUpdatesAndRestartUntilExplicitlyCleared() {
+    val prefsMap = mutableMapOf<String, String?>()
+    val editorProxy = java.lang.reflect.Proxy.newProxyInstance(
+      android.content.SharedPreferences.Editor::class.java.classLoader,
+      arrayOf(android.content.SharedPreferences.Editor::class.java),
+    ) { proxy, method, args ->
+      when (method.name) {
+        "putString" -> {
+          prefsMap[args[0] as String] = args[1] as String?
+          proxy
+        }
+        "remove" -> {
+          prefsMap.remove(args[0] as String)
+          proxy
+        }
+        "apply", "commit" -> if (method.returnType == java.lang.Boolean.TYPE) true else Unit
+        else -> proxy
+      }
+    } as android.content.SharedPreferences.Editor
+
+    val prefsProxy = java.lang.reflect.Proxy.newProxyInstance(
+      android.content.SharedPreferences::class.java.classLoader,
+      arrayOf(android.content.SharedPreferences::class.java),
+    ) { _, method, args ->
+      when (method.name) {
+        "getString" -> prefsMap[args[0] as String] ?: (args[1] as String?)
+        "edit" -> editorProxy
+        else -> null
+      }
+    } as android.content.SharedPreferences
+
+    val context = object : android.content.ContextWrapper(null) {
+      override fun getApplicationContext(): android.content.Context = this
+      override fun getSharedPreferences(name: String?, mode: Int): android.content.SharedPreferences =
+        prefsProxy
+    }
+
+    val corruptPayload = JSONObject().apply {
+      put("sessionId", "nav-corrupt-1")
+      put("tripId", "trip-corrupt-1")
+      put("tripName", "Corrupt Trip")
+      put("status", "active")
+      put(
+        "stops",
+        JSONArray().apply {
+          put(JSONObject().apply { put("id", "s1"); put("name", "Start"); put("lat", 14.59); put("lng", 120.98) })
+          put(JSONObject().apply { put("id", "s2"); put("name", "Broken"); put("lat", 14.40) })
+        },
+      )
+    }.toString()
+
+    try {
+      NavigationSessionRepository.resetForRestartTest()
+      prefsMap["snapshot_json"] = corruptPayload
+
+      // 1. Initial boot detects corrupt payload, surfaces error, creates no partial trip, and quarantines payload.
+      NavigationSessionRepository.init(context)
+      assertTrue(NavigationSessionRepository.hasCorruptRecoveryPayload())
+      val firstSnap = NavigationSessionRepository.snapshot()
+      assertEquals("", firstSnap.tripId)
+      assertTrue(firstSnap.stops.isEmpty())
+      assertTrue(!firstSnap.lastError.isNullOrBlank())
+      assertEquals(corruptPayload, prefsMap["snapshot_json"])
+      assertEquals(corruptPayload, prefsMap["corrupt_snapshot_backup_json"])
+
+      // 2. Later implicit update() must NOT overwrite the preserved corrupt payload.
+      NavigationSessionRepository.update {
+        it.copy(status = NavigationSessionStatus.PAUSED, needsNavigatorReconnect = true)
+      }
+      assertEquals(corruptPayload, prefsMap["snapshot_json"])
+      assertEquals(corruptPayload, prefsMap["corrupt_snapshot_backup_json"])
+
+      // 3. Simulated app restart still sees the original corrupt payload and no partial trip.
+      NavigationSessionRepository.resetForRestartTest()
+      NavigationSessionRepository.init(context)
+      assertTrue(NavigationSessionRepository.hasCorruptRecoveryPayload())
+      val restartedSnap = NavigationSessionRepository.snapshot()
+      assertEquals("", restartedSnap.tripId)
+      assertTrue(restartedSnap.stops.isEmpty())
+      assertTrue(!restartedSnap.lastError.isNullOrBlank())
+      assertEquals(corruptPayload, prefsMap["snapshot_json"])
+
+      // 4. Explicit replacement/clear (e.g. user starts a new trip or discards) replaces it cleanly.
+      NavigationSessionRepository.replaceOrClearPreservedCorruptSession {
+        NavigationSessionSnapshot(status = NavigationSessionStatus.ABANDONED)
+      }
+      assertFalse(NavigationSessionRepository.hasCorruptRecoveryPayload())
+      assertNull(prefsMap["corrupt_snapshot_backup_json"])
+      assertTrue(prefsMap["snapshot_json"]?.contains("\"status\":\"abandoned\"") == true)
+    } finally {
+      NavigationSessionRepository.resetForRestartTest()
+    }
+  }
 }

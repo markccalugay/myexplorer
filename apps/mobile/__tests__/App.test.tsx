@@ -453,3 +453,137 @@ test('preserves conflicting draft across app restart, surfaces both choices with
     getItemMock.mockImplementation(async () => null);
   }
 });
+
+test('conflict recovery preserves existing saved trips with colliding IDs, handles persistence failure, and survives restart', async () => {
+  const originalOs = Platform.OS;
+  Platform.OS = 'android';
+  const getItemMock = AsyncStorage.getItem as jest.Mock;
+  const setItemMock = AsyncStorage.setItem as jest.Mock;
+
+  const existingSavedTrip = {
+    id: 'shared-trip-id',
+    name: 'Original Saved Baguio',
+    stops: [
+      {id: 's1', name: 'Manila', location: {lat: 14.5995, lng: 120.9842}, type: 'start'},
+      {id: 's2', name: 'Baguio', location: {lat: 16.4023, lng: 120.596}, type: 'destination'},
+    ],
+  };
+
+  const editedDraftSameSavedId = {
+    id: 'shared-trip-id',
+    name: 'Edited Baguio Draft',
+    stops: [
+      {id: 's1', name: 'Manila', location: {lat: 14.5995, lng: 120.9842}, type: 'start'},
+      {id: 's3', name: 'La Union', location: {lat: 16.6159, lng: 120.3209}, type: 'destination'},
+    ],
+  };
+
+  const activeSessionJson = JSON.stringify({
+    sessionId: 'nav-collision-1',
+    tripId: 'trip-active-other',
+    tripName: 'Tagaytay Run',
+    status: 'paused',
+    needsNavigatorReconnect: true,
+    updatedAtMs: 7000,
+    stops: [
+      {id: 'a1', name: 'Rizal Park', lat: 14.5831, lng: 120.9794, type: 'start'},
+      {id: 'a2', name: 'Tagaytay', lat: 14.1153, lng: 120.9621, type: 'destination'},
+    ],
+  });
+
+  const store: Record<string, string> = {
+    'myexplorer.mobile.saved-trips': JSON.stringify([existingSavedTrip]),
+    'myexplorer.mobile.draft-trip': JSON.stringify(editedDraftSameSavedId),
+    'myexplorer.mobile.draft-baseline': JSON.stringify({
+      ...existingSavedTrip,
+      routeSnapshot: undefined,
+      savedAt: undefined,
+      updatedAt: undefined,
+    }),
+  };
+
+  try {
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      addListener: jest.fn(),
+      removeListeners: jest.fn(),
+      getSessionState: jest.fn().mockResolvedValue(activeSessionJson),
+    };
+    getItemMock.mockImplementation(async (key: string) => store[key] ?? null);
+
+    // 1. Persistence failure keeps draft intact, does NOT switch trip, and shows error
+    setItemMock.mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.saved-trips') {
+        throw new Error('Disk full');
+      }
+    });
+
+    let renderer1: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer1 = ReactTestRenderer.create(<App />);
+    });
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const useActiveText1 = renderer1!.root.findByProps({children: 'Use Active Trip'});
+    let useActiveBtn1 = useActiveText1.parent;
+    while (useActiveBtn1 && typeof useActiveBtn1.props.onPress !== 'function') {
+      useActiveBtn1 = useActiveBtn1.parent;
+    }
+    await ReactTestRenderer.act(async () => {
+      await useActiveBtn1!.props.onPress();
+    });
+
+    expect(
+      renderer1!.root.findByProps({
+        children:
+          'Could not save your conflicting draft. Your draft was kept intact; please retry.',
+      }),
+    ).toBeTruthy();
+    // Draft is still intact (La Union still shown, not Tagaytay)
+    expect(renderer1!.root.findByProps({children: 'La Union'})).toBeTruthy();
+    expect(renderer1!.root.findAllByProps({children: 'Tagaytay'})).toHaveLength(0);
+
+    // 2. When persistence succeeds, BOTH Original Saved Baguio and Edited Baguio Draft (Preserved Draft) are kept
+    setItemMock.mockImplementation(async (key: string, value: string) => {
+      store[key] = value;
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await useActiveBtn1!.props.onPress();
+    });
+
+    const savedAfter = JSON.parse(store['myexplorer.mobile.saved-trips']) as Array<{
+      id: string;
+      name: string;
+    }>;
+    expect(savedAfter.some(t => t.id === 'shared-trip-id' && t.name === 'Original Saved Baguio')).toBe(
+      true,
+    );
+    expect(
+      savedAfter.some(
+        t => t.id !== 'shared-trip-id' && t.name === 'Edited Baguio Draft (Preserved Draft)',
+      ),
+    ).toBe(true);
+    expect(renderer1!.root.findByProps({children: 'Tagaytay'})).toBeTruthy();
+
+    // 3. Reopening after restart still shows both saved trips
+    let renderer2: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer2 = ReactTestRenderer.create(<App />);
+    });
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(renderer2!.root.findByProps({children: 'Original Saved Baguio'})).toBeTruthy();
+    expect(
+      renderer2!.root.findByProps({children: 'Edited Baguio Draft (Preserved Draft)'}),
+    ).toBeTruthy();
+  } finally {
+    Platform.OS = originalOs;
+    getItemMock.mockImplementation(async () => null);
+    setItemMock.mockImplementation(async () => undefined);
+  }
+});

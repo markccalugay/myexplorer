@@ -248,7 +248,7 @@ object NavigationController {
     val opId = operationSeq.incrementAndGet()
     val sessionId = "nav-${UUID.randomUUID().toString().take(8)}"
 
-    NavigationSessionRepository.update {
+    NavigationSessionRepository.replaceOrClearPreservedCorruptSession {
       NavigationSessionSnapshot(
         sessionId = sessionId,
         tripId = tripId,
@@ -494,7 +494,7 @@ object NavigationController {
       guidanceFeedRegistered = false
       env?.stopForegroundService()
     }
-    return NavigationSessionRepository.update {
+    return NavigationSessionRepository.replaceOrClearPreservedCorruptSession {
       it.clearGuidanceFields().copy(
         status = NavigationSessionStatus.ABANDONED,
         remainingDistanceMeters = 0,

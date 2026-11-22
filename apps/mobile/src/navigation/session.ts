@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {NativeEventEmitter, NativeModules, Platform} from 'react-native';
-import {retypeStops, type Stop, type Trip} from '../planner/domain';
+import {
+  cloneTrip,
+  retypeStops,
+  upsertSavedTrip,
+  type Stop,
+  type Trip,
+} from '../planner/domain';
 import {
   requestAndroidNavigationPermissions,
   type NavigationPermissionStatus,
@@ -132,6 +138,66 @@ export function navigationSessionMatchesTrip(
   trip: Trip,
 ): boolean {
   return tripContentMatchesSession(trip, session);
+}
+
+export function preserveConflictingDraftInSavedTrips(params: {
+  savedTrips: Trip[];
+  draftTrip: Trip;
+  activeSessionTripId: string;
+}): {nextSavedTrips: Trip[]; preservedTrip: Trip | null} {
+  const {savedTrips, draftTrip, activeSessionTripId} = params;
+  if (draftTrip.stops.length === 0) {
+    return {nextSavedTrips: savedTrips, preservedTrip: null};
+  }
+  const hasIdCollision =
+    draftTrip.id === activeSessionTripId ||
+    savedTrips.some(saved => saved.id === draftTrip.id);
+  let preservedId = draftTrip.id;
+  if (hasIdCollision) {
+    const baseTimestamp = Date.now();
+    let candidate = `${draftTrip.id}-draft-${baseTimestamp}`;
+    let suffix = 1;
+    while (
+      candidate === activeSessionTripId ||
+      savedTrips.some(saved => saved.id === candidate)
+    ) {
+      candidate = `${draftTrip.id}-draft-${baseTimestamp}-${suffix}`;
+      suffix += 1;
+    }
+    preservedId = candidate;
+  }
+  const baseName = draftTrip.name.trim() || 'Untitled Trip';
+  const preservedName = baseName.endsWith('(Preserved Draft)')
+    ? baseName
+    : `${baseName} (Preserved Draft)`;
+  const preservedTrip: Trip = {
+    ...cloneTrip(draftTrip),
+    id: preservedId,
+    name: preservedName,
+  };
+  return {
+    nextSavedTrips: upsertSavedTrip(savedTrips, preservedTrip),
+    preservedTrip,
+  };
+}
+
+export function preserveSessionTripInSavedTrips(params: {
+  savedTrips: Trip[];
+  sessionTrip: Trip;
+  currentDraftId: string;
+}): {nextSavedTrips: Trip[]; preservedTrip: Trip | null} {
+  const {savedTrips, sessionTrip, currentDraftId} = params;
+  if (
+    sessionTrip.id === currentDraftId ||
+    savedTrips.some(saved => saved.id === sessionTrip.id)
+  ) {
+    return {nextSavedTrips: savedTrips, preservedTrip: null};
+  }
+  const preservedTrip = cloneTrip(sessionTrip);
+  return {
+    nextSavedTrips: upsertSavedTrip(savedTrips, preservedTrip),
+    preservedTrip,
+  };
 }
 
 export const IDLE_NAVIGATION_SESSION: NavigationSessionSnapshot = {

@@ -50,6 +50,8 @@ import {
   isNavigationSessionInProgress,
   navigationSessionMatchesTrip,
   pauseNativeNavigation,
+  preserveConflictingDraftInSavedTrips,
+  preserveSessionTripInSavedTrips,
   reconcileTripWithNavigationSession,
   restoreNavigationSession,
   resumeOrRetryNavigation,
@@ -572,37 +574,56 @@ export function NativePlannerScreen({
           onTripNameChange={updateTripName}
           pendingAction={pendingAction}
           recoveryConflict={recoveryConflict}
-          onUseSessionTrip={() => {
+          onUseSessionTrip={async () => {
             if (!recoveryConflict) {
               return;
             }
             const nextTrip = cloneTrip(recoveryConflict.sessionTrip);
-            if (currentTrip.stops.length > 0) {
-              const preservedDraft =
-                currentTrip.id === nextTrip.id
-                  ? {
-                      ...cloneTrip(currentTrip),
-                      id: `${currentTrip.id}-draft-${Date.now()}`,
-                      name: `${currentTrip.name || 'Untitled Trip'} (Preserved Draft)`,
-                    }
-                  : cloneTrip(currentTrip);
-              setSavedTrips(prev => upsertSavedTrip(prev, preservedDraft));
+            const {nextSavedTrips, preservedTrip} =
+              preserveConflictingDraftInSavedTrips({
+                savedTrips,
+                draftTrip: currentTrip,
+                activeSessionTripId: nextTrip.id,
+              });
+            if (preservedTrip) {
+              try {
+                await persistSavedTrips(nextSavedTrips);
+              } catch {
+                setValidationMessage(
+                  'Could not save your conflicting draft. Your draft was kept intact; please retry.',
+                );
+                return;
+              }
+              setSavedTrips(nextSavedTrips);
             }
             setRecoveryConflict(null);
             setCurrentTrip(nextTrip);
             setTripBaselineSnapshot(normalizeTrip(nextTrip));
             setRouteState(getRouteStateForTrip(nextTrip));
             setValidationMessage(
-              currentTrip.stops.length > 0
+              preservedTrip
                 ? 'Switched to active navigation trip. Your conflicting draft was preserved in Saved Trips.'
                 : null,
             );
           }}
-          onKeepDraftTrip={() => {
+          onKeepDraftTrip={async () => {
             if (recoveryConflict) {
-              const sessionTrip = cloneTrip(recoveryConflict.sessionTrip);
-              if (sessionTrip.id !== currentTrip.id) {
-                setSavedTrips(prev => upsertSavedTrip(prev, sessionTrip));
+              const {nextSavedTrips, preservedTrip} =
+                preserveSessionTripInSavedTrips({
+                  savedTrips,
+                  sessionTrip: recoveryConflict.sessionTrip,
+                  currentDraftId: currentTrip.id,
+                });
+              if (preservedTrip) {
+                try {
+                  await persistSavedTrips(nextSavedTrips);
+                } catch {
+                  setValidationMessage(
+                    'Could not save the active session trip to Saved Trips. Your draft was kept intact; please retry.',
+                  );
+                  return;
+                }
+                setSavedTrips(nextSavedTrips);
               }
             }
             setDismissedConflictKey(

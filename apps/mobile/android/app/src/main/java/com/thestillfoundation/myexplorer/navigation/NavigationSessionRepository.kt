@@ -204,6 +204,7 @@ data class NavigationSessionSnapshot(
 object NavigationSessionRepository {
   private const val PREFS_NAME = "myexplorer_nav_session"
   private const val KEY_SNAPSHOT = "snapshot_json"
+  private const val KEY_CORRUPT_BACKUP = "corrupt_snapshot_backup_json"
 
   private val stateLock = Any()
   private val listeners = CopyOnWriteArraySet<(NavigationSessionSnapshot) -> Unit>()
@@ -218,6 +219,9 @@ object NavigationSessionRepository {
 
   @Volatile
   private var appContext: Context? = null
+
+  @Volatile
+  private var hasPreservedCorruptPayload: Boolean = false
 
   fun beginFeedRegistration(): Long {
     synchronized(stateLock) {
@@ -261,8 +265,14 @@ object NavigationSessionRepository {
             }
           }
           .onFailure { err ->
-            // Preserve the raw SharedPreferences payload for investigation/retry;
-            // never construct a partial trip from corrupt stop coordinates.
+            // Durably quarantine the original payload and block implicit overwrites
+            // until the user explicitly starts a new trip or discards/ends the session.
+            hasPreservedCorruptPayload = true
+            appContext
+              ?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+              ?.edit()
+              ?.putString(KEY_CORRUPT_BACKUP, raw)
+              ?.apply()
             current = NavigationSessionSnapshot(
               status = NavigationSessionStatus.PAUSED,
               needsNavigatorReconnect = true,
@@ -270,6 +280,43 @@ object NavigationSessionRepository {
             )
           }
       }
+    }
+  }
+
+  fun hasCorruptRecoveryPayload(): Boolean = hasPreservedCorruptPayload
+
+  /**
+   * Explicitly replaces or clears any quarantined corrupt session payload (for example
+   * when the user explicitly starts a new valid trip or ends/discards the session).
+   */
+  fun replaceOrClearPreservedCorruptSession(
+    transform: (NavigationSessionSnapshot) -> NavigationSessionSnapshot,
+  ): NavigationSessionSnapshot {
+    val next: NavigationSessionSnapshot
+    synchronized(stateLock) {
+      hasPreservedCorruptPayload = false
+      appContext
+        ?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        ?.edit()
+        ?.remove(KEY_CORRUPT_BACKUP)
+        ?.apply()
+      val transformed = transform(current)
+      next = transformed.copy(
+        versionSeq = current.versionSeq + 1L,
+        updatedAtMs = System.currentTimeMillis(),
+      )
+      current = next
+      persistLocked(next)
+    }
+    listeners.forEach { it(next) }
+    return next
+  }
+
+  internal fun resetForRestartTest() {
+    synchronized(stateLock) {
+      appContext = null
+      hasPreservedCorruptPayload = false
+      current = NavigationSessionSnapshot()
     }
   }
 
@@ -407,6 +454,10 @@ object NavigationSessionRepository {
   }
 
   private fun persistLocked(snapshot: NavigationSessionSnapshot) {
+    if (hasPreservedCorruptPayload) {
+      // Never overwrite the preserved corrupt payload on implicit updates.
+      return
+    }
     appContext
       ?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
       ?.edit()
