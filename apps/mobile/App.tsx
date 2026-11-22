@@ -211,9 +211,23 @@ export function NativePlannerScreen({
       }
 
       const restoredDraft = state.draftTrip ? cloneTrip(state.draftTrip) : createEmptyTrip();
-      setSavedTrips(state.savedTrips.map(savedTrip => cloneTrip(savedTrip)));
+      const restoredSavedTrips = state.savedTrips.map(savedTrip => cloneTrip(savedTrip));
+      let restoredBaseline = normalizeTrip(restoredDraft);
+      if (state.draftTrip) {
+        if (state.draftBaselineSnapshot !== null) {
+          restoredBaseline = state.draftBaselineSnapshot;
+        } else {
+          const matchingSaved = restoredSavedTrips.find(t => t.id === restoredDraft.id);
+          if (matchingSaved) {
+            restoredBaseline = normalizeTrip(matchingSaved);
+          } else if (restoredDraft.stops.length > 0) {
+            restoredBaseline = normalizeTrip(createEmptyTrip());
+          }
+        }
+      }
+      setSavedTrips(restoredSavedTrips);
       setCurrentTrip(restoredDraft);
-      setTripBaselineSnapshot(normalizeTrip(restoredDraft));
+      setTripBaselineSnapshot(restoredBaseline);
       setRouteState(getRouteStateForTrip(restoredDraft));
       setHasHydrated(true);
     };
@@ -249,10 +263,10 @@ export function NativePlannerScreen({
       return;
     }
 
-    persistDraftTrip(currentTrip).catch(error => {
+    persistDraftTrip(currentTrip, tripBaselineSnapshot).catch(error => {
       console.warn('Failed to persist draft trip.', error);
     });
-  }, [currentTrip, hasHydrated]);
+  }, [currentTrip, hasHydrated, tripBaselineSnapshot]);
 
   const currentRouteKey = useMemo(() => buildRouteKey(currentTrip.stops), [currentTrip.stops]);
 
@@ -563,17 +577,41 @@ export function NativePlannerScreen({
               return;
             }
             const nextTrip = cloneTrip(recoveryConflict.sessionTrip);
+            if (currentTrip.stops.length > 0) {
+              const preservedDraft =
+                currentTrip.id === nextTrip.id
+                  ? {
+                      ...cloneTrip(currentTrip),
+                      id: `${currentTrip.id}-draft-${Date.now()}`,
+                      name: `${currentTrip.name || 'Untitled Trip'} (Preserved Draft)`,
+                    }
+                  : cloneTrip(currentTrip);
+              setSavedTrips(prev => upsertSavedTrip(prev, preservedDraft));
+            }
             setRecoveryConflict(null);
             setCurrentTrip(nextTrip);
             setTripBaselineSnapshot(normalizeTrip(nextTrip));
             setRouteState(getRouteStateForTrip(nextTrip));
-            setValidationMessage(null);
+            setValidationMessage(
+              currentTrip.stops.length > 0
+                ? 'Switched to active navigation trip. Your conflicting draft was preserved in Saved Trips.'
+                : null,
+            );
           }}
           onKeepDraftTrip={() => {
+            if (recoveryConflict) {
+              const sessionTrip = cloneTrip(recoveryConflict.sessionTrip);
+              if (sessionTrip.id !== currentTrip.id) {
+                setSavedTrips(prev => upsertSavedTrip(prev, sessionTrip));
+              }
+            }
             setDismissedConflictKey(
               `${navigationSession.sessionId}:${navigationSession.updatedAtMs}:${currentTrip.id}`,
             );
             setRecoveryConflict(null);
+            setValidationMessage(
+              'Kept your draft. Active navigation session remains running and can be resumed from Turn-by-Turn Navigation.',
+            );
           }}
           routeState={routeState}
           routingProxyConfigured={isRoutingProxyConfigured(routingProxyUrl)}

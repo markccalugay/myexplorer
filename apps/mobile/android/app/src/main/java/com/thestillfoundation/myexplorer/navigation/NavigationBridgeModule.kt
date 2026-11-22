@@ -52,11 +52,7 @@ class NavigationBridgeModule(
       val tripId = obj.optString("id", "trip")
       val tripName = obj.optString("name", "MyExplorer Trip")
       val stopsArray = obj.optJSONArray("stops") ?: JSONArray()
-      val stops = buildList {
-        for (i in 0 until stopsArray.length()) {
-          stopsArray.optJSONObject(i)?.let { add(NavStop.fromJson(it)) }
-        }
-      }
+      val stops = NavStop.parseStopList(stopsArray)
       Triple(tripId, tripName, stops)
     }.onFailure { err ->
       promise.reject("INVALID_TRIP", err.message, err)

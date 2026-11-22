@@ -316,3 +316,140 @@ test('auto-restores active/paused trip on Android launch, stays on web for cance
     Platform.OS = originalOs;
   }
 });
+
+test('preserves conflicting draft across app restart, surfaces both choices without silent data loss, and skips conflict when matching', async () => {
+  const originalOs = Platform.OS;
+  Platform.OS = 'android';
+  const getItemMock = AsyncStorage.getItem as jest.Mock;
+  const setItemMock = AsyncStorage.setItem as jest.Mock;
+
+  const activeSessionJson = JSON.stringify({
+    sessionId: 'nav-conflict-1',
+    tripId: 'trip-active-1',
+    tripName: 'Manila Loop',
+    status: 'paused',
+    needsNavigatorReconnect: true,
+    updatedAtMs: 5000,
+    stops: [
+      {id: 'a1', name: 'Rizal Park', lat: 14.5831, lng: 120.9794, type: 'start'},
+      {id: 'a2', name: 'Antipolo', lat: 14.6255, lng: 121.1245, type: 'destination'},
+    ],
+  });
+
+  const conflictingDraft = {
+    id: 'draft-baguio',
+    name: 'Baguio Draft',
+    stops: [
+      {id: 'd1', name: 'QC', location: {lat: 14.676, lng: 121.0437}, type: 'start'},
+      {id: 'd2', name: 'Baguio', location: {lat: 16.4023, lng: 120.596}, type: 'destination'},
+    ],
+    updatedAt: '2026-11-22T05:00:00.000Z',
+  };
+
+  try {
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      addListener: jest.fn(),
+      removeListeners: jest.fn(),
+      getSessionState: jest.fn().mockResolvedValue(activeSessionJson),
+    };
+    getItemMock.mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.draft-trip') {
+        return JSON.stringify(conflictingDraft);
+      }
+      if (key === 'myexplorer.mobile.draft-baseline') {
+        return JSON.stringify({
+          id: 'draft-baguio',
+          name: 'Untitled Trip',
+          stops: [],
+        });
+      }
+      return null;
+    });
+
+    // 1. Rehydrate with persisted conflicting draft -> conflict prompt shown, draft NOT overwritten
+    let renderer1: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer1 = ReactTestRenderer.create(<App />);
+    });
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(renderer1!.root.findByProps({children: 'Trip recovery conflict'})).toBeTruthy();
+    expect(renderer1!.root.findByProps({children: 'Baguio'})).toBeTruthy();
+
+    // Choose "Keep Draft" -> draft remains and explanation shown
+    const keepBtnText = renderer1!.root.findByProps({children: 'Keep Draft'});
+    let keepBtn = keepBtnText.parent;
+    while (keepBtn && typeof keepBtn.props.onPress !== 'function') {
+      keepBtn = keepBtn.parent;
+    }
+    await ReactTestRenderer.act(async () => {
+      keepBtn!.props.onPress();
+    });
+    expect(renderer1!.root.findAllByProps({children: 'Trip recovery conflict'})).toHaveLength(0);
+    expect(renderer1!.root.findByProps({children: 'Baguio'})).toBeTruthy();
+
+    // 2. Rehydrate again and choose "Use Active Trip" -> switches to active trip AND preserves draft in Saved Trips
+    setItemMock.mockClear();
+    let renderer2: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer2 = ReactTestRenderer.create(<App />);
+    });
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const useActiveText = renderer2!.root.findByProps({children: 'Use Active Trip'});
+    let useActiveBtn = useActiveText.parent;
+    while (useActiveBtn && typeof useActiveBtn.props.onPress !== 'function') {
+      useActiveBtn = useActiveBtn.parent;
+    }
+    await ReactTestRenderer.act(async () => {
+      useActiveBtn!.props.onPress();
+    });
+
+    expect(renderer2!.root.findByProps({children: 'Rizal Park'})).toBeTruthy();
+    expect(renderer2!.root.findByProps({children: 'Antipolo'})).toBeTruthy();
+    const savedCalls = setItemMock.mock.calls.filter(
+      call => call[0] === 'myexplorer.mobile.saved-trips',
+    );
+    expect(savedCalls.some(call => String(call[1]).includes('Baguio Draft'))).toBe(true);
+
+    // 3. Rehydrate when persisted draft matches active session -> NO conflict prompt
+    const matchingDraft = {
+      id: 'trip-active-1',
+      name: 'Manila Loop',
+      stops: [
+        {id: 'a1', name: 'Rizal Park', location: {lat: 14.5831, lng: 120.9794}, type: 'start'},
+        {id: 'a2', name: 'Antipolo', location: {lat: 14.6255, lng: 121.1245}, type: 'destination'},
+      ],
+    };
+    getItemMock.mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.draft-trip') {
+        return JSON.stringify(matchingDraft);
+      }
+      if (key === 'myexplorer.mobile.draft-baseline') {
+        return JSON.stringify({id: 'trip-active-1', name: 'Untitled Trip', stops: []});
+      }
+      return null;
+    });
+
+    let renderer3: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer3 = ReactTestRenderer.create(<App />);
+    });
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(renderer3!.root.findAllByProps({children: 'Trip recovery conflict'})).toHaveLength(0);
+    expect(renderer3!.root.findByProps({children: 'Rizal Park'})).toBeTruthy();
+  } finally {
+    Platform.OS = originalOs;
+    getItemMock.mockImplementation(async () => null);
+  }
+});

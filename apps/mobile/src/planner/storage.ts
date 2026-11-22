@@ -4,6 +4,7 @@ import type {Trip} from './domain';
 
 const SAVED_TRIPS_STORAGE_KEY = 'myexplorer.mobile.saved-trips';
 const DRAFT_TRIP_STORAGE_KEY = 'myexplorer.mobile.draft-trip';
+const DRAFT_BASELINE_STORAGE_KEY = 'myexplorer.mobile.draft-baseline';
 
 const parseTrips = (value: string | null): Trip[] => {
   if (!value) {
@@ -35,15 +36,18 @@ const parseTrip = (value: string | null): Trip | null => {
 export async function loadPlannerState(): Promise<{
   savedTrips: Trip[];
   draftTrip: Trip | null;
+  draftBaselineSnapshot: string | null;
 }> {
-  const [savedTripsValue, draftTripValue] = await Promise.all([
+  const [savedTripsValue, draftTripValue, draftBaselineValue] = await Promise.all([
     AsyncStorage.getItem(SAVED_TRIPS_STORAGE_KEY),
     AsyncStorage.getItem(DRAFT_TRIP_STORAGE_KEY),
+    AsyncStorage.getItem(DRAFT_BASELINE_STORAGE_KEY),
   ]);
 
   return {
     savedTrips: parseTrips(savedTripsValue),
     draftTrip: parseTrip(draftTripValue),
+    draftBaselineSnapshot: draftBaselineValue,
   };
 }
 
@@ -51,6 +55,16 @@ export async function persistSavedTrips(savedTrips: Trip[]): Promise<void> {
   await AsyncStorage.setItem(SAVED_TRIPS_STORAGE_KEY, JSON.stringify(savedTrips));
 }
 
-export async function persistDraftTrip(trip: Trip): Promise<void> {
+export async function persistDraftTrip(
+  trip: Trip,
+  baselineSnapshot?: string | null,
+): Promise<void> {
   await AsyncStorage.setItem(DRAFT_TRIP_STORAGE_KEY, JSON.stringify(trip));
+  if (baselineSnapshot !== undefined) {
+    if (baselineSnapshot === null) {
+      await AsyncStorage.removeItem(DRAFT_BASELINE_STORAGE_KEY);
+    } else {
+      await AsyncStorage.setItem(DRAFT_BASELINE_STORAGE_KEY, baselineSnapshot);
+    }
+  }
 }

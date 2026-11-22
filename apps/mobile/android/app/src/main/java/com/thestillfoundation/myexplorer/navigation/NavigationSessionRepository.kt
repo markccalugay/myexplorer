@@ -47,18 +47,52 @@ data class NavStop(
   }
 
   companion object {
+    private fun extractFiniteCoordinate(source: JSONObject?, key: String): Double? {
+      if (source == null || !source.has(key) || source.isNull(key)) {
+        return null
+      }
+      val raw = source.opt(key)
+      if (raw !is Number) {
+        return null
+      }
+      val value = raw.toDouble()
+      return value.takeIf { it.isFinite() }
+    }
+
     fun fromJson(obj: JSONObject): NavStop {
+      val name = obj.optString("name", "").trim()
+      val stopLabel = if (name.isNotEmpty()) " \"$name\"" else ""
       val loc = obj.optJSONObject("location")
-      val lat = loc?.optDouble("lat", 0.0) ?: obj.optDouble("lat", 0.0)
-      val lng = loc?.optDouble("lng", 0.0) ?: obj.optDouble("lng", 0.0)
+      val lat = extractFiniteCoordinate(loc, "lat") ?: extractFiniteCoordinate(obj, "lat")
+      val lng = extractFiniteCoordinate(loc, "lng") ?: extractFiniteCoordinate(obj, "lng")
+      if (
+        lat == null ||
+        lng == null ||
+        lat !in -90.0..90.0 ||
+        lng !in -180.0..180.0
+      ) {
+        throw IllegalArgumentException(
+          "Stop$stopLabel has missing, malformed, or out-of-range coordinates.",
+        )
+      }
       return NavStop(
-        id = obj.optString("id", UUID.randomUUID().toString()),
-        name = obj.optString("name", "Stop"),
+        id = obj.optString("id").takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString(),
+        name = name.ifEmpty { "Stop" },
         formattedAddress = obj.optString("formattedAddress").takeIf { it.isNotBlank() },
         lat = lat,
         lng = lng,
-        type = obj.optString("type", "stop"),
+        type = obj.optString("type").takeIf { it.isNotBlank() } ?: "stop",
       )
+    }
+
+    fun parseStopList(stopsArray: JSONArray): List<NavStop> {
+      val stops = ArrayList<NavStop>(stopsArray.length())
+      for (i in 0 until stopsArray.length()) {
+        val stopObj = stopsArray.optJSONObject(i)
+          ?: throw IllegalArgumentException("Stop ${i + 1} is malformed.")
+        stops.add(fromJson(stopObj))
+      }
+      return stops
     }
   }
 }
@@ -122,11 +156,12 @@ data class NavigationSessionSnapshot(
 
   companion object {
     fun fromJson(obj: JSONObject): NavigationSessionSnapshot {
-      val stopsArray = obj.optJSONArray("stops") ?: JSONArray()
-      val stops = buildList {
-        for (i in 0 until stopsArray.length()) {
-          stopsArray.optJSONObject(i)?.let { add(NavStop.fromJson(it)) }
-        }
+      val stops = if (obj.has("stops") && !obj.isNull("stops")) {
+        val stopsArray = obj.optJSONArray("stops")
+          ?: throw IllegalArgumentException("Persisted stops are malformed.")
+        NavStop.parseStopList(stopsArray)
+      } else {
+        emptyList()
       }
       val roundaboutExit =
         if (obj.has("roundaboutExitNumber") && !obj.isNull("roundaboutExitNumber")) {
@@ -224,6 +259,15 @@ object NavigationSessionRepository {
                 )
               else -> restored
             }
+          }
+          .onFailure { err ->
+            // Preserve the raw SharedPreferences payload for investigation/retry;
+            // never construct a partial trip from corrupt stop coordinates.
+            current = NavigationSessionSnapshot(
+              status = NavigationSessionStatus.PAUSED,
+              needsNavigatorReconnect = true,
+              lastError = err.message ?: "Failed to recover saved navigation stops.",
+            )
           }
       }
     }

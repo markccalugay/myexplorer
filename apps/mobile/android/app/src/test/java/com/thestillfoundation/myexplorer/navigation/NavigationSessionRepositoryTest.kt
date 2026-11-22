@@ -2,9 +2,12 @@ package com.thestillfoundation.myexplorer.navigation
 
 import com.google.android.libraries.mapsplatform.turnbyturn.model.Maneuver as SdkManeuver
 import com.google.android.libraries.mapsplatform.turnbyturn.model.NavState
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -112,5 +115,96 @@ class NavigationSessionRepositoryTest {
     )
     assertEquals(NavigationSessionStatus.ABANDONED, afterStale.status)
     assertEquals("", afterStale.nextInstructionText)
+  }
+
+  @Test
+  fun navStopFromJsonRejectsMissingMalformedAndOutOfRangeWhileAllowingZeroZero() {
+    // Valid explicit (0.0, 0.0)
+    val zeroZero = NavStop.fromJson(
+      JSONObject().apply {
+        put("id", "s0")
+        put("name", "Null Island")
+        put("lat", 0.0)
+        put("lng", 0.0)
+        put("type", "stop")
+      },
+    )
+    assertEquals(0.0, zeroZero.lat, 0.0001)
+    assertEquals(0.0, zeroZero.lng, 0.0001)
+
+    // Missing latitude
+    assertThrows(IllegalArgumentException::class.java) {
+      NavStop.fromJson(
+        JSONObject().apply {
+          put("id", "s-no-lat")
+          put("name", "No Lat")
+          put("lng", 120.98)
+        },
+      )
+    }
+
+    // Missing longitude
+    assertThrows(IllegalArgumentException::class.java) {
+      NavStop.fromJson(
+        JSONObject().apply {
+          put("id", "s-no-lng")
+          put("name", "No Lng")
+          put("lat", 14.59)
+        },
+      )
+    }
+
+    // Malformed non-numeric coordinate
+    assertThrows(IllegalArgumentException::class.java) {
+      NavStop.fromJson(
+        JSONObject().apply {
+          put("id", "s-bad")
+          put("name", "Bad Coord")
+          put("lat", "14.59")
+          put("lng", 120.98)
+        },
+      )
+    }
+
+    // Out-of-range coordinates
+    assertThrows(IllegalArgumentException::class.java) {
+      NavStop.fromJson(
+        JSONObject().apply {
+          put("id", "s-oor-lat")
+          put("name", "OOR Lat")
+          put("lat", 90.1)
+          put("lng", 120.98)
+        },
+      )
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      NavStop.fromJson(
+        JSONObject().apply {
+          put("id", "s-oor-lng")
+          put("name", "OOR Lng")
+          put("lat", 14.59)
+          put("lng", -180.5)
+        },
+      )
+    }
+
+    // Invalid middle stop in snapshot rejects entire snapshot rather than creating partial trip
+    val badSnapshotJson = JSONObject().apply {
+      put("sessionId", "nav-bad-mid")
+      put("tripId", "trip-bad-mid")
+      put("tripName", "Three Stop")
+      put("status", "paused")
+      put(
+        "stops",
+        JSONArray().apply {
+          put(JSONObject().apply { put("id", "s1"); put("name", "Start"); put("lat", 14.59); put("lng", 120.98) })
+          put(JSONObject().apply { put("id", "s2"); put("name", "Mid Missing Lng"); put("lat", 14.40) })
+          put(JSONObject().apply { put("id", "s3"); put("name", "End"); put("lat", 14.11); put("lng", 120.96) })
+        },
+      )
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      NavigationSessionSnapshot.fromJson(badSnapshotJson)
+    }
   }
 }
