@@ -150,7 +150,7 @@ test('blocks trip switching and stop edits while navigation is active or paused'
     }),
   ).toBeTruthy();
 
-  const addStopBtn = findButton('Add Stop to Trip');
+  const addStopBtn = findButton('Add stop');
   expect(addStopBtn).toBeTruthy();
 
   await ReactTestRenderer.act(async () => {
@@ -585,5 +585,157 @@ test('conflict recovery preserves existing saved trips with colliding IDs, handl
     Platform.OS = originalOs;
     getItemMock.mockImplementation(async () => null);
     setItemMock.mockImplementation(async () => undefined);
+  }
+});
+
+test('searches places without coordinates, adds stops in order, reorders, removes with undo, and handles search errors', async () => {
+  const originalOs = Platform.OS;
+  Platform.OS = 'android';
+  const searchPlacesMock = jest
+    .fn()
+    .mockResolvedValueOnce(
+      JSON.stringify([
+        {
+          id: 'p1',
+          name: 'Rizal Park',
+          formattedAddress: 'Roxas Blvd, Ermita, Manila',
+          lat: 14.5831,
+          lng: 120.9794,
+        },
+      ]),
+    )
+    .mockResolvedValueOnce(
+      JSON.stringify([
+        {
+          id: 'p2',
+          name: 'Tagaytay Picnic Grove',
+          formattedAddress: 'Tagaytay, Cavite',
+          lat: 14.1266,
+          lng: 120.9963,
+        },
+      ]),
+    )
+    .mockRejectedValueOnce(new Error('Network unavailable'));
+
+  (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+    addListener: jest.fn(),
+    removeListeners: jest.fn(),
+    getSessionState: jest.fn().mockResolvedValue(JSON.stringify({status: 'idle'})),
+    searchPlaces: searchPlacesMock,
+  };
+
+  let renderer: ReactTestRenderer.ReactTestRenderer;
+  try {
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<NativePlannerScreen />);
+    });
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const searchInput = renderer!.root.findByProps({
+      placeholder: 'Search by place name or street address',
+    });
+    await ReactTestRenderer.act(async () => {
+      searchInput.props.onChangeText('Rizal Park');
+    });
+
+    const searchBtnText = renderer!.root.findByProps({children: 'Search'});
+    let searchBtn = searchBtnText.parent;
+    while (searchBtn && typeof searchBtn.props.onPress !== 'function') {
+      searchBtn = searchBtn.parent;
+    }
+    await ReactTestRenderer.act(async () => {
+      await searchBtn!.props.onPress();
+    });
+
+    // Both search results appear with address context
+    expect(renderer!.root.findByProps({children: 'Rizal Park'})).toBeTruthy();
+    expect(renderer!.root.findByProps({children: 'Roxas Blvd, Ermita, Manila'})).toBeTruthy();
+
+    // Add first result -> added to stops without entering coordinates
+    const hasText = (expected: string) =>
+      renderer!.root
+        .findAllByType(Text)
+        .some(node =>
+          (Array.isArray(node.props.children)
+            ? node.props.children.join('')
+            : String(node.props.children ?? '')) === expected,
+        );
+
+    const getAddButtons = () =>
+      renderer!.root.findAllByProps({children: 'Add'}).map(node => {
+        let parent = node.parent;
+        while (parent && typeof parent.props.onPress !== 'function') {
+          parent = parent.parent;
+        }
+        return parent!;
+      });
+
+    await ReactTestRenderer.act(async () => {
+      getAddButtons()[0].props.onPress();
+    });
+
+    expect(hasText('Stops: 1')).toBe(true);
+    expect(hasText('Added "Rizal Park" to trip.')).toBe(true);
+
+    // Search again for a second stop, add it, and reorder stops
+    await ReactTestRenderer.act(async () => {
+      searchInput.props.onChangeText('Tagaytay');
+    });
+    await ReactTestRenderer.act(async () => {
+      await searchBtn!.props.onPress();
+    });
+    await ReactTestRenderer.act(async () => {
+      getAddButtons()[0].props.onPress();
+    });
+    expect(hasText('Stops: 2')).toBe(true);
+
+    const moveUpText = renderer!.root.findByProps({children: 'Up'});
+    let moveUpBtn = moveUpText.parent;
+    while (moveUpBtn && typeof moveUpBtn.props.onPress !== 'function') {
+      moveUpBtn = moveUpBtn.parent;
+    }
+    await ReactTestRenderer.act(async () => {
+      moveUpBtn!.props.onPress();
+    });
+    expect(hasText('Stops: 2')).toBe(true);
+
+    // Search error shows Retry Search and preserves existing stops
+    await ReactTestRenderer.act(async () => {
+      searchInput.props.onChangeText('Broken Query');
+    });
+    await ReactTestRenderer.act(async () => {
+      await searchBtn!.props.onPress();
+    });
+    expect(hasText('Network unavailable')).toBe(true);
+    expect(hasText('Retry Search')).toBe(true);
+    expect(hasText('Stops: 2')).toBe(true);
+
+    // Remove first stop and Undo restores it
+    const removeText = renderer!.root.findAllByProps({children: 'Remove'})[0];
+    let removeBtn = removeText.parent;
+    while (removeBtn && typeof removeBtn.props.onPress !== 'function') {
+      removeBtn = removeBtn.parent;
+    }
+    await ReactTestRenderer.act(async () => {
+      removeBtn!.props.onPress();
+    });
+    expect(hasText('Stops: 1')).toBe(true);
+
+    const undoText = renderer!.root.findByProps({children: 'Undo'});
+    let undoBtn = undoText.parent;
+    while (undoBtn && typeof undoBtn.props.onPress !== 'function') {
+      undoBtn = undoBtn.parent;
+    }
+    await ReactTestRenderer.act(async () => {
+      undoBtn!.props.onPress();
+    });
+    expect(hasText('Stops: 2')).toBe(true);
+    expect(hasText('Rizal Park')).toBe(true);
+    expect(hasText('Tagaytay Picnic Grove')).toBe(true);
+  } finally {
+    Platform.OS = originalOs;
   }
 });

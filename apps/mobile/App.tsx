@@ -1,5 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {
+  ActivityIndicator,
   AppState,
   BackHandler,
   Platform,
@@ -40,6 +41,11 @@ import {
   fetchRouteFromRoutingProxy,
   isRoutingProxyConfigured,
 } from './src/planner/routingProxyClient';
+import {
+  placeResultToStop,
+  searchPlacesByQuery,
+  type PlaceSearchResult,
+} from './src/planner/placeSearch';
 import {
   loadPlannerState,
   persistDraftTrip,
@@ -98,6 +104,18 @@ export function NativePlannerScreen({
   const [currentTrip, setCurrentTrip] = useState<Trip>(createEmptyTrip);
   const [tripBaselineSnapshot, setTripBaselineSnapshot] = useState<string | null>(null);
   const [stopDraft, setStopDraft] = useState<StopDraft>(EMPTY_STOP_DRAFT);
+  const [placeQuery, setPlaceQuery] = useState('');
+  const [placeSearchResults, setPlaceSearchResults] = useState<PlaceSearchResult[]>([]);
+  const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
+  const [placeSearchError, setPlaceSearchError] = useState<string | null>(null);
+  const [hasSearchedPlaces, setHasSearchedPlaces] = useState(false);
+  const [showPlaceSearch, setShowPlaceSearch] = useState(true);
+  const [showManualCoordinates, setShowManualCoordinates] = useState(false);
+  const [lastRemovedStop, setLastRemovedStop] = useState<{
+    stop: Stop;
+    index: number;
+    tripId: string;
+  } | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [recoveryConflict, setRecoveryConflict] = useState<{
@@ -413,6 +431,92 @@ export function NativePlannerScreen({
     }));
   }
 
+  function invalidateRouteForStops(nextStops: Stop[]) {
+    setRouteState({
+      status: nextStops.length >= 2 ? 'stale' : 'idle',
+      message:
+        nextStops.length >= 2
+          ? isRoutingProxyConfigured(routingProxyUrl)
+            ? 'Stops changed. Recalculating route...'
+            : 'Stops changed. Route preview invalidated (routing proxy not configured).'
+          : 'Add at least two stops to calculate a route.',
+      activeRouteKey: buildRouteKey(nextStops),
+    });
+  }
+
+  function handleOpenPlaceSearch() {
+    if (isNavigationSessionInProgress(navigationSession)) {
+      setValidationMessage(
+        'End active or paused navigation before editing, reordering, or removing stops.',
+      );
+      return;
+    }
+    setShowPlaceSearch(true);
+    setPlaceSearchError(null);
+  }
+
+  async function handleSearchPlaces() {
+    if (isNavigationSessionInProgress(navigationSession)) {
+      setValidationMessage(
+        'End active or paused navigation before editing, reordering, or removing stops.',
+      );
+      return;
+    }
+    setIsSearchingPlaces(true);
+    setPlaceSearchError(null);
+    try {
+      const response = await searchPlacesByQuery(placeQuery);
+      setPlaceSearchResults(response.results);
+      setHasSearchedPlaces(true);
+      if (response.invalidCount > 0 && response.results.length > 0) {
+        setValidationMessage(
+          `Skipped ${response.invalidCount} place result(s) with missing or invalid coordinates.`,
+        );
+      }
+    } catch (error) {
+      setPlaceSearchResults([]);
+      setHasSearchedPlaces(true);
+      setPlaceSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Place search failed. Check your connection and try again.',
+      );
+    } finally {
+      setIsSearchingPlaces(false);
+    }
+  }
+
+  function handleSelectPlaceResult(result: PlaceSearchResult) {
+    if (isNavigationSessionInProgress(navigationSession)) {
+      setValidationMessage(
+        'End active or paused navigation before editing, reordering, or removing stops.',
+      );
+      return;
+    }
+    let nextStop: Stop;
+    try {
+      nextStop = placeResultToStop(result);
+    } catch (error) {
+      setPlaceSearchError(
+        error instanceof Error ? error.message : 'Selected place is invalid.',
+      );
+      return;
+    }
+    const nextStops = retypeStops([...currentTrip.stops, nextStop]);
+    setCurrentTrip(previousTrip => ({
+      ...previousTrip,
+      stops: nextStops,
+      routeSnapshot: undefined,
+    }));
+    invalidateRouteForStops(nextStops);
+    setPlaceQuery('');
+    setPlaceSearchResults([]);
+    setPlaceSearchError(null);
+    setHasSearchedPlaces(false);
+    setLastRemovedStop(null);
+    setValidationMessage(`Added "${nextStop.name}" to trip.`);
+  }
+
   function addStop() {
     if (isNavigationSessionInProgress(navigationSession)) {
       setValidationMessage(
@@ -430,8 +534,15 @@ export function NativePlannerScreen({
       return;
     }
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      setValidationMessage('Latitude and longitude are required for each manual stop.');
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      setValidationMessage('Valid latitude (-90..90) and longitude (-180..180) are required.');
       return;
     }
 
@@ -442,12 +553,15 @@ export function NativePlannerScreen({
       lng,
     });
 
+    const nextStops = retypeStops([...currentTrip.stops, nextStop]);
     setCurrentTrip(previousTrip => ({
       ...previousTrip,
-      stops: retypeStops([...previousTrip.stops, nextStop]),
+      stops: nextStops,
       routeSnapshot: undefined,
     }));
+    invalidateRouteForStops(nextStops);
     setStopDraft(EMPTY_STOP_DRAFT);
+    setLastRemovedStop(null);
     setValidationMessage(null);
   }
 
@@ -459,11 +573,44 @@ export function NativePlannerScreen({
       return;
     }
 
+    const removedIndex = currentTrip.stops.findIndex(stop => stop.id === stopId);
+    const removed = removedIndex >= 0 ? currentTrip.stops[removedIndex] : null;
+    if (!removed) {
+      return;
+    }
+    const nextStops = retypeStops(currentTrip.stops.filter(stop => stop.id !== stopId));
     setCurrentTrip(previousTrip => ({
       ...previousTrip,
-      stops: retypeStops(previousTrip.stops.filter(stop => stop.id !== stopId)),
+      stops: nextStops,
       routeSnapshot: undefined,
     }));
+    invalidateRouteForStops(nextStops);
+    setLastRemovedStop({stop: removed, index: removedIndex, tripId: currentTrip.id});
+  }
+
+  function undoRemoveStop() {
+    if (isNavigationSessionInProgress(navigationSession)) {
+      setValidationMessage(
+        'End active or paused navigation before editing, reordering, or removing stops.',
+      );
+      return;
+    }
+    if (!lastRemovedStop || lastRemovedStop.tripId !== currentTrip.id) {
+      setLastRemovedStop(null);
+      return;
+    }
+    const nextStops = [...currentTrip.stops];
+    const insertAt = Math.min(Math.max(lastRemovedStop.index, 0), nextStops.length);
+    nextStops.splice(insertAt, 0, lastRemovedStop.stop);
+    const retyped = retypeStops(nextStops);
+    setCurrentTrip(previousTrip => ({
+      ...previousTrip,
+      stops: retyped,
+      routeSnapshot: undefined,
+    }));
+    invalidateRouteForStops(retyped);
+    setValidationMessage(`Restored "${lastRemovedStop.stop.name}".`);
+    setLastRemovedStop(null);
   }
 
   function moveStop(stopId: string, direction: -1 | 1) {
@@ -474,24 +621,24 @@ export function NativePlannerScreen({
       return;
     }
 
-    setCurrentTrip(previousTrip => {
-      const currentIndex = previousTrip.stops.findIndex(stop => stop.id === stopId);
-      const nextIndex = currentIndex + direction;
+    const currentIndex = currentTrip.stops.findIndex(stop => stop.id === stopId);
+    const nextIndex = currentIndex + direction;
 
-      if (currentIndex < 0 || nextIndex < 0 || nextIndex >= previousTrip.stops.length) {
-        return previousTrip;
-      }
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= currentTrip.stops.length) {
+      return;
+    }
 
-      const nextStops = [...previousTrip.stops];
-      const [movedStop] = nextStops.splice(currentIndex, 1);
-      nextStops.splice(nextIndex, 0, movedStop);
+    const nextStops = [...currentTrip.stops];
+    const [movedStop] = nextStops.splice(currentIndex, 1);
+    nextStops.splice(nextIndex, 0, movedStop);
+    const retyped = retypeStops(nextStops);
 
-      return {
-        ...previousTrip,
-        stops: retypeStops(nextStops),
-        routeSnapshot: undefined,
-      };
-    });
+    setCurrentTrip(previousTrip => ({
+      ...previousTrip,
+      stops: retyped,
+      routeSnapshot: undefined,
+    }));
+    invalidateRouteForStops(retyped);
   }
 
   async function handleStartNavigation() {
@@ -634,6 +781,24 @@ export function NativePlannerScreen({
               'Kept your draft. Active navigation session remains running and can be resumed from Turn-by-Turn Navigation.',
             );
           }}
+          onOpenPlaceSearch={handleOpenPlaceSearch}
+          onPlaceQueryChange={setPlaceQuery}
+          onSearchPlaces={handleSearchPlaces}
+          onSelectPlaceResult={handleSelectPlaceResult}
+          onToggleManualCoordinates={() => setShowManualCoordinates(prev => !prev)}
+          onUndoRemoveStop={undoRemoveStop}
+          placeQuery={placeQuery}
+          placeSearchResults={placeSearchResults}
+          isSearchingPlaces={isSearchingPlaces}
+          placeSearchError={placeSearchError}
+          hasSearchedPlaces={hasSearchedPlaces}
+          showPlaceSearch={showPlaceSearch}
+          showManualCoordinates={showManualCoordinates}
+          lastRemovedStop={
+            lastRemovedStop && lastRemovedStop.tripId === currentTrip.id
+              ? lastRemovedStop.stop
+              : null
+          }
           routeState={routeState}
           routingProxyConfigured={isRoutingProxyConfigured(routingProxyUrl)}
           savedTrips={savedTrips}
@@ -669,6 +834,20 @@ function AppContent({
   recoveryConflict,
   onUseSessionTrip,
   onKeepDraftTrip,
+  onOpenPlaceSearch,
+  onPlaceQueryChange,
+  onSearchPlaces,
+  onSelectPlaceResult,
+  onToggleManualCoordinates,
+  onUndoRemoveStop,
+  placeQuery,
+  placeSearchResults,
+  isSearchingPlaces,
+  placeSearchError,
+  hasSearchedPlaces,
+  showPlaceSearch,
+  showManualCoordinates,
+  lastRemovedStop,
   routeState,
   routingProxyConfigured,
   savedTrips,
@@ -698,6 +877,20 @@ function AppContent({
   recoveryConflict: {sessionTrip: Trip; message: string} | null;
   onUseSessionTrip: () => void;
   onKeepDraftTrip: () => void;
+  onOpenPlaceSearch: () => void;
+  onPlaceQueryChange: (query: string) => void;
+  onSearchPlaces: () => void;
+  onSelectPlaceResult: (result: PlaceSearchResult) => void;
+  onToggleManualCoordinates: () => void;
+  onUndoRemoveStop: () => void;
+  placeQuery: string;
+  placeSearchResults: PlaceSearchResult[];
+  isSearchingPlaces: boolean;
+  placeSearchError: string | null;
+  hasSearchedPlaces: boolean;
+  showPlaceSearch: boolean;
+  showManualCoordinates: boolean;
+  lastRemovedStop: Stop | null;
   routeState: RouteState;
   routingProxyConfigured: boolean;
   savedTrips: Trip[];
@@ -842,45 +1035,140 @@ function AppContent({
         </SectionCard>
 
         <SectionCard title="Add Stop">
-          <LabeledInput
-            label="Stop name"
-            onChangeText={value => onStopDraftChange('name', value)}
-            placeholder="Batangas Port"
-            value={stopDraft.name}
-          />
-          <LabeledInput
-            label="Address"
-            onChangeText={value => onStopDraftChange('formattedAddress', value)}
-            placeholder="Batangas City, Batangas"
-            value={stopDraft.formattedAddress}
-          />
-          <View style={styles.coordinateRow}>
-            <View style={styles.coordinateField}>
-              <LabeledInput
-                keyboardType="numeric"
-                label="Lat"
-                onChangeText={value => onStopDraftChange('lat', value)}
-                placeholder="13.7565"
-                value={stopDraft.lat}
-              />
+          {isNavigationSessionInProgress(navigationSession) ? (
+            <View style={styles.pendingCard}>
+              <Text style={styles.pendingBody}>
+                Navigation is {navigationSession.status}. End navigation before adding, reordering, or removing stops so your phone and Android Auto stay in sync.
+              </Text>
+              <View style={styles.pendingActions}>
+                <ActionButton compact label="End Navigation" onPress={onStopNavigation} />
+              </View>
             </View>
-            <View style={styles.coordinateFieldLast}>
+          ) : null}
+
+          {showPlaceSearch ? (
+            <View>
               <LabeledInput
-                keyboardType="numeric"
-                label="Lng"
-                onChangeText={value => onStopDraftChange('lng', value)}
-                placeholder="121.0583"
-                value={stopDraft.lng}
+                label="Search place or address"
+                onChangeText={onPlaceQueryChange}
+                placeholder="Search by place name or street address"
+                value={placeQuery}
               />
+              <View style={styles.actionRow}>
+                <ActionButton compact label="Search" onPress={onSearchPlaces} />
+                {placeQuery.trim().length > 0 ? (
+                  <ActionButton
+                    compact
+                    label="Clear"
+                    onPress={() => onPlaceQueryChange('')}
+                  />
+                ) : null}
+                <ActionButton
+                  compact
+                  label={showManualCoordinates ? 'Hide manual entry' : 'Enter coordinates manually'}
+                  onPress={onToggleManualCoordinates}
+                />
+              </View>
+
+              {isSearchingPlaces ? (
+                <View style={styles.searchLoadingRow}>
+                  <ActivityIndicator size="small" color="#7dd3fc" />
+                  <Text style={styles.tripMeta}>Searching places...</Text>
+                </View>
+              ) : null}
+
+              {placeSearchError ? (
+                <View style={styles.messageBanner}>
+                  <Text style={styles.messageText}>{placeSearchError}</Text>
+                  <View style={styles.pendingActions}>
+                    <ActionButton compact label="Retry Search" onPress={onSearchPlaces} />
+                  </View>
+                </View>
+              ) : null}
+
+              {!isSearchingPlaces &&
+              !placeSearchError &&
+              hasSearchedPlaces &&
+              placeSearchResults.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  No places found for "{placeQuery}". Try a more specific name or address.
+                </Text>
+              ) : null}
+
+              {placeSearchResults.map(result => (
+                <View key={result.id} style={styles.searchResultCard}>
+                  <View style={styles.searchResultCopy}>
+                    <Text style={styles.searchResultTitle}>{result.name}</Text>
+                    {result.formattedAddress ? (
+                      <Text style={styles.searchResultAddress}>
+                        {result.formattedAddress}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <ActionButton
+                    compact
+                    label="Add"
+                    onPress={() => onSelectPlaceResult(result)}
+                  />
+                </View>
+              ))}
             </View>
-          </View>
-          <ActionButton label="Add Stop to Trip" onPress={onSubmitStop} />
+          ) : null}
+
+          {showManualCoordinates ? (
+            <View style={styles.manualSection}>
+              <LabeledInput
+                label="Stop name"
+                onChangeText={value => onStopDraftChange('name', value)}
+                placeholder="Batangas Port"
+                value={stopDraft.name}
+              />
+              <LabeledInput
+                label="Address"
+                onChangeText={value => onStopDraftChange('formattedAddress', value)}
+                placeholder="Batangas City, Batangas"
+                value={stopDraft.formattedAddress}
+              />
+              <View style={styles.coordinateRow}>
+                <View style={styles.coordinateField}>
+                  <LabeledInput
+                    keyboardType="numeric"
+                    label="Lat"
+                    onChangeText={value => onStopDraftChange('lat', value)}
+                    placeholder="13.7565"
+                    value={stopDraft.lat}
+                  />
+                </View>
+                <View style={styles.coordinateFieldLast}>
+                  <LabeledInput
+                    keyboardType="numeric"
+                    label="Lng"
+                    onChangeText={value => onStopDraftChange('lng', value)}
+                    placeholder="121.0583"
+                    value={stopDraft.lng}
+                  />
+                </View>
+              </View>
+              <ActionButton label="Add Stop to Trip" onPress={onSubmitStop} />
+            </View>
+          ) : null}
         </SectionCard>
 
         <SectionCard title="Stop Order">
+          <View style={styles.actionRow}>
+            <ActionButton compact label="Add stop" onPress={onOpenPlaceSearch} />
+          </View>
+          {lastRemovedStop ? (
+            <View style={styles.undoBanner}>
+              <Text style={styles.tripMeta}>
+                Removed "{lastRemovedStop.name}".
+              </Text>
+              <ActionButton compact label="Undo" onPress={onUndoRemoveStop} />
+            </View>
+          ) : null}
           {currentTrip.stops.length === 0 ? (
             <Text style={styles.emptyText}>
-              Add a few manual stops and this itinerary will be ready to test on-device.
+              Tap "Add stop" and search for a place by name or address to build your trip.
             </Text>
           ) : (
             currentTrip.stops.map((stop, index) => (
@@ -1343,6 +1631,52 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginTop: 8,
     padding: 14,
+  },
+  searchLoadingRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  searchResultCard: {
+    alignItems: 'center',
+    backgroundColor: '#173553',
+    borderRadius: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    padding: 12,
+  },
+  searchResultCopy: {
+    flex: 1,
+    marginRight: 10,
+  },
+  searchResultTitle: {
+    color: '#f7fbff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  searchResultAddress: {
+    color: '#9fb8cf',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  manualSection: {
+    borderTopColor: '#254a6e',
+    borderTopWidth: 1,
+    marginTop: 12,
+    paddingTop: 12,
+  },
+  undoBanner: {
+    alignItems: 'center',
+    backgroundColor: '#173553',
+    borderRadius: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
 });
 
