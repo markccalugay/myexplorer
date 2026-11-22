@@ -15,6 +15,10 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import type {Trip} from '../planner/domain';
 import {
+  isNavigationSessionInProgress,
+  type NavigationSessionSnapshot,
+} from '../navigation/session';
+import {
   formatAppVersionLabel,
   getRuntimeAppInfo,
   type AppInfo,
@@ -30,9 +34,69 @@ export const MYEXPLORER_WEB_URL = 'https://myexplorer-travel.vercel.app';
 
 type Props = {
   onOpenNativePlanner: (handoffTrip: Trip | null) => void;
+  navigationSession?: NavigationSessionSnapshot | null;
+  onReturnToCurrentTrip?: () => void;
+  onDismissSessionNotice?: () => void;
 };
 
-export function WebExperienceScreen({onOpenNativePlanner}: Props) {
+function getSessionBannerCopy(session: NavigationSessionSnapshot): {
+  title: string;
+  subtitle: string;
+  isInProgress: boolean;
+} {
+  const tripLabel = session.tripName || 'Current Trip';
+  switch (session.status) {
+    case 'active':
+      return {
+        title: tripLabel,
+        subtitle: session.nextInstructionText
+          ? `Active · ${session.nextInstructionText}`
+          : 'Active turn-by-turn guidance',
+        isInProgress: true,
+      };
+    case 'preparing':
+      return {
+        title: tripLabel,
+        subtitle: 'Starting navigation…',
+        isInProgress: true,
+      };
+    case 'reconnecting':
+      return {
+        title: tripLabel,
+        subtitle: 'Reconnecting guidance…',
+        isInProgress: true,
+      };
+    case 'paused':
+      return {
+        title: tripLabel,
+        subtitle: session.needsNavigatorReconnect
+          ? 'Paused — tap Return to Trip to reconnect'
+          : 'Navigation paused',
+        isInProgress: true,
+      };
+    case 'completed':
+      return {
+        title: tripLabel,
+        subtitle: 'Trip completed — arrived at destination',
+        isInProgress: false,
+      };
+    case 'abandoned':
+      return {
+        title: tripLabel,
+        subtitle: 'Navigation was canceled',
+        isInProgress: false,
+      };
+    default:
+      return {title: tripLabel, subtitle: '', isInProgress: false};
+  }
+}
+
+export function WebExperienceScreen({
+  onOpenNativePlanner,
+  navigationSession,
+  onReturnToCurrentTrip,
+  onDismissSessionNotice,
+}: Props) {
   const webViewRef = useRef<MyExplorerWebViewHandle | null>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -129,6 +193,17 @@ export function WebExperienceScreen({onOpenNativePlanner}: Props) {
     [onOpenNativePlanner],
   );
 
+  const showSessionBanner = Boolean(
+    navigationSession &&
+      navigationSession.status !== 'idle' &&
+      (isNavigationSessionInProgress(navigationSession) ||
+        navigationSession.status === 'abandoned' ||
+        navigationSession.status === 'completed'),
+  );
+  const bannerCopy = navigationSession
+    ? getSessionBannerCopy(navigationSession)
+    : null;
+
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#0b1f33" />
@@ -151,6 +226,41 @@ export function WebExperienceScreen({onOpenNativePlanner}: Props) {
           <Text style={styles.menuIcon}>☰</Text>
         </Pressable>
       </View>
+
+      {showSessionBanner && bannerCopy ? (
+        <View
+          testID="current-trip-banner"
+          style={[
+            styles.sessionBanner,
+            !bannerCopy.isInProgress && styles.sessionBannerTerminal,
+          ]}>
+          <View style={styles.sessionBannerCopy}>
+            <Text numberOfLines={1} style={styles.sessionBannerTitle}>
+              {bannerCopy.title}
+            </Text>
+            <Text numberOfLines={1} style={styles.sessionBannerSubtitle}>
+              {bannerCopy.subtitle}
+            </Text>
+          </View>
+          {bannerCopy.isInProgress ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Return to Current Trip"
+              style={styles.sessionBannerAction}
+              onPress={() => onReturnToCurrentTrip?.()}>
+              <Text style={styles.sessionBannerActionText}>Return to Trip</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss Trip Status"
+              style={styles.sessionBannerDismiss}
+              onPress={() => onDismissSessionNotice?.()}>
+              <Text style={styles.sessionBannerDismissText}>Dismiss</Text>
+            </Pressable>
+          )}
+        </View>
+      ) : null}
 
       <View style={styles.webContainer}>
         <MyExplorerWebView
@@ -219,12 +329,38 @@ export function WebExperienceScreen({onOpenNativePlanner}: Props) {
           onPress={() => setShowMenu(false)}>
           <View style={styles.menuCard}>
             <Text style={styles.menuHeading}>MyExplorer</Text>
+            {navigationSession &&
+            isNavigationSessionInProgress(navigationSession) ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Return to Current Trip Menu"
+                style={styles.menuItemPrimary}
+                onPress={() => {
+                  setShowMenu(false);
+                  onReturnToCurrentTrip?.();
+                }}>
+                <Text style={styles.menuItemPrimaryText}>
+                  Return to Current Trip
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Navigate Current Trip"
-              style={styles.menuItemPrimary}
+              style={
+                navigationSession &&
+                isNavigationSessionInProgress(navigationSession)
+                  ? styles.menuItem
+                  : styles.menuItemPrimary
+              }
               onPress={handleOpenNativeNav}>
-              <Text style={styles.menuItemPrimaryText}>
+              <Text
+                style={
+                  navigationSession &&
+                  isNavigationSessionInProgress(navigationSession)
+                    ? styles.menuItemText
+                    : styles.menuItemPrimaryText
+                }>
                 Navigate Current Trip (Native Nav)
               </Text>
             </Pressable>
@@ -464,5 +600,54 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 6,
     marginBottom: 16,
+  },
+  sessionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#132f4c',
+    borderBottomWidth: 1,
+    borderBottomColor: '#244a70',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  sessionBannerTerminal: {
+    backgroundColor: '#162436',
+  },
+  sessionBannerCopy: {
+    flex: 1,
+  },
+  sessionBannerTitle: {
+    color: '#f8fafc',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  sessionBannerSubtitle: {
+    color: '#93c5fd',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  sessionBannerAction: {
+    backgroundColor: '#1d4ed8',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  sessionBannerActionText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  sessionBannerDismiss: {
+    backgroundColor: '#1e3a5f',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  sessionBannerDismissText: {
+    color: '#cbd5e1',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

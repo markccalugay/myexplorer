@@ -4,7 +4,7 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import {Platform, Text} from 'react-native';
+import {NativeModules, Platform, Text} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import App, {NativePlannerScreen} from '../App';
 
@@ -219,6 +219,99 @@ test('launches web experience on Android, shows runtime version in hamburger App
     expect(renderer!.root.findByProps({children: 'Trip Planner'})).toBeTruthy();
     expect(renderer!.root.findByProps({children: 'Japanese Garden'})).toBeTruthy();
     expect(renderer!.root.findByProps({children: 'Intramuros'})).toBeTruthy();
+  } finally {
+    Platform.OS = originalOs;
+  }
+});
+
+test('auto-restores active/paused trip on Android launch, stays on web for canceled/completed, and supports Return to Trip', async () => {
+  const originalOs = Platform.OS;
+  Platform.OS = 'android';
+  try {
+    // 1. Active session on relaunch -> auto-restores to NativePlannerScreen with recovered stops
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      addListener: jest.fn(),
+      removeListeners: jest.fn(),
+      getSessionState: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          sessionId: 'nav-auto-1',
+          tripId: 'web-trip-7',
+          tripName: 'Manila to Antipolo',
+          status: 'paused',
+          needsNavigatorReconnect: true,
+          stops: [
+            {id: 's1', name: 'Rizal Park', lat: 14.5831, lng: 120.9794, type: 'start'},
+            {id: 's2', name: 'Antipolo', lat: 14.5873, lng: 121.176, type: 'destination'},
+          ],
+        }),
+      ),
+    };
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<App />);
+    });
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(renderer!.root.findByProps({children: 'Trip Planner'})).toBeTruthy();
+    expect(renderer!.root.findByProps({children: 'Rizal Park'})).toBeTruthy();
+    expect(renderer!.root.findByProps({children: 'Antipolo'})).toBeTruthy();
+
+    // Back to Explore (Web) shows Return to Trip banner directly on home experience
+    const exploreText = renderer!.root.findByProps({children: 'Explore (Web)'});
+    let exploreNode = exploreText.parent;
+    while (exploreNode && typeof exploreNode.props.onPress !== 'function') {
+      exploreNode = exploreNode.parent;
+    }
+    await ReactTestRenderer.act(async () => {
+      exploreNode!.props.onPress();
+    });
+    const returnBtn = renderer!.root.findByProps({
+      accessibilityLabel: 'Return to Current Trip',
+    });
+    expect(returnBtn).toBeTruthy();
+
+    // Tapping Return to Trip returns directly to NativePlannerScreen without web-DOM export
+    await ReactTestRenderer.act(async () => {
+      returnBtn.props.onPress();
+    });
+    expect(renderer!.root.findByProps({children: 'Trip Planner'})).toBeTruthy();
+
+    // 2. Canceled (abandoned) session on relaunch -> stays on WebExperienceScreen and shows clear canceled notice
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      addListener: jest.fn(),
+      removeListeners: jest.fn(),
+      getSessionState: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          sessionId: 'nav-old-2',
+          tripId: 'web-trip-8',
+          tripName: 'Old Trip',
+          status: 'abandoned',
+        }),
+      ),
+    };
+
+    let canceledRenderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      canceledRenderer = ReactTestRenderer.create(<App />);
+    });
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(canceledRenderer!.root.findByProps({testID: 'mock-webview'})).toBeTruthy();
+    expect(
+      canceledRenderer!.root.findByProps({children: 'Navigation was canceled'}),
+    ).toBeTruthy();
+    expect(
+      canceledRenderer!.root.findAllByProps({
+        accessibilityLabel: 'Return to Current Trip',
+      }),
+    ).toHaveLength(0);
   } finally {
     Platform.OS = originalOs;
   }

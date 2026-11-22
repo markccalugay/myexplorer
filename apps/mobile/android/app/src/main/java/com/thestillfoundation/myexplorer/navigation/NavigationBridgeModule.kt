@@ -41,7 +41,8 @@ class NavigationBridgeModule(
 
   @ReactMethod
   fun getSessionState(promise: Promise) {
-    promise.resolve(NavigationSessionRepository.snapshot().toJson().toString())
+    val reconciled = NavigationController.reconcileSessionState(reactContext.applicationContext)
+    promise.resolve(reconciled.toJson().toString())
   }
 
   @ReactMethod

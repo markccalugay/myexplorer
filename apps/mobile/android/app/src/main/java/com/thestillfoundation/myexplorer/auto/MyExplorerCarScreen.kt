@@ -138,7 +138,8 @@ class MyExplorerCarScreen(carContext: CarContext) : Screen(carContext) {
         )
         NavigationSessionRepository.addListener(sessionListener)
         carContext.getCarService(AppManager::class.java).setSurfaceCallback(surfaceCallback)
-        hostCoordinator.onScreenStarted(NavigationSessionRepository.snapshot())
+        val reconciled = NavigationController.reconcileSessionState(carContext.applicationContext)
+        hostCoordinator.onScreenStarted(reconciled)
       }
 
       override fun onStop(owner: LifecycleOwner) {
@@ -156,8 +157,8 @@ class MyExplorerCarScreen(carContext: CarContext) : Screen(carContext) {
     return when (snapshot.status) {
       NavigationSessionStatus.ACTIVE,
       NavigationSessionStatus.PREPARING,
-      NavigationSessionStatus.PAUSED,
       NavigationSessionStatus.RECONNECTING -> buildNavigationTemplate(snapshot)
+      NavigationSessionStatus.PAUSED -> buildPausedTemplate(snapshot)
       else -> buildIdleTemplate(snapshot)
     }
   }
@@ -188,10 +189,39 @@ class MyExplorerCarScreen(carContext: CarContext) : Screen(carContext) {
   private fun buildIdleTemplate(snapshot: NavigationSessionSnapshot): Template {
     val message = when (snapshot.status) {
       NavigationSessionStatus.COMPLETED -> "You have arrived at your destination."
+      NavigationSessionStatus.ABANDONED -> "Navigation was canceled."
       else -> "Select or start a trip on your phone to begin turn-by-turn navigation."
     }
     return MessageTemplate.Builder(message)
       .setHeaderAction(Action.APP_ICON)
+      .build()
+  }
+
+  private fun buildPausedTemplate(snapshot: NavigationSessionSnapshot): Template {
+    val tripLabel = snapshot.tripName.ifBlank { "Current trip" }
+    val message = when {
+      !snapshot.lastError.isNullOrBlank() -> snapshot.lastError
+      snapshot.needsNavigatorReconnect ->
+        "Navigation for $tripLabel is paused and needs to reconnect. Tap Resume or open MyExplorer on your phone."
+      else -> "Navigation for $tripLabel is paused."
+    }
+    val resumeAction = Action.Builder()
+      .setTitle("Resume")
+      .setOnClickListener {
+        val app = carContext.applicationContext as Application
+        NavigationController.resumeNavigation(app, null)
+      }
+      .build()
+    val endAction = Action.Builder()
+      .setTitle("End")
+      .setOnClickListener {
+        NavigationController.stopNavigation(carContext.applicationContext)
+      }
+      .build()
+    return MessageTemplate.Builder(message)
+      .setHeaderAction(Action.APP_ICON)
+      .addAction(resumeAction)
+      .addAction(endAction)
       .build()
   }
 

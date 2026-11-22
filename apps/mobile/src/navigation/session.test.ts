@@ -6,6 +6,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 import {NativeModules, PermissionsAndroid, Platform} from 'react-native';
 import {
+  buildTripFromNavigationSession,
   createPreparingSession,
   isNavigationSessionInProgress,
   navigationSessionMatchesTrip,
@@ -265,5 +266,35 @@ describe('mobile navigation session', () => {
       navigationSessionMatchesTrip({...base, status: 'active'}, {...sampleTrip, id: 'other-trip'}),
     ).toBe(false);
     expect(navigationSessionMatchesTrip({...base, tripId: ''}, sampleTrip)).toBe(false);
+  });
+
+  test('parseNativeSessionSnapshot and buildTripFromNavigationSession restore native stops', () => {
+    const raw = JSON.stringify({
+      sessionId: 'nav-rec-1',
+      tripId: 'web-trip-42',
+      tripName: 'Tagaytay Run',
+      status: 'paused',
+      needsNavigatorReconnect: true,
+      stops: [
+        {id: 's1', name: 'Manila', lat: 14.5831, lng: 120.9794, type: 'start'},
+        {id: 's2', name: 'Tagaytay', lat: 14.1153, lng: 120.9621, type: 'destination'},
+      ],
+    });
+    const parsed = parseNativeSessionSnapshot(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.needsNavigatorReconnect).toBe(true);
+    expect(parsed?.stops).toHaveLength(2);
+    const recovered = buildTripFromNavigationSession(parsed!);
+    expect(recovered?.id).toBe('web-trip-42');
+    expect(recovered?.name).toBe('Tagaytay Run');
+    expect(recovered?.stops[0].location).toEqual({lat: 14.5831, lng: 120.9794});
+    expect(recovered?.stops[1].type).toBe('destination');
+
+    expect(
+      buildTripFromNavigationSession({
+        ...parsed!,
+        stops: parsed!.stops?.slice(0, 1),
+      }),
+    ).toBeNull();
   });
 });

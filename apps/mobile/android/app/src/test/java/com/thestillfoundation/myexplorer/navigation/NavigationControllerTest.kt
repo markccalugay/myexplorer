@@ -437,4 +437,44 @@ class NavigationControllerTest {
     assertFalse(completed.guidanceFeedRegistered)
     assertTrue(fakeEnv.stopForegroundServiceCalls >= 3)
   }
+
+  @Test
+  fun reconcileSessionStateDowngradesStaleActiveWhenServiceDeadAndNeverResurrectsTerminal() {
+    val unsafeClass = Class.forName("sun.misc.Unsafe")
+    val unsafe = unsafeClass.getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
+    val dummyContext = unsafeClass
+      .getMethod("allocateInstance", Class::class.java)
+      .invoke(unsafe, Application::class.java) as Context
+    NavigationController.environmentFactory = { fakeEnv }
+
+    // 1. Start trip -> ACTIVE
+    NavigationController.startTripNavigationWithEnv(fakeEnv, "trip-rec", "Reconnect Trip", trip1Stops) {}
+    fakeNav.pendingRouteCallback?.invoke(SdkRouteStatus.OK)
+    assertEquals(NavigationSessionStatus.ACTIVE, NavigationSessionRepository.snapshot().status)
+
+    // 2. If foreground service is NOT running, reconcile downgrades ACTIVE -> PAUSED + needsNavigatorReconnect
+    val reconciled = NavigationController.reconcileSessionState(dummyContext, isServiceRunning = false)
+    assertEquals(NavigationSessionStatus.PAUSED, reconciled.status)
+    assertTrue(reconciled.needsNavigatorReconnect)
+    assertFalse(reconciled.guidanceFeedRegistered)
+    assertEquals("trip-rec", reconciled.tripId)
+    assertEquals(2, reconciled.stops.size)
+
+    // 3. Re-activate and simulate external service destruction -> PAUSED + needsNavigatorReconnect
+    NavigationController.resumeNavigationWithEnv(fakeEnv) {}
+    fakeNav.pendingRouteCallback?.invoke(SdkRouteStatus.OK)
+    assertEquals(NavigationSessionStatus.ACTIVE, NavigationSessionRepository.snapshot().status)
+    NavigationController.onForegroundServiceDestroyed(dummyContext)
+    val afterDestroy = NavigationSessionRepository.snapshot()
+    assertEquals(NavigationSessionStatus.PAUSED, afterDestroy.status)
+    assertTrue(afterDestroy.needsNavigatorReconnect)
+    assertFalse(afterDestroy.guidanceFeedRegistered)
+
+    // 4. Stop -> ABANDONED; reconcile & service destroy must NEVER resurrect ABANDONED
+    NavigationController.stopNavigationWithEnv(fakeEnv)
+    assertEquals(NavigationSessionStatus.ABANDONED, NavigationSessionRepository.snapshot().status)
+    NavigationController.onForegroundServiceDestroyed(dummyContext)
+    val afterStopReconcile = NavigationController.reconcileSessionState(dummyContext, isServiceRunning = false)
+    assertEquals(NavigationSessionStatus.ABANDONED, afterStopReconcile.status)
+  }
 }

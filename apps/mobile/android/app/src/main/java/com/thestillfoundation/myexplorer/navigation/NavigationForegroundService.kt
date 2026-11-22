@@ -99,6 +99,7 @@ class NavigationForegroundService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     if (intent?.action == ACTION_STOP) {
+      isServiceRunning = false
       stopForeground(STOP_FOREGROUND_REMOVE)
       stopSelf()
       return START_NOT_STICKY
@@ -106,6 +107,7 @@ class NavigationForegroundService : Service() {
 
     val snapshot = NavigationSessionRepository.snapshot()
     if (!snapshot.status.isRunnable()) {
+      isServiceRunning = false
       stopForeground(STOP_FOREGROUND_REMOVE)
       stopSelf()
       return START_NOT_STICKY
@@ -121,11 +123,14 @@ class NavigationForegroundService : Service() {
     } else {
       startForeground(NOTIFICATION_ID, notification)
     }
+    isServiceRunning = true
     return START_NOT_STICKY
   }
 
   override fun onDestroy() {
+    isServiceRunning = false
     stopForeground(STOP_FOREGROUND_REMOVE)
+    NavigationController.onForegroundServiceDestroyed(applicationContext)
     super.onDestroy()
   }
 
@@ -168,6 +173,10 @@ class NavigationForegroundService : Service() {
   }
 
   companion object {
+    @Volatile
+    var isServiceRunning: Boolean = false
+      internal set
+
     private const val CHANNEL_ID = "myexplorer_navigation_channel"
     private const val NOTIFICATION_ID = 7201
     private const val ACTION_START = "com.thestillfoundation.myexplorer.action.START_NAV_SERVICE"

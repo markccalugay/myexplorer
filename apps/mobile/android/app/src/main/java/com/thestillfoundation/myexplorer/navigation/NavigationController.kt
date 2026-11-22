@@ -43,6 +43,72 @@ object NavigationController {
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
       PackageManager.PERMISSION_GRANTED
 
+  private fun ensureSessionInitialized(context: Context) {
+    runCatching {
+      val appCtx = context.applicationContext ?: context
+      NavigationSessionRepository.init(appCtx)
+    }
+  }
+
+  /**
+   * Reconciles persisted/in-memory session state against the actual navigation SDK handle
+   * and [NavigationForegroundService]. Never resurrects [NavigationSessionStatus.ABANDONED]
+   * or [NavigationSessionStatus.COMPLETED] sessions.
+   */
+  fun reconcileSessionState(
+    context: Context,
+    isServiceRunning: Boolean = NavigationForegroundService.isServiceRunning,
+  ): NavigationSessionSnapshot {
+    ensureSessionInitialized(context)
+    val current = NavigationSessionRepository.snapshot()
+    if (current.status == NavigationSessionStatus.ACTIVE &&
+      (!isServiceRunning || navigatorHandle == null)
+    ) {
+      return NavigationSessionRepository.update {
+        if (it.status == NavigationSessionStatus.ACTIVE) {
+          it.clearGuidanceFields().copy(
+            status = NavigationSessionStatus.PAUSED,
+            isRerouting = false,
+            guidanceFeedRegistered = false,
+            needsNavigatorReconnect = true,
+            lastError = it.lastError ?: "Navigation was interrupted. Tap Resume Nav to reconnect.",
+          )
+        } else {
+          it
+        }
+      }
+    }
+    return current
+  }
+
+  internal fun onForegroundServiceDestroyed(context: Context) {
+    ensureSessionInitialized(context)
+    val current = NavigationSessionRepository.snapshot()
+    if (current.status != NavigationSessionStatus.ACTIVE) {
+      return
+    }
+    operationSeq.incrementAndGet()
+    activeRouteOpId = 0L
+    dispatcher.post {
+      navigatorHandle?.stopGuidance()
+      navigatorHandle?.unregisterGuidanceFeed()
+      guidanceFeedRegistered = false
+    }
+    NavigationSessionRepository.update {
+      if (it.status == NavigationSessionStatus.ACTIVE) {
+        it.clearGuidanceFields().copy(
+          status = NavigationSessionStatus.PAUSED,
+          isRerouting = false,
+          guidanceFeedRegistered = false,
+          needsNavigatorReconnect = true,
+          lastError = "Navigation service stopped. Tap Resume Nav to reconnect.",
+        )
+      } else {
+        it
+      }
+    }
+  }
+
   internal fun configureForTest(testDispatcher: MainThreadDispatcher) {
     dispatcher = testDispatcher
     navigatorHandle = null

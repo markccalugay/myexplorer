@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {NativeEventEmitter, NativeModules, Platform} from 'react-native';
-import type {Trip} from '../planner/domain';
+import {retypeStops, type Stop, type Trip} from '../planner/domain';
 import {
   requestAndroidNavigationPermissions,
   type NavigationPermissionStatus,
@@ -20,6 +20,7 @@ export interface NavigationSessionSnapshot {
   tripId: string;
   tripName: string;
   status: NavigationSessionStatus;
+  stops?: Stop[];
   currentStopIndex: number;
   currentLegIndex: number;
   nextInstructionText: string;
@@ -158,6 +159,64 @@ export function transitionNavigationSession(
   }
 }
 
+function parseSnapshotStops(rawStops: unknown): Stop[] | undefined {
+  if (!Array.isArray(rawStops)) {
+    return undefined;
+  }
+  const stops: Stop[] = [];
+  for (let i = 0; i < rawStops.length; i += 1) {
+    const item = rawStops[i];
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    const obj = item as Record<string, unknown>;
+    const loc =
+      obj.location && typeof obj.location === 'object'
+        ? (obj.location as Record<string, unknown>)
+        : null;
+    const lat = typeof loc?.lat === 'number' ? loc.lat : obj.lat;
+    const lng = typeof loc?.lng === 'number' ? loc.lng : obj.lng;
+    if (
+      typeof lat !== 'number' ||
+      !Number.isFinite(lat) ||
+      typeof lng !== 'number' ||
+      !Number.isFinite(lng)
+    ) {
+      continue;
+    }
+    stops.push({
+      id: typeof obj.id === 'string' && obj.id ? obj.id : `nav-stop-${i + 1}`,
+      name: typeof obj.name === 'string' && obj.name ? obj.name : `Stop ${i + 1}`,
+      formattedAddress:
+        typeof obj.formattedAddress === 'string' && obj.formattedAddress
+          ? obj.formattedAddress
+          : undefined,
+      location: {lat, lng},
+      type:
+        obj.type === 'start' || obj.type === 'destination' || obj.type === 'stop'
+          ? obj.type
+          : 'stop',
+    });
+  }
+  return stops.length > 0 ? retypeStops(stops) : undefined;
+}
+
+export function buildTripFromNavigationSession(
+  session: NavigationSessionSnapshot,
+): Trip | null {
+  if (!session.tripId || !session.stops || session.stops.length < 2) {
+    return null;
+  }
+  const now = new Date(session.updatedAtMs || Date.now()).toISOString();
+  return {
+    id: session.tripId,
+    name: session.tripName || 'Current Trip',
+    stops: retypeStops(session.stops),
+    savedAt: now,
+    updatedAt: now,
+  };
+}
+
 export function parseNativeSessionSnapshot(
   raw: string | null | undefined,
 ): NavigationSessionSnapshot | null {
@@ -174,6 +233,7 @@ export function parseNativeSessionSnapshot(
     return {
       ...IDLE_NAVIGATION_SESSION,
       ...parsed,
+      stops: parseSnapshotStops(parsed.stops),
     };
   } catch {
     return null;

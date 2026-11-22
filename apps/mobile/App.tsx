@@ -1,5 +1,6 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {
+  AppState,
   BackHandler,
   Platform,
   Pressable,
@@ -45,6 +46,7 @@ import {
   persistSavedTrips,
 } from './src/planner/storage';
 import {
+  buildTripFromNavigationSession,
   IDLE_NAVIGATION_SESSION,
   isNavigationSessionInProgress,
   navigationSessionMatchesTrip,
@@ -131,8 +133,35 @@ export function NativePlannerScreen({
         setNavigationSession(restored);
       })
       .catch(() => {});
-    return unsubscribe;
+    const appStateSub = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        restoreNavigationSession()
+          .then(restored => {
+            setNavigationSession(restored);
+          })
+          .catch(() => {});
+      }
+    });
+    return () => {
+      unsubscribe();
+      appStateSub.remove();
+    };
   }, []);
+
+  useEffect(() => {
+    if (!hasHydrated || !isNavigationSessionInProgress(navigationSession)) {
+      return;
+    }
+    if (navigationSessionMatchesTrip(navigationSession, currentTrip)) {
+      return;
+    }
+    const recoveredTrip = buildTripFromNavigationSession(navigationSession);
+    if (recoveredTrip) {
+      setCurrentTrip(recoveredTrip);
+      setTripBaselineSnapshot(normalizeTrip(recoveredTrip));
+      setRouteState(getRouteStateForTrip(recoveredTrip));
+    }
+  }, [currentTrip, hasHydrated, navigationSession]);
 
   useEffect(() => {
     let isMounted = true;
@@ -622,6 +651,10 @@ function AppContent({
           <Text style={styles.tripMeta}>
             Session status: {navigationSession.status}
             {navigationSession.isRerouting ? ' (rerouting)' : ''}
+            {navigationSession.status === 'paused' &&
+            navigationSession.needsNavigatorReconnect
+              ? ' (needs reconnect)'
+              : ''}
           </Text>
           {isNavigationSessionInProgress(navigationSession) && navigationSession.tripName ? (
             <Text style={styles.tripMeta}>
@@ -1194,6 +1227,46 @@ function App() {
   );
   const [handoffTrip, setHandoffTrip] = useState<Trip | null>(null);
   const [handoffKey, setHandoffKey] = useState(0);
+  const [navigationSession, setNavigationSession] = useState<NavigationSessionSnapshot>(
+    IDLE_NAVIGATION_SESSION,
+  );
+  const [dismissedNoticeKey, setDismissedNoticeKey] = useState<string | null>(null);
+  const hasAutoRestoredRef = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return undefined;
+    }
+    const syncSession = (allowAutoRestore: boolean) => {
+      restoreNavigationSession()
+        .then(restored => {
+          setNavigationSession(restored);
+          if (allowAutoRestore && !hasAutoRestoredRef.current) {
+            hasAutoRestoredRef.current = true;
+            if (isNavigationSessionInProgress(restored)) {
+              setScreen('native');
+            }
+          }
+        })
+        .catch(() => {});
+    };
+
+    const unsubscribe = subscribeToNavigationUpdates(snapshot => {
+      setNavigationSession(snapshot);
+    });
+    syncSession(true);
+
+    const appStateSub = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        syncSession(false);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      appStateSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'android' || screen !== 'native') {
@@ -1206,10 +1279,20 @@ function App() {
     return () => sub.remove();
   }, [screen]);
 
+  const currentNoticeKey = `${navigationSession.sessionId}:${navigationSession.status}`;
+  const visibleWebSession =
+    dismissedNoticeKey === currentNoticeKey &&
+    !isNavigationSessionInProgress(navigationSession)
+      ? null
+      : navigationSession;
+
   if (screen === 'web') {
     return (
       <SafeAreaProvider>
         <WebExperienceScreen
+          navigationSession={visibleWebSession}
+          onReturnToCurrentTrip={() => setScreen('native')}
+          onDismissSessionNotice={() => setDismissedNoticeKey(currentNoticeKey)}
           onOpenNativePlanner={trip => {
             if (trip) {
               setHandoffTrip(trip);
