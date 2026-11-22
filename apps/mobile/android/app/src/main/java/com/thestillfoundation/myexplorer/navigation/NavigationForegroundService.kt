@@ -99,6 +99,7 @@ class NavigationForegroundService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     if (intent?.action == ACTION_STOP) {
+      isServiceStartPending = false
       isServiceRunning = false
       stopForeground(STOP_FOREGROUND_REMOVE)
       stopSelf()
@@ -107,9 +108,17 @@ class NavigationForegroundService : Service() {
 
     val snapshot = NavigationSessionRepository.snapshot()
     if (!snapshot.status.isRunnable()) {
+      val wasStarting = isServiceStartPending
+      isServiceStartPending = false
       isServiceRunning = false
       stopForeground(STOP_FOREGROUND_REMOVE)
       stopSelf()
+      if (wasStarting) {
+        NavigationController.onForegroundServiceStartFailed(
+          applicationContext,
+          "Navigation session is no longer runnable.",
+        )
+      }
       return START_NOT_STICKY
     }
 
@@ -123,14 +132,25 @@ class NavigationForegroundService : Service() {
     } else {
       startForeground(NOTIFICATION_ID, notification)
     }
+    isServiceStartPending = false
     isServiceRunning = true
+    NavigationController.onForegroundServiceStarted(applicationContext)
     return START_NOT_STICKY
   }
 
   override fun onDestroy() {
+    val wasStarting = isServiceStartPending && !isServiceRunning
+    isServiceStartPending = false
     isServiceRunning = false
     stopForeground(STOP_FOREGROUND_REMOVE)
-    NavigationController.onForegroundServiceDestroyed(applicationContext)
+    if (wasStarting) {
+      NavigationController.onForegroundServiceStartFailed(
+        applicationContext,
+        "Foreground navigation service stopped before startup completed.",
+      )
+    } else {
+      NavigationController.onForegroundServiceDestroyed(applicationContext)
+    }
     super.onDestroy()
   }
 
@@ -177,23 +197,41 @@ class NavigationForegroundService : Service() {
     var isServiceRunning: Boolean = false
       internal set
 
+    @Volatile
+    var isServiceStartPending: Boolean = false
+      internal set
+
+    internal fun resetForTest() {
+      isServiceRunning = false
+      isServiceStartPending = false
+    }
+
     private const val CHANNEL_ID = "myexplorer_navigation_channel"
     private const val NOTIFICATION_ID = 7201
     private const val ACTION_START = "com.thestillfoundation.myexplorer.action.START_NAV_SERVICE"
     private const val ACTION_STOP = "com.thestillfoundation.myexplorer.action.STOP_NAV_SERVICE"
 
-    fun start(context: Context): Result<Unit> = runCatching {
-      val intent = Intent(context, NavigationForegroundService::class.java).apply {
-        action = ACTION_START
+    fun start(context: Context): Result<Unit> {
+      isServiceStartPending = true
+      val result = runCatching {
+        val intent = Intent(context, NavigationForegroundService::class.java).apply {
+          action = ACTION_START
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          context.startForegroundService(intent)
+        } else {
+          context.startService(intent)
+        }
       }
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        context.startForegroundService(intent)
-      } else {
-        context.startService(intent)
+      if (result.isFailure) {
+        isServiceStartPending = false
+        isServiceRunning = false
       }
+      return result.map { }
     }
 
     fun stop(context: Context) {
+      isServiceStartPending = false
       val intent = Intent(context, NavigationForegroundService::class.java)
       runCatching {
         context.stopService(intent)

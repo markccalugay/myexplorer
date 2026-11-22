@@ -36,6 +36,7 @@ export interface NavigationSessionSnapshot {
   needsNavigatorReconnect: boolean;
   updatedAtMs: number;
   lastError?: string;
+  recoveryError?: string;
   permissionStatus?: NavigationPermissionStatus;
 }
 
@@ -53,11 +54,84 @@ export function isNavigationSessionInProgress(session: NavigationSessionSnapshot
   );
 }
 
+export function tripContentMatchesSession(
+  trip: Trip,
+  session: NavigationSessionSnapshot,
+): boolean {
+  if (!session.tripId || trip.id !== session.tripId || !session.stops) {
+    return false;
+  }
+  const expectedName = session.tripName || 'Current Trip';
+  if (trip.name !== expectedName) {
+    return false;
+  }
+  const normalizedSessionStops = retypeStops(session.stops);
+  if (trip.stops.length !== normalizedSessionStops.length) {
+    return false;
+  }
+  for (let i = 0; i < trip.stops.length; i += 1) {
+    const a = trip.stops[i];
+    const b = normalizedSessionStops[i];
+    if (
+      a.id !== b.id ||
+      a.name !== b.name ||
+      (a.formattedAddress ?? '') !== (b.formattedAddress ?? '') ||
+      a.location.lat !== b.location.lat ||
+      a.location.lng !== b.location.lng ||
+      a.type !== b.type
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export type TripRecoveryResult =
+  | {action: 'none'}
+  | {action: 'restore'; trip: Trip}
+  | {action: 'conflict'; sessionTrip: Trip; message: string}
+  | {action: 'error'; message: string};
+
+export function reconcileTripWithNavigationSession(params: {
+  currentTrip: Trip;
+  session: NavigationSessionSnapshot;
+  hasUnsavedDraftChanges: boolean;
+}): TripRecoveryResult {
+  const {currentTrip, session, hasUnsavedDraftChanges} = params;
+  if (!isNavigationSessionInProgress(session)) {
+    return {action: 'none'};
+  }
+  if (session.recoveryError) {
+    return {action: 'error', message: session.recoveryError};
+  }
+  const recoveredTrip = buildTripFromNavigationSession(session);
+  if (!recoveredTrip) {
+    return {
+      action: 'error',
+      message: 'Recovered navigation session is missing valid start and destination stops.',
+    };
+  }
+  if (tripContentMatchesSession(currentTrip, session)) {
+    return {action: 'none'};
+  }
+  if (hasUnsavedDraftChanges && currentTrip.stops.length > 0) {
+    const sameId = currentTrip.id === session.tripId;
+    return {
+      action: 'conflict',
+      sessionTrip: recoveredTrip,
+      message: sameId
+        ? 'Your local draft edits differ from the active navigation session. Choose which version to keep.'
+        : 'You have an unsaved draft that differs from the active navigation session. Choose which trip to keep.',
+    };
+  }
+  return {action: 'restore', trip: recoveredTrip};
+}
+
 export function navigationSessionMatchesTrip(
   session: NavigationSessionSnapshot,
   trip: Trip,
 ): boolean {
-  return Boolean(session.tripId) && session.tripId === trip.id;
+  return tripContentMatchesSession(trip, session);
 }
 
 export const IDLE_NAVIGATION_SESSION: NavigationSessionSnapshot = {
@@ -87,6 +161,7 @@ export function createPreparingSession(trip: Trip): NavigationSessionSnapshot {
     sessionId: `nav-${Date.now()}`,
     tripId: trip.id,
     tripName: trip.name,
+    stops: retypeStops(trip.stops),
     status: 'preparing',
     currentStopIndex: trip.stops.length > 1 ? 1 : 0,
     currentLegIndex: 0,
@@ -159,17 +234,34 @@ export function transitionNavigationSession(
   }
 }
 
-function parseSnapshotStops(rawStops: unknown): Stop[] | undefined {
+function validateSnapshotStops(rawStops: unknown): {
+  stops?: Stop[];
+  error?: string;
+} {
+  if (rawStops === undefined || rawStops === null) {
+    return {};
+  }
   if (!Array.isArray(rawStops)) {
-    return undefined;
+    return {error: 'Recovered trip stops are malformed.'};
+  }
+  if (rawStops.length < 2) {
+    return {
+      error: 'Recovered trip is missing required start or destination stops.',
+    };
   }
   const stops: Stop[] = [];
   for (let i = 0; i < rawStops.length; i += 1) {
     const item = rawStops[i];
     if (!item || typeof item !== 'object') {
-      continue;
+      return {
+        error: `Recovered stop ${i + 1} is invalid. Existing trip data was preserved.`,
+      };
     }
     const obj = item as Record<string, unknown>;
+    const stopLabel =
+      typeof obj.name === 'string' && obj.name.trim()
+        ? ` ("${obj.name.trim()}")`
+        : '';
     const loc =
       obj.location && typeof obj.location === 'object'
         ? (obj.location as Record<string, unknown>)
@@ -180,9 +272,15 @@ function parseSnapshotStops(rawStops: unknown): Stop[] | undefined {
       typeof lat !== 'number' ||
       !Number.isFinite(lat) ||
       typeof lng !== 'number' ||
-      !Number.isFinite(lng)
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
     ) {
-      continue;
+      return {
+        error: `Recovered stop ${i + 1}${stopLabel} has missing or out-of-range coordinates. Existing trip data was preserved.`,
+      };
     }
     stops.push({
       id: typeof obj.id === 'string' && obj.id ? obj.id : `nav-stop-${i + 1}`,
@@ -198,13 +296,18 @@ function parseSnapshotStops(rawStops: unknown): Stop[] | undefined {
           : 'stop',
     });
   }
-  return stops.length > 0 ? retypeStops(stops) : undefined;
+  return {stops: retypeStops(stops)};
 }
 
 export function buildTripFromNavigationSession(
   session: NavigationSessionSnapshot,
 ): Trip | null {
-  if (!session.tripId || !session.stops || session.stops.length < 2) {
+  if (
+    session.recoveryError ||
+    !session.tripId ||
+    !session.stops ||
+    session.stops.length < 2
+  ) {
     return null;
   }
   const now = new Date(session.updatedAtMs || Date.now()).toISOString();
@@ -230,10 +333,12 @@ export function parseNativeSessionSnapshot(
       return null;
     }
 
+    const validatedStops = validateSnapshotStops(parsed.stops);
     return {
       ...IDLE_NAVIGATION_SESSION,
       ...parsed,
-      stops: parseSnapshotStops(parsed.stops),
+      stops: validatedStops.stops,
+      recoveryError: validatedStops.error,
     };
   } catch {
     return null;

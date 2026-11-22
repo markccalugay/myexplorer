@@ -87,6 +87,7 @@ private class FakeNavigationEnvironment(
   var hasPermission = true
   var termsAccepted = true
   var foregroundStartResult: Result<Unit> = Result.success(Unit)
+  var autoCompleteServiceStart = true
   var pendingAcquireCallback: ((Result<NavigatorHandle>) -> Unit)? = null
   var autoCompleteAcquire = true
   var startForegroundServiceCalls = 0
@@ -110,11 +111,29 @@ private class FakeNavigationEnvironment(
 
   override fun startForegroundService(): Result<Unit> {
     startForegroundServiceCalls++
+    if (foregroundStartResult.isFailure) {
+      NavigationForegroundService.isServiceStartPending = false
+      NavigationForegroundService.isServiceRunning = false
+      return foregroundStartResult
+    }
+    NavigationForegroundService.isServiceStartPending = true
+    if (autoCompleteServiceStart) {
+      NavigationForegroundService.isServiceStartPending = false
+      NavigationForegroundService.isServiceRunning = true
+      val unsafeClass = Class.forName("sun.misc.Unsafe")
+      val unsafe = unsafeClass.getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
+      val dummyContext = unsafeClass
+        .getMethod("allocateInstance", Class::class.java)
+        .invoke(unsafe, Application::class.java) as Context
+      NavigationController.onForegroundServiceStarted(dummyContext)
+    }
     return foregroundStartResult
   }
 
   override fun stopForegroundService() {
     stopForegroundServiceCalls++
+    NavigationForegroundService.isServiceStartPending = false
+    NavigationForegroundService.isServiceRunning = false
   }
 }
 
@@ -476,5 +495,70 @@ class NavigationControllerTest {
     NavigationController.onForegroundServiceDestroyed(dummyContext)
     val afterStopReconcile = NavigationController.reconcileSessionState(dummyContext, isServiceRunning = false)
     assertEquals(NavigationSessionStatus.ABANDONED, afterStopReconcile.status)
+  }
+
+  @Test
+  fun foregroundServiceStartupRaceDoesNotDowngradeDuringStartupAndDetectsFailureOrDestruction() {
+    val unsafeClass = Class.forName("sun.misc.Unsafe")
+    val unsafe = unsafeClass.getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
+    val dummyContext = unsafeClass
+      .getMethod("allocateInstance", Class::class.java)
+      .invoke(unsafe, Application::class.java) as Context
+
+    fakeEnv.autoCompleteServiceStart = false
+    var startResult: Result<NavigationSessionSnapshot>? = null
+    NavigationController.startTripNavigationWithEnv(
+      fakeEnv,
+      "trip-race",
+      "Race Trip",
+      trip1Stops,
+    ) { startResult = it }
+    fakeNav.pendingRouteCallback?.invoke(SdkRouteStatus.OK)
+
+    // 1. Service start was requested, but onStartCommand has not fired yet:
+    // guidance must NOT be ACTIVE yet, and reconciliation must NOT downgrade to PAUSED.
+    assertEquals(1, fakeEnv.startForegroundServiceCalls)
+    assertTrue(NavigationForegroundService.isServiceStartPending)
+    assertFalse(NavigationForegroundService.isServiceRunning)
+    assertEquals(0, fakeNav.startGuidanceCalls)
+    assertEquals(NavigationSessionStatus.PREPARING, NavigationSessionRepository.snapshot().status)
+
+    val duringStartup = NavigationController.reconcileSessionState(dummyContext)
+    assertEquals(NavigationSessionStatus.PREPARING, duringStartup.status)
+    assertFalse(duringStartup.needsNavigatorReconnect)
+    assertNull(startResult)
+
+    // 2. Service startup callback completes -> guidance starts and session becomes ACTIVE.
+    NavigationForegroundService.isServiceStartPending = false
+    NavigationForegroundService.isServiceRunning = true
+    NavigationController.onForegroundServiceStarted(dummyContext)
+
+    assertEquals(1, fakeNav.startGuidanceCalls)
+    assertTrue(startResult?.isSuccess == true)
+    assertEquals(NavigationSessionStatus.ACTIVE, NavigationSessionRepository.snapshot().status)
+
+    // 3. Subsequent service destruction -> downgrades ACTIVE to PAUSED + needsNavigatorReconnect.
+    NavigationForegroundService.isServiceRunning = false
+    NavigationController.onForegroundServiceDestroyed(dummyContext)
+    val afterDestroy = NavigationSessionRepository.snapshot()
+    assertEquals(NavigationSessionStatus.PAUSED, afterDestroy.status)
+    assertTrue(afterDestroy.needsNavigatorReconnect)
+
+    // 4. Resume where service genuinely fails to start -> PAUSED, no guidance started, failure reported.
+    var resumeResult: Result<NavigationSessionSnapshot>? = null
+    NavigationController.resumeNavigationWithEnv(fakeEnv) { resumeResult = it }
+    fakeNav.pendingRouteCallback?.invoke(SdkRouteStatus.OK)
+    assertEquals(NavigationSessionStatus.RECONNECTING, NavigationSessionRepository.snapshot().status)
+
+    NavigationForegroundService.isServiceStartPending = false
+    NavigationForegroundService.isServiceRunning = false
+    NavigationController.onForegroundServiceStartFailed(dummyContext, "Foreground start rejected")
+
+    assertEquals(1, fakeNav.startGuidanceCalls)
+    assertTrue(resumeResult?.isFailure == true)
+    val afterFail = NavigationController.reconcileSessionState(dummyContext)
+    assertEquals(NavigationSessionStatus.PAUSED, afterFail.status)
+    assertTrue(afterFail.needsNavigatorReconnect)
+    assertEquals("Foreground start rejected", afterFail.lastError)
   }
 }

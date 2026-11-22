@@ -36,6 +36,16 @@ object NavigationController {
   @Volatile
   private var activeEnv: NavigationEnvironment? = null
 
+  private data class PendingServiceStart(
+    val opId: Long,
+    val sessionId: String,
+    val nav: NavigatorHandle,
+    val onComplete: (Result<NavigationSessionSnapshot>) -> Unit,
+  )
+
+  @Volatile
+  private var pendingServiceStart: PendingServiceStart? = null
+
   @Volatile
   internal var environmentFactory: ((Context) -> NavigationEnvironment)? = null
 
@@ -53,14 +63,29 @@ object NavigationController {
   /**
    * Reconciles persisted/in-memory session state against the actual navigation SDK handle
    * and [NavigationForegroundService]. Never resurrects [NavigationSessionStatus.ABANDONED]
-   * or [NavigationSessionStatus.COMPLETED] sessions.
+   * or [NavigationSessionStatus.COMPLETED] sessions, and preserves in-flight startup while
+   * [isServiceStartPending] is true.
    */
   fun reconcileSessionState(
     context: Context,
     isServiceRunning: Boolean = NavigationForegroundService.isServiceRunning,
+    isServiceStartPending: Boolean = NavigationForegroundService.isServiceStartPending,
   ): NavigationSessionSnapshot {
     ensureSessionInitialized(context)
     val current = NavigationSessionRepository.snapshot()
+    if (isServiceStartPending && current.status.isRunnable() && navigatorHandle != null) {
+      return current
+    }
+    if (!isServiceStartPending &&
+      current.status.isRunnable() &&
+      pendingServiceStart != null &&
+      !isServiceRunning
+    ) {
+      return onForegroundServiceStartFailed(
+        context,
+        "Foreground navigation service failed to start. Tap Resume Nav to retry.",
+      )
+    }
     if (current.status == NavigationSessionStatus.ACTIVE &&
       (!isServiceRunning || navigatorHandle == null)
     ) {
@@ -81,12 +106,55 @@ object NavigationController {
     return current
   }
 
+  internal fun onForegroundServiceStarted(context: Context) {
+    ensureSessionInitialized(context)
+    dispatcher.post {
+      completePendingServiceStart()
+    }
+  }
+
+  internal fun onForegroundServiceStartFailed(
+    context: Context,
+    reason: String,
+  ): NavigationSessionSnapshot {
+    ensureSessionInitialized(context)
+    val pending = pendingServiceStart
+    pendingServiceStart = null
+    activeRouteOpId = 0L
+    NavigationSessionRepository.invalidateFeedGeneration()
+    dispatcher.post {
+      pending?.nav?.stopGuidance()
+      pending?.nav?.unregisterGuidanceFeed()
+      if (pending == null) {
+        navigatorHandle?.stopGuidance()
+        navigatorHandle?.unregisterGuidanceFeed()
+      }
+      guidanceFeedRegistered = false
+    }
+    val updated = NavigationSessionRepository.update {
+      if (it.status.isRunnable()) {
+        it.clearGuidanceFields().copy(
+          status = NavigationSessionStatus.PAUSED,
+          isRerouting = false,
+          guidanceFeedRegistered = false,
+          needsNavigatorReconnect = true,
+          lastError = reason,
+        )
+      } else {
+        it
+      }
+    }
+    pending?.onComplete?.invoke(Result.failure(IllegalStateException(reason)))
+    return updated
+  }
+
   internal fun onForegroundServiceDestroyed(context: Context) {
     ensureSessionInitialized(context)
     val current = NavigationSessionRepository.snapshot()
     if (current.status != NavigationSessionStatus.ACTIVE) {
       return
     }
+    pendingServiceStart = null
     operationSeq.incrementAndGet()
     activeRouteOpId = 0L
     dispatcher.post {
@@ -115,12 +183,16 @@ object NavigationController {
     sdkListenersRegistered = false
     guidanceFeedRegistered = false
     activeRouteOpId = 0L
+    pendingServiceStart = null
     operationSeq.set(0L)
+    NavigationForegroundService.resetForTest()
   }
 
   internal fun resetForProd() {
     dispatcher = AndroidMainThreadDispatcher
     environmentFactory = null
+    pendingServiceStart = null
+    NavigationForegroundService.resetForTest()
   }
 
   private fun resolveEnvironment(context: Context): NavigationEnvironment? {
@@ -255,9 +327,16 @@ object NavigationController {
     return pauseNavigationWithEnv(resolveEnvironment(context))
   }
 
+  private fun cancelPendingServiceStart(reason: String) {
+    val pending = pendingServiceStart ?: return
+    pendingServiceStart = null
+    pending.onComplete(Result.failure(IllegalStateException(reason)))
+  }
+
   internal fun pauseNavigationWithEnv(env: NavigationEnvironment?): NavigationSessionSnapshot {
     operationSeq.incrementAndGet()
     activeRouteOpId = 0L
+    cancelPendingServiceStart("Navigation paused before foreground service started.")
     dispatcher.post {
       navigatorHandle?.stopGuidance()
       navigatorHandle?.unregisterGuidanceFeed()
@@ -407,6 +486,7 @@ object NavigationController {
   internal fun stopNavigationWithEnv(env: NavigationEnvironment?): NavigationSessionSnapshot {
     operationSeq.incrementAndGet()
     activeRouteOpId = 0L
+    cancelPendingServiceStart("Navigation stopped before foreground service started.")
     dispatcher.post {
       navigatorHandle?.stopGuidance()
       navigatorHandle?.clearDestinations()
@@ -469,8 +549,10 @@ object NavigationController {
       return
     }
 
+    pendingServiceStart = PendingServiceStart(opId, sessionId, nav, onComplete)
     val serviceResult = env.startForegroundService()
     if (serviceResult.isFailure) {
+      pendingServiceStart = null
       nav.unregisterGuidanceFeed()
       NavigationSessionRepository.invalidateFeedGeneration()
       guidanceFeedRegistered = false
@@ -490,11 +572,28 @@ object NavigationController {
       return
     }
 
-    activeRouteOpId = opId
-    nav.setVoiceGuidanceEnabled()
-    nav.startGuidance()
+    if (NavigationForegroundService.isServiceRunning) {
+      completePendingServiceStart()
+    }
+  }
+
+  private fun completePendingServiceStart() {
+    val pending = pendingServiceStart ?: return
+    pendingServiceStart = null
+    if (!isOperationCurrent(pending.opId, pending.sessionId)) {
+      pending.nav.unregisterGuidanceFeed()
+      NavigationSessionRepository.invalidateFeedGeneration()
+      guidanceFeedRegistered = false
+      pending.onComplete(
+        Result.failure(IllegalStateException("Navigation session changed before service startup completed.")),
+      )
+      return
+    }
+    activeRouteOpId = pending.opId
+    pending.nav.setVoiceGuidanceEnabled()
+    pending.nav.startGuidance()
     val active = NavigationSessionRepository.update {
-      if (it.sessionId == sessionId) {
+      if (it.sessionId == pending.sessionId) {
         it.copy(
           status = NavigationSessionStatus.ACTIVE,
           needsNavigatorReconnect = false,
@@ -505,10 +604,11 @@ object NavigationController {
         it
       }
     }
-    onComplete(Result.success(active))
+    pending.onComplete(Result.success(active))
   }
 
   private fun teardownPreviousRouteOnMainThread(env: NavigationEnvironment) {
+    pendingServiceStart = null
     activeRouteOpId = 0L
     NavigationSessionRepository.invalidateFeedGeneration()
     navigatorHandle?.stopGuidance()

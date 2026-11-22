@@ -46,11 +46,11 @@ import {
   persistSavedTrips,
 } from './src/planner/storage';
 import {
-  buildTripFromNavigationSession,
   IDLE_NAVIGATION_SESSION,
   isNavigationSessionInProgress,
   navigationSessionMatchesTrip,
   pauseNativeNavigation,
+  reconcileTripWithNavigationSession,
   restoreNavigationSession,
   resumeOrRetryNavigation,
   startNativeNavigation,
@@ -98,6 +98,11 @@ export function NativePlannerScreen({
   const [stopDraft, setStopDraft] = useState<StopDraft>(EMPTY_STOP_DRAFT);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [recoveryConflict, setRecoveryConflict] = useState<{
+    sessionTrip: Trip;
+    message: string;
+  } | null>(null);
+  const [dismissedConflictKey, setDismissedConflictKey] = useState<string | null>(null);
   const [routeState, setRouteState] = useState<RouteState>(createInitialRouteState);
   const [navigationSession, setNavigationSession] = useState<NavigationSessionSnapshot>(
     IDLE_NAVIGATION_SESSION,
@@ -148,20 +153,53 @@ export function NativePlannerScreen({
     };
   }, []);
 
+  const hasUnsavedChanges = useMemo(() => {
+    if (tripBaselineSnapshot === null) {
+      return false;
+    }
+
+    return normalizeTrip(currentTrip) !== tripBaselineSnapshot;
+  }, [currentTrip, tripBaselineSnapshot]);
+
   useEffect(() => {
-    if (!hasHydrated || !isNavigationSessionInProgress(navigationSession)) {
+    if (!hasHydrated) {
       return;
     }
-    if (navigationSessionMatchesTrip(navigationSession, currentTrip)) {
+    const result = reconcileTripWithNavigationSession({
+      currentTrip,
+      session: navigationSession,
+      hasUnsavedDraftChanges: hasUnsavedChanges,
+    });
+    if (result.action === 'none') {
+      setRecoveryConflict(null);
       return;
     }
-    const recoveredTrip = buildTripFromNavigationSession(navigationSession);
-    if (recoveredTrip) {
-      setCurrentTrip(recoveredTrip);
-      setTripBaselineSnapshot(normalizeTrip(recoveredTrip));
-      setRouteState(getRouteStateForTrip(recoveredTrip));
+    if (result.action === 'error') {
+      setRecoveryConflict(null);
+      setValidationMessage(result.message);
+      return;
     }
-  }, [currentTrip, hasHydrated, navigationSession]);
+    if (result.action === 'conflict') {
+      const conflictKey = `${navigationSession.sessionId}:${navigationSession.updatedAtMs}:${currentTrip.id}`;
+      if (dismissedConflictKey !== conflictKey) {
+        setRecoveryConflict({
+          sessionTrip: result.sessionTrip,
+          message: result.message,
+        });
+      }
+      return;
+    }
+    setRecoveryConflict(null);
+    setCurrentTrip(result.trip);
+    setTripBaselineSnapshot(normalizeTrip(result.trip));
+    setRouteState(getRouteStateForTrip(result.trip));
+  }, [
+    currentTrip,
+    dismissedConflictKey,
+    hasHydrated,
+    hasUnsavedChanges,
+    navigationSession,
+  ]);
 
   useEffect(() => {
     let isMounted = true;
@@ -216,13 +254,6 @@ export function NativePlannerScreen({
     });
   }, [currentTrip, hasHydrated]);
 
-  const hasUnsavedChanges = useMemo(() => {
-    if (tripBaselineSnapshot === null) {
-      return false;
-    }
-
-    return normalizeTrip(currentTrip) !== tripBaselineSnapshot;
-  }, [currentTrip, tripBaselineSnapshot]);
   const currentRouteKey = useMemo(() => buildRouteKey(currentTrip.stops), [currentTrip.stops]);
 
   useEffect(() => {
@@ -526,6 +557,24 @@ export function NativePlannerScreen({
           onSubmitStop={addStop}
           onTripNameChange={updateTripName}
           pendingAction={pendingAction}
+          recoveryConflict={recoveryConflict}
+          onUseSessionTrip={() => {
+            if (!recoveryConflict) {
+              return;
+            }
+            const nextTrip = cloneTrip(recoveryConflict.sessionTrip);
+            setRecoveryConflict(null);
+            setCurrentTrip(nextTrip);
+            setTripBaselineSnapshot(normalizeTrip(nextTrip));
+            setRouteState(getRouteStateForTrip(nextTrip));
+            setValidationMessage(null);
+          }}
+          onKeepDraftTrip={() => {
+            setDismissedConflictKey(
+              `${navigationSession.sessionId}:${navigationSession.updatedAtMs}:${currentTrip.id}`,
+            );
+            setRecoveryConflict(null);
+          }}
           routeState={routeState}
           routingProxyConfigured={isRoutingProxyConfigured(routingProxyUrl)}
           savedTrips={savedTrips}
@@ -558,6 +607,9 @@ function AppContent({
   onSubmitStop,
   onTripNameChange,
   pendingAction,
+  recoveryConflict,
+  onUseSessionTrip,
+  onKeepDraftTrip,
   routeState,
   routingProxyConfigured,
   savedTrips,
@@ -584,6 +636,9 @@ function AppContent({
   onSubmitStop: () => void;
   onTripNameChange: (name: string) => void;
   pendingAction: PendingAction | null;
+  recoveryConflict: {sessionTrip: Trip; message: string} | null;
+  onUseSessionTrip: () => void;
+  onKeepDraftTrip: () => void;
   routeState: RouteState;
   routingProxyConfigured: boolean;
   savedTrips: Trip[];
@@ -614,6 +669,17 @@ function AppContent({
         {validationMessage ? (
           <View style={styles.messageBanner}>
             <Text style={styles.messageText}>{validationMessage}</Text>
+          </View>
+        ) : null}
+
+        {recoveryConflict ? (
+          <View style={styles.pendingCard}>
+            <Text style={styles.pendingTitle}>Trip recovery conflict</Text>
+            <Text style={styles.pendingBody}>{recoveryConflict.message}</Text>
+            <View style={styles.pendingActions}>
+              <ActionButton label="Keep Draft" onPress={onKeepDraftTrip} />
+              <ActionButton label="Use Active Trip" onPress={onUseSessionTrip} />
+            </View>
           </View>
         ) : null}
 

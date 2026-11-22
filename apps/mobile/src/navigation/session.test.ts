@@ -11,6 +11,7 @@ import {
   isNavigationSessionInProgress,
   navigationSessionMatchesTrip,
   parseNativeSessionSnapshot,
+  reconcileTripWithNavigationSession,
   restoreNavigationSession,
   resumeNativeNavigation,
   resumeOrRetryNavigation,
@@ -296,5 +297,174 @@ describe('mobile navigation session', () => {
         stops: parsed!.stops?.slice(0, 1),
       }),
     ).toBeNull();
+  });
+
+  test('parseNativeSessionSnapshot rejects invalid middle, missing, and out-of-range stops without partial trip', () => {
+    // 1. Invalid middle stop in a 3-stop trip
+    const invalidMiddleRaw = JSON.stringify({
+      sessionId: 'nav-bad-mid',
+      tripId: 'trip-bad-mid',
+      tripName: 'Three Stop',
+      status: 'paused',
+      stops: [
+        {id: 's1', name: 'Start', lat: 14.5831, lng: 120.9794, type: 'start'},
+        {id: 's2', name: 'Broken Mid', lat: 'not-a-number', lng: 120.97, type: 'stop'},
+        {id: 's3', name: 'End', lat: 14.1153, lng: 120.9621, type: 'destination'},
+      ],
+    });
+    const invalidMid = parseNativeSessionSnapshot(invalidMiddleRaw);
+    expect(invalidMid?.stops).toBeUndefined();
+    expect(invalidMid?.recoveryError).toContain('stop 2');
+    expect(invalidMid?.recoveryError).toContain('Broken Mid');
+    expect(buildTripFromNavigationSession(invalidMid!)).toBeNull();
+
+    const errResult = reconcileTripWithNavigationSession({
+      currentTrip: sampleTrip,
+      session: invalidMid!,
+      hasUnsavedDraftChanges: false,
+    });
+    expect(errResult.action).toBe('error');
+
+    // 2. Missing coordinates
+    const missingCoordsRaw = JSON.stringify({
+      sessionId: 'nav-missing',
+      tripId: 'trip-missing',
+      tripName: 'Missing Coords',
+      status: 'active',
+      stops: [
+        {id: 's1', name: 'Start', lat: 14.5831, lng: 120.9794},
+        {id: 's2', name: 'No Lng', lat: 14.1153},
+      ],
+    });
+    const missingCoords = parseNativeSessionSnapshot(missingCoordsRaw);
+    expect(missingCoords?.stops).toBeUndefined();
+    expect(missingCoords?.recoveryError).toContain('stop 2');
+
+    // 3. Out-of-range coordinates
+    const outOfRangeRaw = JSON.stringify({
+      sessionId: 'nav-oor',
+      tripId: 'trip-oor',
+      tripName: 'Out of Range',
+      status: 'paused',
+      stops: [
+        {id: 's1', name: 'Bad Lat', lat: 91.5, lng: 120.9794},
+        {id: 's2', name: 'Valid End', lat: 14.1153, lng: 120.9621},
+      ],
+    });
+    const outOfRange = parseNativeSessionSnapshot(outOfRangeRaw);
+    expect(outOfRange?.stops).toBeUndefined();
+    expect(outOfRange?.recoveryError).toContain('Bad Lat');
+
+    const outOfRangeLng = parseNativeSessionSnapshot(
+      JSON.stringify({
+        sessionId: 'nav-oor-lng',
+        tripId: 'trip-oor-lng',
+        tripName: 'Out of Range Lng',
+        status: 'paused',
+        stops: [
+          {id: 's1', name: 'Valid Start', lat: 14.5831, lng: 120.9794},
+          {id: 's2', name: 'Bad Lng', lat: 14.1153, lng: -181},
+        ],
+      }),
+    );
+    expect(outOfRangeLng?.stops).toBeUndefined();
+    expect(outOfRangeLng?.recoveryError).toContain('Bad Lng');
+
+    // 4. Valid 3-stop trip preserves order and stop details
+    const validThreeStop = parseNativeSessionSnapshot(
+      JSON.stringify({
+        sessionId: 'nav-valid-3',
+        tripId: 'trip-valid-3',
+        tripName: 'Three Stop Valid',
+        status: 'paused',
+        stops: [
+          {id: 's1', name: 'Rizal Park', formattedAddress: 'Manila', lat: 14.5831, lng: 120.9794},
+          {id: 's2', name: 'Intramuros', formattedAddress: 'Manila', lat: 14.5896, lng: 120.9747},
+          {id: 's3', name: 'Tagaytay', formattedAddress: 'Cavite', lat: 14.1153, lng: 120.9621},
+        ],
+      }),
+    );
+    expect(validThreeStop?.recoveryError).toBeUndefined();
+    const recovered3 = buildTripFromNavigationSession(validThreeStop!);
+    expect(recovered3?.stops.map(s => [s.id, s.name, s.type, s.formattedAddress])).toEqual([
+      ['s1', 'Rizal Park', 'start', 'Manila'],
+      ['s2', 'Intramuros', 'stop', 'Manila'],
+      ['s3', 'Tagaytay', 'destination', 'Cavite'],
+    ]);
+  });
+
+  test('reconcileTripWithNavigationSession handles same ID with changed stops, identical content, and different draft', () => {
+    const baseSession = parseNativeSessionSnapshot(
+      JSON.stringify({
+        sessionId: 'nav-rec-2',
+        tripId: sampleTrip.id,
+        tripName: sampleTrip.name,
+        status: 'active',
+        updatedAtMs: 2000,
+        stops: [
+          {id: 'stop-1', name: 'Manila', lat: 14.5995, lng: 120.9842, type: 'start'},
+          {id: 'stop-2', name: 'Tagaytay', lat: 14.1153, lng: 120.9621, type: 'destination'},
+        ],
+      }),
+    )!;
+
+    // 1. Same ID with identical content -> no-op
+    expect(
+      reconcileTripWithNavigationSession({
+        currentTrip: sampleTrip,
+        session: baseSession,
+        hasUnsavedDraftChanges: false,
+      }),
+    ).toEqual({action: 'none'});
+
+    // 2. Same ID with changed stops (reordered / added middle stop) -> restores changed stops
+    const updatedSession = parseNativeSessionSnapshot(
+      JSON.stringify({
+        sessionId: 'nav-rec-2',
+        tripId: sampleTrip.id,
+        tripName: sampleTrip.name,
+        status: 'active',
+        updatedAtMs: 3000,
+        stops: [
+          {id: 'stop-1', name: 'Manila', lat: 14.5995, lng: 120.9842},
+          {id: 'stop-mid', name: 'Nuvali', lat: 14.239, lng: 121.057},
+          {id: 'stop-2', name: 'Tagaytay', lat: 14.1153, lng: 120.9621},
+        ],
+      }),
+    )!;
+    const restoredSameId = reconcileTripWithNavigationSession({
+      currentTrip: sampleTrip,
+      session: updatedSession,
+      hasUnsavedDraftChanges: false,
+    });
+    expect(restoredSameId.action).toBe('restore');
+    if (restoredSameId.action === 'restore') {
+      expect(restoredSameId.trip.id).toBe(sampleTrip.id);
+      expect(restoredSameId.trip.stops.map(s => s.id)).toEqual([
+        'stop-1',
+        'stop-mid',
+        'stop-2',
+      ]);
+    }
+
+    // 3. Different current unsaved draft -> conflict (does not overwrite draft)
+    const unrelatedDraft: Trip = {
+      id: 'draft-other',
+      name: 'Baguio Draft',
+      stops: [
+        {id: 'd1', name: 'QC', location: {lat: 14.676, lng: 121.0437}, type: 'start'},
+        {id: 'd2', name: 'Baguio', location: {lat: 16.4023, lng: 120.596}, type: 'destination'},
+      ],
+      updatedAt: new Date(4000).toISOString(),
+    };
+    const conflictResult = reconcileTripWithNavigationSession({
+      currentTrip: unrelatedDraft,
+      session: updatedSession,
+      hasUnsavedDraftChanges: true,
+    });
+    expect(conflictResult.action).toBe('conflict');
+    if (conflictResult.action === 'conflict') {
+      expect(conflictResult.sessionTrip.id).toBe(sampleTrip.id);
+    }
   });
 });
