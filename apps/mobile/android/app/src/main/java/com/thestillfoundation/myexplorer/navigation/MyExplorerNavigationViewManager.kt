@@ -7,6 +7,7 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.facebook.react.bridge.LifecycleEventListener
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -14,6 +15,72 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.libraries.navigation.NavigationView
 import org.json.JSONObject
 import java.lang.ref.WeakReference
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.abs
+
+/**
+ * Pure, testable coordinator for map-ready, camera-zoom-idle, and view-destroy
+ * events so stale destroyed views never clobber recreated views and pan-only
+ * camera idle callbacks without zoom changes do not spam JS.
+ */
+internal class MapZoomEventCoordinator(
+  private val emitEvent: (JSONObject) -> Unit,
+) {
+  private var activeViewId: Long = 0L
+  private var lastEmitted: ZoomSnapshot? = null
+
+  private data class ZoomSnapshot(
+    val available: Boolean,
+    val zoom: Float,
+    val minZoom: Float,
+    val maxZoom: Float,
+  ) {
+    fun toJson(): JSONObject = JSONObject().apply {
+      put("available", available)
+      put("zoom", zoom.toDouble())
+      put("minZoom", minZoom.toDouble())
+      put("maxZoom", maxZoom.toDouble())
+    }
+  }
+
+  @Synchronized
+  fun onMapReady(viewId: Long, zoom: Float, minZoom: Float, maxZoom: Float) {
+    activeViewId = viewId
+    val next = ZoomSnapshot(true, zoom, minZoom, maxZoom)
+    lastEmitted = next
+    emitEvent(next.toJson())
+  }
+
+  @Synchronized
+  fun onCameraZoomIdle(viewId: Long, zoom: Float, minZoom: Float, maxZoom: Float) {
+    if (viewId == 0L || viewId != activeViewId) return
+    val prev = lastEmitted
+    if (
+      prev != null &&
+      prev.available &&
+      abs(prev.zoom - zoom) < 0.005f &&
+      abs(prev.minZoom - minZoom) < 0.005f &&
+      abs(prev.maxZoom - maxZoom) < 0.005f
+    ) {
+      return
+    }
+    val next = ZoomSnapshot(true, zoom, minZoom, maxZoom)
+    lastEmitted = next
+    emitEvent(next.toJson())
+  }
+
+  @Synchronized
+  fun onViewDestroyed(viewId: Long) {
+    if (viewId == 0L || viewId != activeViewId) return
+    activeViewId = 0L
+    val next = ZoomSnapshot(false, 15f, 2f, 21f)
+    lastEmitted = next
+    emitEvent(next.toJson())
+  }
+
+  @Synchronized
+  fun currentActiveViewId(): Long = activeViewId
+}
 
 /**
  * React Native ViewManager hosting the authoritative Google Navigation SDK [NavigationView]
@@ -33,11 +100,16 @@ class MyExplorerNavigationViewManager : SimpleViewManager<FrameLayout>() {
     }
     container.addView(navView)
 
-    val holder = LifecycleHolder(navView, reactContext)
+    val viewId = nextViewId.incrementAndGet()
+    val holder = LifecycleHolder(viewId, navView, reactContext)
     holder.onCreate()
     holder.onResume()
 
     navView.getMapAsync { googleMap ->
+      if (holder.isDestroyed()) {
+        return@getMapAsync
+      }
+      activeReactContextRef = WeakReference(reactContext)
       activeMapRef = WeakReference(googleMap)
       if (NavigationController.hasPreciseLocationPermission(reactContext)) {
         runCatching { googleMap.isMyLocationEnabled = true }
@@ -50,6 +122,22 @@ class MyExplorerNavigationViewManager : SimpleViewManager<FrameLayout>() {
         isScrollGesturesEnabledDuringRotateOrZoom = true
         isZoomControlsEnabled = false
       }
+      googleMap.setOnCameraIdleListener {
+        if (!holder.isDestroyed()) {
+          zoomCoordinator.onCameraZoomIdle(
+            viewId = viewId,
+            zoom = googleMap.cameraPosition.zoom,
+            minZoom = googleMap.minZoomLevel,
+            maxZoom = googleMap.maxZoomLevel,
+          )
+        }
+      }
+      zoomCoordinator.onMapReady(
+        viewId = viewId,
+        zoom = googleMap.cameraPosition.zoom,
+        minZoom = googleMap.minZoomLevel,
+        maxZoom = googleMap.maxZoomLevel,
+      )
     }
 
     reactContext.addLifecycleEventListener(holder)
@@ -81,6 +169,7 @@ class MyExplorerNavigationViewManager : SimpleViewManager<FrameLayout>() {
   }
 
   private class LifecycleHolder(
+    val viewId: Long,
     val navView: NavigationView,
     val reactContext: ThemedReactContext,
   ) : LifecycleEventListener {
@@ -88,6 +177,8 @@ class MyExplorerNavigationViewManager : SimpleViewManager<FrameLayout>() {
     private var started = false
     private var resumed = false
     private var destroyed = false
+
+    fun isDestroyed(): Boolean = destroyed
 
     fun onCreate() {
       if (created || destroyed) return
@@ -128,11 +219,16 @@ class MyExplorerNavigationViewManager : SimpleViewManager<FrameLayout>() {
 
     fun onDestroy() {
       if (destroyed) return
+      destroyed = true
+      if (zoomCoordinator.currentActiveViewId() == viewId) {
+        activeMapRef?.get()?.setOnCameraIdleListener(null)
+        activeMapRef = null
+      }
+      zoomCoordinator.onViewDestroyed(viewId)
       onStop()
       if (created) {
         navView.onDestroy()
       }
-      destroyed = true
     }
 
     override fun onHostResume() = onResume()
@@ -147,10 +243,25 @@ class MyExplorerNavigationViewManager : SimpleViewManager<FrameLayout>() {
 
   companion object {
     const val REACT_CLASS = "MyExplorerNavigationView"
+    const val EVENT_MAP_ZOOM_CHANGED = "MyExplorerNavigationMapZoomChanged"
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val nextViewId = AtomicLong(0L)
+
+    @Volatile
+    private var activeReactContextRef: WeakReference<ThemedReactContext>? = null
 
     @Volatile
     private var activeMapRef: WeakReference<GoogleMap>? = null
+
+    private val zoomCoordinator = MapZoomEventCoordinator { payload ->
+      val ctx = activeReactContextRef?.get() ?: return@MapZoomEventCoordinator
+      if (!ctx.hasActiveReactInstance()) return@MapZoomEventCoordinator
+      runCatching {
+        ctx
+          .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+          .emit(EVENT_MAP_ZOOM_CHANGED, payload.toString())
+      }
+    }
 
     fun zoomActiveMap(delta: Float, onComplete: (Result<JSONObject>) -> Unit) {
       mainHandler.post {

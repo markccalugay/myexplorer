@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {
+  NativeEventEmitter,
   NativeModules,
   Platform,
   Pressable,
@@ -16,6 +17,8 @@ import {
   parseMapZoomState,
   type MapZoomState,
 } from './mapZoom';
+
+const EVENT_MAP_ZOOM_CHANGED = 'MyExplorerNavigationMapZoomChanged';
 
 let cachedNativeView: React.ComponentType<{style?: ViewStyle}> | null | undefined;
 
@@ -34,6 +37,8 @@ function getNativeNavigationView(): React.ComponentType<{style?: ViewStyle}> | n
 type NativeMapZoomModule = {
   zoomMap?: (delta: number) => Promise<string>;
   getMapZoomState?: () => Promise<string>;
+  addListener?: (eventName: string) => void;
+  removeListeners?: (count: number) => void;
 };
 
 export function NavigationMapView({style}: {style?: ViewStyle}) {
@@ -44,25 +49,36 @@ export function NavigationMapView({style}: {style?: ViewStyle}) {
       return undefined;
     }
     const mod = NativeModules.MyExplorerNavigation as NativeMapZoomModule | undefined;
-    if (!mod || typeof mod.getMapZoomState !== 'function') {
+    if (!mod) {
       return undefined;
     }
     let mounted = true;
-    const refresh = () => {
+    const emitter = new NativeEventEmitter(
+      NativeModules.MyExplorerNavigation as never,
+    );
+    const subscription = emitter.addListener(
+      EVENT_MAP_ZOOM_CHANGED,
+      (raw: string) => {
+        if (mounted) {
+          setZoomState(parseMapZoomState(raw));
+        }
+      },
+    );
+
+    if (typeof mod.getMapZoomState === 'function') {
       mod
-        .getMapZoomState?.()
+        .getMapZoomState()
         .then(raw => {
           if (mounted) {
             setZoomState(parseMapZoomState(raw));
           }
         })
         .catch(() => {});
-    };
-    refresh();
-    const timer = setTimeout(refresh, 500);
+    }
+
     return () => {
       mounted = false;
-      clearTimeout(timer);
+      subscription.remove();
     };
   }, []);
 
