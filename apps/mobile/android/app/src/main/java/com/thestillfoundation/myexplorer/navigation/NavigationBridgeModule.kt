@@ -107,6 +107,24 @@ class NavigationBridgeModule(
   }
 
   @ReactMethod
+  fun zoomMap(delta: Double, promise: Promise) {
+    MyExplorerNavigationViewManager.zoomActiveMap(delta.toFloat()) { result ->
+      result.onSuccess { json ->
+        promise.resolve(json.toString())
+      }.onFailure { err ->
+        promise.reject("MAP_UNAVAILABLE", err.message, err)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun getMapZoomState(promise: Promise) {
+    MyExplorerNavigationViewManager.getActiveMapZoomState { json ->
+      promise.resolve(json.toString())
+    }
+  }
+
+  @ReactMethod
   fun searchPlaces(query: String, promise: Promise) {
     val trimmed = query.trim()
     if (trimmed.isEmpty()) {
