@@ -1,126 +1,145 @@
 # Convoy Stop Proposals, Voting, and Organizer Approval (Issue #86)
 
-**Status:** Audit & Architecture Proposal (Draft — **awaiting owner product decisions before implementation**)
+**Status:** Specification & Architecture Proposal (**Updated with Owner Decisions 1–5; no implementation yet**)
 **Issue:** [#86](https://github.com/markccalugay/myexplorer/issues/86)
 **Related Issues:** [#12](https://github.com/markccalugay/myexplorer/issues/12)–[#14](https://github.com/markccalugay/myexplorer/issues/14) (Convoy Voice), [#82](https://github.com/markccalugay/myexplorer/issues/82) (Navigation Session), [#83](https://github.com/markccalugay/myexplorer/issues/83) (Coordinate-free Stop Search), [#84](https://github.com/markccalugay/myexplorer/issues/84) (Unified Native Phone Experience)
 **Date:** 2026-11-23
 
 > [!IMPORTANT]
-> **No voting rules or multi-user claims are implemented in this phase.** This document records an audit of what exists in the codebase today, lists the product decisions required from the owner, and proposes a durable architecture and milestone plan for #86.
+> **Status Separation:** This document explicitly separates **(1) Verified / Observed Codebase State**, **(2) Owner-Approved Product Decisions**, **(3) Recommendations Pending Owner Approval**, and **(4) Unimplemented Architecture**. Do not treat unimplemented architecture—especially live route replacement during active navigation—as working today.
 
 ---
 
 ## 1. Current State Audit (Observed Facts)
 
-All findings below are based on **source inspection** of the repository as of commit `ff2157b`. No multi-user runtime tests or physical-device/DHU tests exist for convoy voting.
+All findings below come from **static source inspection** of the repository. No multi-user runtime tests, notification tests, or physical-device/DHU tests exist for convoy voting.
 
 ### 1.1 How a Stop Recommendation Is Proposed, Voted On, Approved, or Added Today
 
 | Aspect | Observed Implementation | File Citation |
 |---|---|---|
-| **Proposal source** | **System-generated only.** There is no UI or API for a participant or organizer to propose a custom stop. During active web navigation, `TripPlanner.tsx` waits `5_000` ms (`RECOMMENDATION_DISPLAY_DELAY_MS`) on legs with `currentLegDistanceKm >= 25` or `currentLegDurationMinutes >= 30`, then queries `google.maps.places.Place.searchNearby` around the leg midpoint (`5000` m radius, max `6` results). | [`src/components/TripPlanner.tsx`](../src/components/TripPlanner.tsx) (`L75-L81`, `L896-L1010`) |
+| **Proposal source** | **System-generated only.** No UI or API lets a participant or initiator propose a custom stop. During active web navigation, `TripPlanner.tsx` waits `5_000` ms (`RECOMMENDATION_DISPLAY_DELAY_MS`) on legs with `currentLegDistanceKm >= 25` or `currentLegDurationMinutes >= 30`, then queries `google.maps.places.Place.searchNearby` around the leg midpoint (`5000` m radius, max `6` results). | [`src/components/TripPlanner.tsx`](../src/components/TripPlanner.tsx) (`L75-L81`, `L896-L1010`) |
 | **Voting state & UI** | When `activeConvoyParticipants` (`convoy.participants` with `status === 'joined'`) has length `> 0`, `TripPlanner.tsx` renders a **Convoy Detour Vote** card (`ActiveNavigationRecommendationSession`) with a `300_000` ms (5-minute) countdown (`RECOMMENDATION_DECISION_WINDOW_MS`) and **Yes / No buttons for every joined participant on the same screen**. | [`src/types/trip.ts`](../src/types/trip.ts) (`L22-L54`), [`src/components/TripPlanner.tsx`](../src/components/TripPlanner.tsx) (`L697-L711`, `L1236-L1354`) |
-| **Hardcoded local tally rules** | Local `useEffect` hooks finalize the session: (1) if `pendingVotes === 0`, accepts when `yes > no`, otherwise rejects; (2) when the 5-minute timer hits `0`, accepts only if `yes > no + pending` (so uncast votes effectively count against acceptance), otherwise sets status `expired`. | [`src/components/TripPlanner.tsx`](../src/components/TripPlanner.tsx) (`L846-L882`) |
-| **Organizer manual approval** | **Missing in convoy mode.** `handleAcceptRecommendation` (**Add to Route**) and `handleRejectRecommendation` (**Not Now**) are only rendered when `activeConvoyParticipants.length === 0` (solo trip). | [`src/components/TripPlanner.tsx`](../src/components/TripPlanner.tsx) (`L792-L800`, `L1292-L1347`) |
-| **Stop insertion & route update** | `finalizeRecommendationSession(..., 'accepted')` splices a new `Stop` (`source: 'activity-recommendation'`, random `rec-${Date.now()}-...` ID) before `session.targetStopId` and calls `retypeStops(nextStops)`. A `useEffect` watches `trip.stops` and calls `routeProvider.computeDrivingRoute(...)`. | [`src/components/TripPlanner.tsx`](../src/components/TripPlanner.tsx) (`L718-L750`, `L802-L831`) |
+| **Existing local tally rules** | Local `useEffect` hooks finalize the session: (1) if `pendingVotes === 0`, accepts when `yes > no`, otherwise rejects; (2) when the 5-minute timer hits `0`, accepts only if `yes > no + pending` (treating uncast votes against acceptance), otherwise sets status `expired`. *(Note: This conflicts with Approved Decision 2 below and will be replaced in Milestone 3.)* | [`src/components/TripPlanner.tsx`](../src/components/TripPlanner.tsx) (`L846-L882`) |
+| **Initiator manual approval** | **Missing in convoy mode.** `handleAcceptRecommendation` (**Add to Route**) and `handleRejectRecommendation` (**Not Now**) are only rendered when `activeConvoyParticipants.length === 0` (solo trip). | [`src/components/TripPlanner.tsx`](../src/components/TripPlanner.tsx) (`L792-L800`, `L1292-L1347`) |
+| **Phone navigation stop-edit lock** | **Stop editing is locked during active or paused navigation.** `apps/mobile/App.tsx` blocks adding, reordering, or removing stops whenever `isNavigationSessionInProgress(navigationSession)` is true (`"End navigation before adding, reordering, or removing stops so your phone and Android Auto stay in sync."`). `NavigationController.kt` only calls `nav.setDestinations(...)` in `startTripNavigationWithEnv` and `advanceToNextStop`; it has **no** live route-replacement method. | [`apps/mobile/App.tsx`](../apps/mobile/App.tsx) (`L1144-L1153`), [`NavigationController.kt`](../apps/mobile/android/app/src/main/java/com/thestillfoundation/myexplorer/navigation/NavigationController.kt) (`L304`, `L430`) |
 
-### 1.2 Local vs. Shared / Synchronized Behavior
+### 1.2 Local vs. Shared / Synchronized Behavior & Identity
 
-- **Ephemeral, single-device React state:** `recommendationSession` lives in `useState<ActiveNavigationRecommendationSession | null>(null)` inside `TripPlanner.tsx`. It is **not persisted** to `localStorage` (`myexplorer.navigation-session` or `myexplorer.saved-trips`) and is **not transmitted** to any server or other device.
-- **Convoy invites are local-only:** `ConvoyPanel.tsx` and `src/lib/convoy.ts` generate invite tokens (`token: Math.random().toString(36)...`) and add `ConvoyParticipant` records with `status: 'joined'` immediately in local `Trip.convoy` state.
-- **No backend, auth, or realtime transport exists in the repo:** Searching `src/` and `apps/mobile/src/` shows no authentication service, WebSocket/realtime client, or shared trip/convoy database.
+- **Ephemeral, single-device React state:** `recommendationSession` lives in `useState` inside `TripPlanner.tsx`, is **not persisted** to `localStorage`, and is **not synced** across devices.
+- **Convoy invites are local-only:** `ConvoyPanel.tsx` and `src/lib/convoy.ts` generate invite tokens and add `ConvoyParticipant` records with `status: 'joined'` immediately in local `Trip.convoy` state.
+- **No backend, auth, or organizer identity:** Neither `Trip` nor `Convoy` has an `organizerId`/`initiatorId`. `'organizer'` appears only as an `assignedBy` literal in `ConvoyPanel.tsx` (`L200`).
+- **Issues #12–#14 (Convoy Voice):** Remain `OPEN` with no code implemented; they share the same missing prerequisites (participant identity, room/session lifecycle, presence, and realtime sync).
+- **Notifications & background setup:** Android `NavigationForegroundService.kt` (`L160-L186`) uses `NotificationCompat` / `NotificationChannel` for active navigation foreground location; iOS (`apps/mobile/ios/`) has **no** `UIBackgroundModes` or `UNUserNotificationCenter` notification code yet.
 
-### 1.3 Organizer Identity, Participants, Membership, and Route Updates
+### 1.3 Verified vs. Unimplemented Capability Summary
 
-- **Organizer identity:** **Missing.** Neither `Trip` nor `Convoy` (`src/types/trip.ts`, `apps/mobile/src/planner/domain.ts`) has an `organizerId`, `ownerId`, or `createdBy` field. The literal string `'organizer'` appears only as an `assignedBy` tag in `ConvoyPanel.tsx` (`L200`).
-- **Participants & membership:** `ConvoyParticipant` supports `kind: 'individual' | 'group'` and nested `members: ConvoyMember[]`. `TripPlanner.tsx` counts **one vote per `ConvoyParticipant`** (`votes[participant.id]`), regardless of how many `ConvoyMember`s or vehicles that participant has.
-- **Native mobile & Android Auto:** `apps/mobile` preserves `Trip.convoy` in `domain.ts` and `legacyMigration.ts` (foundation work from `#84`), and manages local navigation/session state in `NavigationController.kt`, `NavigationSessionRepository.kt`, and `MyExplorerCarScreen.kt`. **Native Convoy UI, recommendation voting, and multi-device sync do not exist in `apps/mobile` or Android Auto.**
-- **Issues #12–#14 (Convoy Voice):** Issues `#12` (realtime voice architecture), `#13` (push-to-talk UI), and `#14` (MVP voice sessions) are all `OPEN` on GitHub with **no implementation in the repository**. They share the same missing prerequisites: participant identity, trip-scoped room/session lifecycle, presence, and a realtime backend.
-
-### 1.4 Capability Summary
-
-| Capability | Status | Notes & Evidence |
+| Capability | Current Status | Verification Status |
 |---|---|---|
-| Local web along-the-route recommendation & multi-button vote UI | **Implemented (Local UI only)** | `TripPlanner.tsx`; no unit/component tests for voting or `finalizeRecommendationSession`. |
-| Pure convoy data model & helpers (vehicles, participants, invites, assignments) | **Implemented (Local data only)** | `src/types/trip.ts`, `src/lib/convoy.ts`, tested in `src/lib/convoy.test.ts` and `src/lib/persistence.test.ts`. |
-| Mobile `Trip.convoy` preservation & legacy migration planning | **Implemented (Foundation only)** | `apps/mobile/src/planner/domain.ts`, `legacyMigration.ts`, tested in `domain.test.ts` and `legacyMigration.test.ts`. |
-| User-initiated stop proposals | **Missing** | Neither web nor mobile lets a participant propose a stop into a voting session. |
-| Organizer identity & manual convoy approval/rejection | **Missing** | No `organizerId` on `Trip`/`Convoy`; no organizer override UI during convoy voting. |
-| Multi-user authentication, realtime sync & reconnect recovery | **Missing** | Single-device `localStorage` / `AsyncStorage` only. |
-| Android Auto / native phone convoy voting & safety UX | **Missing** | `MyExplorerCarScreen.kt` has no proposal/voting surface; CarPlay is future work. |
+| Pure convoy data model & mobile `Trip.convoy` preservation | Implemented (Local data only) | Unit-tested (`convoy.test.ts`, `persistence.test.ts`, `domain.test.ts`, `legacyMigration.test.ts`). |
+| Local web along-the-route vote UI (`TripPlanner.tsx`) | Implemented (Local UI only) | **Not unit-tested**; conflicts with Approved Decision 2. |
+| Authoritative multi-user proposals, voting, initiator override, & sync | **Unimplemented** | Not tested. |
+| Background notifications, countdowns, & vibration alerts | **Unimplemented** | Platform capabilities/permissions not yet verified on Android/iOS. |
+| Live route replacement during active/paused navigation | **Unimplemented (Locked)** | Not tested; blocked by `App.tsx` lock and missing `NavigationController` live-update API. |
 
 ---
 
-## 2. Product Decisions Required Before Implementation
+## 2. Product Decisions
 
-Per `#86`, **these rules must be confirmed by the owner rather than invented in code**. Each row lists the open question and a recommended default for review.
+### 2.1 Approved Decisions (Owner-Confirmed)
 
-| # | Decision Area | Open Questions | Recommended Default (For Owner Confirmation) |
-|---|---|---|---|
-| **D1** | **Eligibility & Majority Denominator** | Who can propose a stop and who can vote (every joined `ConvoyParticipant`, every individual `ConvoyMember`, or one vote per `ConvoyVehicle` driver)? Does the organizer also cast a participant vote? Does a 1-person trip skip voting? | Require `>= 2` joined participants for voting (solo trips use direct add). Give **1 vote per joined `ConvoyParticipant`** (matching existing `votes[participant.id]` schema), with the organizer counted as one participant. |
-| **D2** | **Ties, Abstentions, Late Votes, & Disconnects** | Does an exact 50/50 tie pass or fail? Should explicit `Abstain` exist? Do disconnected/offline participants count in the denominator, or only active/online ones? Are late votes after acceptance/expiry rejected? | **Ties fail** (strict majority `yes > 50%` of eligible denominator). Support explicit `abstain` (or treat non-votes as pending) while keeping **all joined participants** in the denominator so a small online subset cannot silently reroute an offline car without organizer override. **Reject late votes** once a proposal is terminal. |
-| **D3** | **Expiry: Time, Distance, or Both** | Does a proposal expire by time (e.g., 5 minutes), distance (e.g., before passing the candidate detour point or next stop), or whichever happens first? | **Both (whichever comes first):** 5-minute TTL (configurable by organizer) **or** when the lead vehicle passes the candidate detour / target leg. |
-| **D4** | **Organizer Authority** | When can the organizer manually approve or reject a proposal—anytime while `open`, only after timeout/tie, or even to override a completed vote? Can a proposer withdraw an open proposal? | Organizer can **manually approve or reject at any time while `open`** (and withdraw/remove an already-added stop via normal trip editing). Proposer may withdraw while `open`. |
-| **D5** | **Acceptance, Route Failure, & Trip End** | Where is an accepted stop inserted (before next stop, before destination, or proposer-specified)? If route recalculation fails, does the stop remain pending/retried or roll back? What happens to open proposals when the trip ends? | Insert at the **proposer-specified leg** (default: before `targetStopId` / current next stop). If route recalculation fails, **keep the accepted stop in authoritative trip state** with a visible `recalc_failed` + **Retry** state (no silent loss). **Auto-cancel all `open` proposals** when the trip ends. |
+1. **One Vote Per Participant (Initiator Included):**
+   - Each joined `ConvoyParticipant` gets **1 vote**.
+   - The trip initiator is also a participant and gets 1 participant vote (in addition to initiator authority in Decision 4).
+2. **51% Majority of Cast Votes; Non-Votes Excluded as Abstentions:**
+   - A proposal passes when at least **51% of votes actually cast** are `yes`: `yes / (yes + no) >= 0.51` (exact integer form: `yes * 100 >= 51 * (yes + no)`).
+   - Participants who do not vote by the deadline are treated as **abstaining** and **excluded** from the `yes + no` denominator.
+   - An exact 50/50 tie (`50% < 51%`) does **not** pass.
+3. **5-Minute Timer + Up to 3 Initiator Extensions (1, 2, or 5 Minutes):**
+   - Every new proposal opens with a **5-minute** (`300_000` ms) voting window (`extensionsUsed = 0`, `maxExtensions = 3`).
+   - While a proposal remains `open`, the trip initiator may extend the deadline **up to 3 times**, choosing **1, 2, or 5 additional minutes** per extension.
+   - All participants must see the updated deadline (`expiresAt`) and how many extensions remain (`3 - extensionsUsed`).
+   - **Distance-based expiry is removed** from the initial voting rules (see Section 2.2 / Future Enhancements).
+4. **Initiator Override & Proposer Withdrawal (Atomic Resolution):**
+   - The trip initiator can **approve** or **reject** an `open` proposal at any time.
+   - The proposer can **withdraw** their own proposal while it remains `open`.
+   - **Competing actions:** Votes, initiator approve/reject, proposer withdrawal, and deadline expiry execute as **atomic server-side state transitions** guarded by `status === 'open'` and `tripRevision`. Only the **first** committed transition from `open` → terminal succeeds; any concurrent/late action sees the terminal state and is rejected without applying a second decision.
+5. **Automatic Stop Addition & Honest Routing Failure State:**
+   - Only an **approved** proposal (`accepted_majority` or `accepted_organizer`) adds the stop to the authoritative trip route automatically.
+   - A **rejected**, **withdrawn**, or **expired** proposal must **never** be added to the route.
+   - If route recalculation fails after stop acceptance, the system must show the convoy an **honest failure/retry state** and must **not** claim the route was successfully updated.
 
----
+#### Concrete Tallying & Timer Extension Examples
 
-## 3. Proposed Durable Architecture
+| Scenario | Cast Votes (`Yes` / `No`) | Non-Votes (Abstain) | Denominator (`Yes + No`) | `Yes %` | Outcome |
+|---|---|---|---|---|---|
+| 5 participants, 3 vote | `2 Yes`, `1 No` | 2 | `3` | `66.7%` | **Passes** (`>= 51%`) |
+| 5 participants, 4 vote (tie) | `2 Yes`, `2 No` | 1 | `4` | `50.0%` | **Does not pass** (`< 51%`) |
+| 4 participants, 2 vote | `1 Yes`, `1 No` | 2 | `2` | `50.0%` | **Does not pass** (`< 51%`) |
+| 3 participants, 1 votes | `1 Yes`, `0 No` | 2 | `1` | `100.0%` | **Passes** (`>= 51%`) |
+| 4 participants, 0 vote | `0 Yes`, `0 No` | 4 | `0` | `n/a` | **Unresolved edge case** (see §2.2) |
 
-### 3.1 Authoritative State & Synchronization Model
+- **Extension example:** Proposal opens at `12:00:00` → `expiresAt = 12:05:00`, `extensionsRemaining = 3`.
+  1. At `12:04:10`, initiator extends by `+2 min` → `expiresAt = 12:07:00`, `extensionsRemaining = 2`.
+  2. At `12:06:30`, initiator extends by `+5 min` → `expiresAt = 12:12:00`, `extensionsRemaining = 1`.
+  3. At `12:11:45`, initiator extends by `+1 min` → `expiresAt = 12:13:00`, `extensionsRemaining = 0`.
+  4. Any 4th extension request is rejected (`NO_EXTENSIONS_REMAINING`).
 
-- **Single authoritative source of truth:** Move proposal, vote, and trip-stop state out of ephemeral React state into a **trip-scoped authoritative backend store** (shared by web and native mobile, aligned with the transport-agnostic room/session needs of `#12`–`#14`).
-- **Monotonic versioning & optimistic concurrency:**
-  - Every `Trip` maintains a monotonic `tripRevision: number`.
-  - Every `StopProposal` has a server-generated `id`, `tripId`, `tripRevisionAtCreation`, `proposedByParticipantId`, `candidate` (place details + coordinates), `targetStopId`, `status` (`open` | `accepted_majority` | `accepted_organizer` | `rejected_majority` | `rejected_organizer` | `expired` | `withdrawn` | `cancelled`), `resolutionReason`, `votes: Record<participantId, { choice, updatedAt }>`, `expiresAt`, and `appliedStopId`.
-  - Votes and organizer decisions execute as **atomic server-side transactions** (`open` → terminal happens at most once). If a majority vote, organizer override, and expiry timer race concurrently, the first committed transaction wins and subsequent requests receive the terminal state.
-- **Identity & Permissions:**
-  - Add `organizerId` (authenticated user/device identity) to `Trip` / `Convoy` and bind each joined `ConvoyParticipant` to an authenticated `userId` (or verified invite-claim token) so a client can only cast a vote for **its own** `participantId`, and only `organizerId` can invoke manual approve/reject.
-- **Offline & Reconnect Handling:**
-  - Clients subscribe to realtime updates for the active `tripId` and cache the last known `tripRevision` locally.
-  - While offline, voting/proposing queues or fails fast with an explicit offline indicator (no fake local acceptance). On reconnect, the client fetches the authoritative snapshot (`trip` + active/recent `proposals`) and reconciles local UI without duplicating notifications.
+### 2.2 Pending Recommendations & Unresolved Edge Cases (Awaiting Owner Approval)
 
-### 3.2 Idempotent Stop Insertion & Route Updates
-
-- **Deterministic deduplication:** When a proposal transitions to `accepted_majority` or `accepted_organizer`, the backend (or authoritative state reducer) inserts the `Stop` **atomically** in the same revision increment using a deterministic `id` (`proposal:${proposalId}`) and `proposalId` field.
-- **No double-add or silent loss:**
-  - Replaying the acceptance event or reconnecting checks `stops.some(s => s.id === 'proposal:' + proposalId)` before inserting.
-  - On native phone (`#84` / `#82`), `NavigationSessionRepository` / `NavigationController` applies the authoritative `Trip` stop list and triggers Google Navigation SDK route recalculation; if recalculation fails, the stop stays in the trip with a visible retry banner rather than being silently dropped.
-
-### 3.3 Platform Behavior & Driver-Safety Constraints
-
-- **Web & Native Phone (`#84`):**
-  - Both share pure TypeScript domain types, validation, tally/state-machine helpers, and the backend sync contract (fitting `#84`'s shared-domain architecture and preserving `Trip.convoy` fields).
-  - Phone users can propose stops via `#83`'s coordinate-free place search, view live vote tallies, cast their own vote, and (if organizer) tap **Approve** / **Reject**.
-- **Android Auto:**
-  - **Driver-distraction rules strictly apply:** No free-text place search, no multi-row participant vote lists, and no organizer management panels while driving.
-  - Surface only concise outcome alerts (e.g., *"Stop added: <Name>"*) or, if permitted by Car App Library templates/distraction guidelines and approved by DHU testing, a minimal 1-tap `Vote Yes` / `Vote No` / `Dismiss` prompt.
-- **CarPlay:**
-  - Explicitly **future work** (out of scope for `#86` implementation).
-
----
-
-## 4. Implementation Milestones
-
-### Milestone 1: Shared Proposal Domain Contract & Deterministic Reducer *(Recommended First Milestone)*
-- **Scope:** Pure TypeScript types (`StopProposal`, `ProposalVote`, `ProposalStatus`, `organizerId` on `Convoy`/`Trip`) and a pure, deterministic state-machine/tally/idempotent-stop-insertion module shared by web and `apps/mobile`, implementing the owner-approved D1–D5 rules. **No backend or UI changes yet** — independently reviewable and preserves all existing `Trip.convoy` data.
-- **Acceptance Criteria & Tests:** Unit tests covering eligibility, majority/ties/abstentions, expiry, organizer override, concurrent transition rejection, idempotent stop insertion (duplicate approval replay), and trip-end cancellation.
-
-### Milestone 2: Authoritative Backend Sync, Identity, & Reconnect Layer
-- **Scope:** Select and implement the trip-scoped realtime sync/auth backend (aligned with `#12`–`#14`), participant vote authorization, atomic proposal resolution, and client offline/reconnect catch-up.
-- **Acceptance Criteria & Tests:** Multi-client integration tests for concurrent votes, organizer-vs-majority race, disconnect/reconnect recovery, unauthorized vote/approval rejection, and `tripRevision` convergence.
-
-### Milestone 3: Web & Native Phone UI + Route Recalculation Integration
-- **Scope:** Replace the local-only multi-button vote card in `TripPlanner.tsx` with per-user authenticated voting + organizer Approve/Reject + custom stop proposal; build the native phone proposal/voting UI (`#84`) backed by `#83` place search and `#82` `NavigationController` route updates with failure/retry handling.
-- **Acceptance Criteria & Tests:** Component/unit tests for proposal creation, vote state rendering, organizer controls, and route-recalc failure recovery; Jest, Vitest, `tsc`, and Android JUnit passing.
-
-### Milestone 4: Android Auto Safety Alerts & Multi-Device / DHU Verification
-- **Scope:** Add distraction-safe Android Auto outcome notifications (and host-permitted quick actions if applicable) in `MyExplorerCarScreen.kt`; validate end-to-end across multiple real devices and Android Auto DHU/vehicle.
-- **Acceptance Criteria & Tests:** Recorded multi-client, disconnect, route-consistency, and DHU/vehicle verification evidence in `docs/` and `CHANGELOG.md`.
+> [!WARNING]
+> **Not yet approved — do not implement as settled rules until confirmed:**
+> 1. **Zero-vote deadline (`0 Yes`, `0 No`):** Recommended outcome is **`expired` without adding the stop**, since no participant expressed support.
+> 2. **Early majority closure vs. waiting until deadline:** Approved Decision 2 defines passing at `>= 51%` of votes actually cast at the deadline (with non-votes abstaining). Should a proposal close **early** only when **all** joined participants have voted (or when `yes` exceeds `51%` of *all* joined participants), so late voters aren't cut off before the 5-minute window ends? *(Recommended: Keep open until all joined participants vote, initiator acts, proposer withdraws, or deadline expires.)*
+> 3. **Trip end while `open`:** Recommended outcome is auto-cancelling all `open` proposals (`cancelled`) with no stop added.
+> 4. **Distance-based expiry (Future Enhancement):** Deferred out of `#86` initial scope. Any future distance-based expiry will require defining: which vehicle is the **lead vehicle**, what happens when lead location is unavailable or stale, GPS accuracy tolerances, and fallback to time-only expiry on failure.
 
 ---
 
-## 5. Open Assumptions & Inspection Limitations
+## 3. Unimplemented Architecture & Platform Design
 
-- **Assumptions:** Assumes `#84` native phone screens will become the primary phone surface and that `#12`–`#14` will share the same participant identity/realtime backend chosen in Milestone 2.
-- **Inspection limitations:** Findings above come from static source inspection (`TripPlanner.tsx`, `ConvoyPanel.tsx`, `src/lib/convoy.ts`, `src/types/trip.ts`, `apps/mobile/src/planner/*`, and GitHub issues `#12`–`#14`, `#86`). No live multi-user, WebView, physical Android device, Android Auto DHU, or vehicle tests were run in this phase.
+### 3.1 Authoritative Proposal & Sync State Machine
+
+- **Authoritative store:** A trip-scoped backend store holds `Trip` (with `tripRevision: number`, `initiatorId: string`) and `StopProposal` records (`id`, `tripId`, `proposedByParticipantId`, `candidate`, `targetStopId`, `status`, `expiresAt`, `extensionsUsed`, `votes`, `appliedStopId`, `routeSyncState`).
+- **Identity & authorization:** Each joined `ConvoyParticipant` maps to an authenticated `userId` / verified session token. Clients can only cast/change their own vote while `open`; only `initiatorId` can approve, reject, or extend; only `proposedByParticipantId` can withdraw.
+
+### 3.2 Live Route Changes & Cross-Device Reconciliation *(UNIMPLEMENTED)*
+
+Because `apps/mobile/App.tsx` (`L1144-L1153`) currently locks stop edits during active/paused navigation and `NavigationController.kt` lacks live route replacement, supporting automatic stop addition mid-trip requires the following unimplemented work:
+
+1. **Authoritative Trip & Idempotent Insertion:**
+   - When a proposal commits `open` → `accepted_majority` or `accepted_organizer`, the backend atomically increments `tripRevision` and inserts `Stop` with deterministic `id: "proposal:${proposalId}"` and `proposalId`.
+   - Replaying an acceptance event or reconnecting checks `stops.some(s => s.id === "proposal:" + proposalId)` so a stop can **never be inserted twice**.
+2. **Phone & NavigationController Live Update (`apps/mobile`):**
+   - Add an explicit `NavigationController.updateActiveRouteStops(...)` path (guarded by `operationId` + `sessionId` + `tripRevision`) that updates `NavigationSessionRepository` and calls `nav.setDestinations(remainingStops)` without tearing down the active session.
+   - **Concurrent updates:** If `tripRevision` advances while a route recalculation is in flight, the stale callback is discarded and recalculation restarts against the latest authoritative stop list.
+   - **Failure / Retry:** If `setDestinations` returns a non-`OK` `SdkRouteStatus` or network error, keep the accepted stop in authoritative trip state with `routeSyncState = 'recalc_failed'`, surface an explicit error + **Retry Route Update** action to the group, and **do not** report the route as updated.
+3. **Android Auto Reconciliation (`MyExplorerCarScreen.kt`):**
+   - `NavigationSessionRepository` listeners notify `MyExplorerCarScreen` when `tripRevision` / stops update, refreshing the car surface cleanly under Car App Library distraction limits (no multi-row voting lists or free-text search while driving; concise outcome alerts only unless parked/host-permitted). CarPlay remains future work.
+
+### 3.3 Background Experience, Notifications, & Connectivity
+
+- **Convoy membership persistence:** Backgrounding, screen lock, network drops, dead battery, or OS process termination **never removes** a participant from the convoy. On return/reconnect, the client fetches the authoritative `Trip` + `StopProposal` snapshot and reconciles UI state (including outcomes decided while offline).
+- **Ongoing trip/vote notification & attention alert:**
+  - Where supported and permitted, show an ongoing notification displaying the active proposal summary and countdown (`expiresAt`), and trigger vibration / attention notification when a new proposal opens or the deadline is extended.
+  - **No delivery guarantees:** Persistent background connections and instant notification delivery **cannot be guaranteed** due to OS battery optimization, Doze/App Standby, iOS background suspension, permission denials, or network loss.
+- **Platform-specific constraints (to verify before implementation):**
+  - **Android:** Extend existing `NotificationCompat` / `NotificationChannel` infrastructure (`NavigationForegroundService.kt`), gated on runtime `POST_NOTIFICATIONS` (Android 13+), channel importance, DND, and device vibration settings; remote push (FCM) is needed when the app process is killed or Doze throttles sockets.
+  - **iOS:** Requires adding `UNUserNotificationCenter` permission flow and APNs remote push (`apps/mobile/ios/` currently has none), as iOS suspends background WebSockets shortly after backgrounding.
+  - **Web:** Background tabs throttle timers/WebSockets; Web Notifications and `navigator.vibrate` require explicit permission and vary across mobile browsers.
+
+---
+
+## 4. Implementation Milestones & Acceptance Criteria
+
+1. **Milestone 1 — Shared Proposal Domain Contract & Deterministic Reducer:**
+   - Pure TypeScript types and reducer implementing Approved Decisions 1–5 (51% cast-vote majority, abstention exclusion, 5-min timer + up to 3 extensions of 1/2/5 min, atomic initiator override / proposer withdrawal, idempotent `proposal:${proposalId}` insertion).
+   - *Tests:* Unit tests for tallying edge cases, extension limits, concurrent action races, duplicate-insertion prevention, and zero-vote behavior (once confirmed).
+2. **Milestone 2 — Authoritative Backend Sync, Identity, & Reconnect Layer:**
+   - Trip-scoped realtime store, participant/initiator authorization, atomic proposal transitions, and offline/reconnect state reconciliation.
+   - *Acceptance & Tests:* Multi-client integration tests for concurrent votes, initiator-vs-vote-vs-expiry races, background/offline reconnect recovery, and duplicate-decision rejection.
+3. **Milestone 3 — Web/Phone UI, Live `NavigationController` Route Updates, & Notifications:**
+   - Replace `TripPlanner.tsx` local vote UI; add native phone proposal/vote UI (`#84`) using `#83` place search; implement `NavigationController` live `setDestinations` reconciliation + failure/retry UI; add platform-gated ongoing countdown notifications and vibration alerts.
+   - *Acceptance & Tests:* Unit/component tests + Android JUnit tests for route-recalc failure/retry, concurrent `tripRevision` updates, notification permission-denied fallback, and vibration/DND handling.
+4. **Milestone 4 — Android Auto Alerts & Multi-Device / DHU Verification:**
+   - Distraction-safe Android Auto outcome notifications in `MyExplorerCarScreen.kt`; end-to-end verification across multiple physical devices (Android/iOS/Web), background/network-loss recovery, and Android Auto DHU/vehicle.
