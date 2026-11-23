@@ -609,7 +609,27 @@ class NavigationControllerTest {
       assertTrue(NavigationSessionRepository.hasCorruptRecoveryPayload())
       assertTrue(NavigationSessionRepository.snapshot().hasCorruptRecovery)
 
-      // 1. Android Auto host / phone stopNavigation must NOT clear the quarantined corrupt payload
+      // 1. Starting a new trip (valid OR invalid) while corrupt payload is quarantined must NOT erase backup
+      var blockedStartResult: Result<NavigationSessionSnapshot>? = null
+      NavigationController.startTripNavigationWithEnv(fakeEnv, "trip-new", "New Trip", trip1Stops) {
+        blockedStartResult = it
+      }
+      assertTrue(blockedStartResult?.isFailure == true)
+      assertTrue(NavigationSessionRepository.hasCorruptRecoveryPayload())
+      assertEquals(0, fakeEnv.startForegroundServiceCalls)
+      assertEquals(corruptPayload, prefsMap["snapshot_json"])
+      assertEquals(corruptPayload, prefsMap["corrupt_snapshot_backup_json"])
+
+      // Failed start (< 2 stops) also preserves corrupt backup
+      var invalidStartResult: Result<NavigationSessionSnapshot>? = null
+      NavigationController.startTripNavigationWithEnv(fakeEnv, "trip-bad", "Bad", trip1Stops.take(1)) {
+        invalidStartResult = it
+      }
+      assertTrue(invalidStartResult?.isFailure == true)
+      assertTrue(NavigationSessionRepository.hasCorruptRecoveryPayload())
+      assertEquals(corruptPayload, prefsMap["corrupt_snapshot_backup_json"])
+
+      // 2. Android Auto host / phone stopNavigation must NOT clear the quarantined corrupt payload
       val afterHostStop = NavigationController.stopNavigationWithEnv(fakeEnv)
       assertTrue(afterHostStop.hasCorruptRecovery)
       assertEquals(NavigationSessionStatus.PAUSED, afterHostStop.status)
@@ -619,7 +639,7 @@ class NavigationControllerTest {
       assertEquals(corruptPayload, prefsMap["snapshot_json"])
       assertEquals(corruptPayload, prefsMap["corrupt_snapshot_backup_json"])
 
-      // 2. Ordinary update + app restart still preserves original payload and error
+      // 3. Ordinary update + app restart still preserves original payload and error
       NavigationSessionRepository.update { it.copy(needsNavigatorReconnect = true) }
       NavigationSessionRepository.resetForRestartTest()
       NavigationSessionRepository.init(context)
@@ -627,14 +647,14 @@ class NavigationControllerTest {
       assertEquals(corruptPayload, prefsMap["snapshot_json"])
       assertEquals(corruptPayload, prefsMap["corrupt_snapshot_backup_json"])
 
-      // 3. Explicit user discard clears the quarantined payload
+      // 4. Explicit user discard clears the quarantined payload, then starting a new trip succeeds
       val afterExplicitDiscard = NavigationController.discardCorruptRecoverySessionWithEnv(fakeEnv)
       assertFalse(NavigationSessionRepository.hasCorruptRecoveryPayload())
       assertFalse(afterExplicitDiscard.hasCorruptRecovery)
       assertEquals(NavigationSessionStatus.ABANDONED, afterExplicitDiscard.status)
       assertNull(prefsMap["corrupt_snapshot_backup_json"])
 
-      // 4. Healthy session stop still transitions normally to ABANDONED
+      // 5. Healthy session start & stop still work normally
       NavigationController.startTripNavigationWithEnv(fakeEnv, "trip-h", "Healthy", trip1Stops) {}
       fakeNav.pendingRouteCallback?.invoke(SdkRouteStatus.OK)
       assertEquals(NavigationSessionStatus.ACTIVE, NavigationSessionRepository.snapshot().status)

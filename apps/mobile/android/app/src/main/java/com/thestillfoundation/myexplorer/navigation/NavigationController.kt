@@ -245,10 +245,18 @@ object NavigationController {
       return
     }
 
+    if (NavigationSessionRepository.hasCorruptRecoveryPayload()) {
+      val msg =
+        "A corrupted navigation recovery session is preserved. Discard it explicitly before starting a new trip."
+      NavigationSessionRepository.update { it.copy(lastError = msg) }
+      onComplete(Result.failure(IllegalStateException(msg)))
+      return
+    }
+
     val opId = operationSeq.incrementAndGet()
     val sessionId = "nav-${UUID.randomUUID().toString().take(8)}"
 
-    NavigationSessionRepository.replaceOrClearPreservedCorruptSession {
+    NavigationSessionRepository.update {
       NavigationSessionSnapshot(
         sessionId = sessionId,
         tripId = tripId,

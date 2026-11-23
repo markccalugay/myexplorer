@@ -116,6 +116,7 @@ export function NativePlannerScreen({
   const searchRequestSeqRef = useRef(0);
   const [showPlaceSearch, setShowPlaceSearch] = useState(true);
   const [showManualCoordinates, setShowManualCoordinates] = useState(false);
+  const [confirmDiscardBeforeStart, setConfirmDiscardBeforeStart] = useState(false);
   const [lastRemovedStop, setLastRemovedStop] = useState<{
     stop: Stop;
     index: number;
@@ -674,6 +675,13 @@ export function NativePlannerScreen({
       setValidationMessage('Add at least a start and destination stop before starting navigation.');
       return;
     }
+    if (navigationSession.hasCorruptRecovery) {
+      setConfirmDiscardBeforeStart(true);
+      setValidationMessage(
+        'A corrupted recovery backup is preserved. Confirm whether to discard it before starting a new trip.',
+      );
+      return;
+    }
     try {
       const next = await startNativeNavigation(currentTrip);
       setNavigationSession(next);
@@ -681,6 +689,21 @@ export function NativePlannerScreen({
     } catch (error) {
       setValidationMessage(
         error instanceof Error ? error.message : 'Unable to start turn-by-turn navigation.',
+      );
+    }
+  }
+
+  async function handleConfirmDiscardAndStartNavigation() {
+    try {
+      const discarded = await discardCorruptRecoverySession();
+      setNavigationSession(discarded);
+      setConfirmDiscardBeforeStart(false);
+      const next = await startNativeNavigation(currentTrip);
+      setNavigationSession(next);
+      setValidationMessage(null);
+    } catch (error) {
+      setValidationMessage(
+        error instanceof Error ? error.message : 'Unable to discard recovery backup and start navigation.',
       );
     }
   }
@@ -757,6 +780,9 @@ export function NativePlannerScreen({
           onStartNavigation={handleStartNavigation}
           onStopNavigation={handleStopNavigation}
           onDiscardCorruptRecoverySession={handleDiscardCorruptRecoverySession}
+          confirmDiscardBeforeStart={confirmDiscardBeforeStart}
+          onConfirmDiscardAndStartNavigation={handleConfirmDiscardAndStartNavigation}
+          onCancelDiscardBeforeStart={() => setConfirmDiscardBeforeStart(false)}
           onStopDraftChange={updateStopDraft}
           onSubmitStop={addStop}
           onTripNameChange={updateTripName}
@@ -869,6 +895,9 @@ function AppContent({
   onStartNavigation,
   onStopNavigation,
   onDiscardCorruptRecoverySession,
+  confirmDiscardBeforeStart,
+  onConfirmDiscardAndStartNavigation,
+  onCancelDiscardBeforeStart,
   onStopDraftChange,
   onSubmitStop,
   onTripNameChange,
@@ -913,6 +942,9 @@ function AppContent({
   onStartNavigation: () => void;
   onStopNavigation: () => void;
   onDiscardCorruptRecoverySession: () => void;
+  confirmDiscardBeforeStart: boolean;
+  onConfirmDiscardAndStartNavigation: () => void;
+  onCancelDiscardBeforeStart: () => void;
   onStopDraftChange: (field: keyof StopDraft, value: string) => void;
   onSubmitStop: () => void;
   onTripNameChange: (name: string) => void;
@@ -971,14 +1003,29 @@ function AppContent({
           <View style={styles.pendingCard}>
             <Text style={styles.pendingTitle}>Corrupted navigation recovery</Text>
             <Text style={styles.pendingBody}>
-              {navigationSession.lastError ??
-                'Saved navigation recovery data was invalid. Your original data is preserved until you discard it or start a new valid trip.'}
+              {confirmDiscardBeforeStart
+                ? 'Starting a new trip will permanently discard your preserved corrupted recovery data. Do you want to discard it and start navigation?'
+                : (navigationSession.lastError ??
+                    'Saved navigation recovery data was invalid. Your original data is preserved until you discard it explicitly.')}
             </Text>
             <View style={styles.pendingActions}>
-              <ActionButton
-                label="Discard Corrupted Session"
-                onPress={onDiscardCorruptRecoverySession}
-              />
+              {confirmDiscardBeforeStart ? (
+                <>
+                  <ActionButton
+                    label="Keep Recovery Backup"
+                    onPress={onCancelDiscardBeforeStart}
+                  />
+                  <ActionButton
+                    label="Discard Backup & Start Trip"
+                    onPress={onConfirmDiscardAndStartNavigation}
+                  />
+                </>
+              ) : (
+                <ActionButton
+                  label="Discard Corrupted Session"
+                  onPress={onDiscardCorruptRecoverySession}
+                />
+              )}
             </View>
           </View>
         ) : null}

@@ -47,7 +47,7 @@ function validateAndMapLegacyStop(
   const obj = rawStop as Record<string, unknown>;
   const name = typeof obj.name === 'string' ? obj.name.trim() : '';
   const loc =
-    obj.location && typeof obj.location === 'object'
+    obj.location && typeof obj.location === 'object' && !Array.isArray(obj.location)
       ? (obj.location as Record<string, unknown>)
       : null;
   const lat = loc?.lat ?? obj.lat;
@@ -70,12 +70,20 @@ function validateAndMapLegacyStop(
       ? obj.type
       : 'stop';
 
+  const preservedLocation = loc
+    ? {
+        ...(JSON.parse(JSON.stringify(loc)) as Record<string, unknown>),
+        lat: lat as number,
+        lng: lng as number,
+      }
+    : {lat: lat as number, lng: lng as number};
+
   // Spread original object first to preserve supported metadata and unknown legacy fields.
   const mapped: Stop = {
     ...(cloneTrip(obj as unknown as Trip) as unknown as Record<string, unknown>),
     id: stopId,
     name,
-    location: {lat: lat as number, lng: lng as number},
+    location: preservedLocation,
     type: stopType,
   };
   return {ok: true, stop: mapped};
@@ -236,8 +244,12 @@ export function planLegacyWebTripMigration(params: {
     const collisionSameContentAsImported = workingTrips.find(
       t =>
         t.name === importedLabel &&
-        tripContentSignature({...t, id: candidate.id, name: candidate.name}) ===
-          candidateSig,
+        tripContentSignature({
+          ...t,
+          id: candidate.id,
+          name: candidate.name,
+          ...(t.convoy ? {convoy: {...t.convoy, tripId: candidate.id}} : {}),
+        }) === candidateSig,
     );
     if (collisionSameContentAsImported) {
       skippedDuplicateIds.push(candidate.id);
@@ -252,10 +264,19 @@ export function planLegacyWebTripMigration(params: {
         suffix += 1;
         uniqueId = `${candidate.id}-web-${suffix}`;
       }
+      const clonedCandidate = cloneTrip(candidate);
       const renamedTrip: Trip = {
-        ...cloneTrip(candidate),
+        ...clonedCandidate,
         id: uniqueId,
         name: importedLabel,
+        ...(clonedCandidate.convoy
+          ? {
+              convoy: {
+                ...clonedCandidate.convoy,
+                tripId: uniqueId,
+              },
+            }
+          : {}),
       };
       renamedCollisionIds.push({originalId: candidate.id, importedId: uniqueId});
       tripsToImport.push(renamedTrip);

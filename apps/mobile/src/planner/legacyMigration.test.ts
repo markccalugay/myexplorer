@@ -9,7 +9,12 @@ describe('legacyMigration planning and validation', () => {
       {
         id: 'ws-1',
         name: 'Rizal Park',
-        location: {lat: 14.5831, lng: 120.9794},
+        location: {
+          lat: 14.5831,
+          lng: 120.9794,
+          placeId: 'ChIJ-rizal',
+          nestedHint: {source: 'places'},
+        },
         type: 'start',
         source: 'manual',
         isAutoSuggested: false,
@@ -92,12 +97,15 @@ describe('legacyMigration planning and validation', () => {
     expect(firstPlan.rejectedTrips).toHaveLength(0);
     expect(firstPlan.tripsToImport).toHaveLength(1);
     const imported = firstPlan.tripsToImport[0];
+    expect(imported.convoy?.tripId).toBe('web-trip-1');
     expect(imported.convoy?.vehicles[0].label).toBe('Lead Car');
     expect(imported.convoy?.participants[0].displayName).toBe('Mark');
     expect(imported.convoy?.invites[0].token).toBe('ABC123');
     expect(imported.convoy?.assignments[0].vehicleId).toBe('v-1');
     expect(imported.legacyTripNote).toBe('Bring jackets');
     expect(imported.stops[0].customStopTag).toBe('heritage');
+    expect(imported.stops[0].location.placeId).toBe('ChIJ-rizal');
+    expect(imported.stops[0].location.nestedHint).toEqual({source: 'places'});
     expect(imported.stops[1].source).toBe('activity-recommendation');
     expect(imported.stops[1].isAutoSuggested).toBe(true);
 
@@ -134,9 +142,12 @@ describe('legacyMigration planning and validation', () => {
     expect(
       plan.nextMobileTrips.find(t => t.id === 'web-trip-1')?.name,
     ).toBe('Mobile Edited Baguio');
-    expect(
-      plan.nextMobileTrips.find(t => t.id === 'web-trip-1-web-1')?.name,
-    ).toBe('Manila to Tagaytay (Imported from Web)');
+    const renamed = plan.nextMobileTrips.find(t => t.id === 'web-trip-1-web-1');
+    expect(renamed?.name).toBe('Manila to Tagaytay (Imported from Web)');
+    expect(renamed?.convoy?.tripId).toBe('web-trip-1-web-1');
+    expect(renamed?.convoy?.vehicles[0].label).toBe('Lead Car');
+    expect(renamed?.convoy?.assignments[0].vehicleId).toBe('v-1');
+    expect(renamed?.stops[0].location.placeId).toBe('ChIJ-rizal');
 
     // Re-running after collision import is also idempotent
     const repeat = planLegacyWebTripMigration({

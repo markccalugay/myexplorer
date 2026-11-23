@@ -1,6 +1,7 @@
 export interface GeoPoint {
   lat: number;
   lng: number;
+  [extraKey: string]: unknown;
 }
 
 export type StopSource = 'manual' | 'auto-pitstop' | 'activity-recommendation';

@@ -64,7 +64,12 @@ describe('planner domain stop insertion and manual coordinate parsing', () => {
         {
           id: 's1',
           name: 'Manila',
-          location: {lat: 14.5995, lng: 120.9842},
+          location: {
+            lat: 14.5995,
+            lng: 120.9842,
+            placeId: 'ChIJ-manila',
+            nestedMeta: {provider: 'web'},
+          },
           type: 'start',
           source: 'manual',
           isAutoSuggested: false,
@@ -112,6 +117,8 @@ describe('planner domain stop insertion and manual coordinate parsing', () => {
     expect(reloaded[0].convoy?.vehicles[0].label).toBe('Lead Car');
     expect(reloaded[0].legacyUnknownField).toEqual({tag: 'preserved'});
     expect(reloaded[0].stops[0].customStopFlag).toBe('keep-me');
+    expect(reloaded[0].stops[0].location.placeId).toBe('ChIJ-manila');
+    expect(reloaded[0].stops[0].location.nestedMeta).toEqual({provider: 'web'});
     expect(reloaded[0].stops[2].source).toBe('auto-pitstop');
     expect(reloaded[0].stops[2].isAutoSuggested).toBe(true);
   });
