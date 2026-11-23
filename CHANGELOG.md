@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- 2026-11-23: Fixed `NavigationView` lifecycle regression in `MyExplorerNavigationViewManager.kt` (`#85`):
+  - **Lifecycle state machine (`NavigationViewLifecycleStateMachine`):** Fixed `onDestroy()` to invoke `onStop()` before setting `destroyed = true` so an active `NavigationView` receives `onPause()` -> `onStop()` -> `onDestroy()` in order while remaining idempotent across repeated pause/stop/destroy/host callbacks and never recreating a destroyed view. Preserved `MapZoomEventCoordinator` camera-listener cleanup and post-destruction `getMapAsync` rejection (`NavigationViewLifecycleTest.kt`: 3 tests).
+  - **Verification:** Mobile Jest (`10 suites, 44/44`), `tsc --noEmit` (`0` errors), mobile ESLint (`0` errors, `1` pre-existing warning in `report.js`), and Android JUnit (`testDebugUnitTest`: `23/23` across 7 test suites, including `NavigationViewLifecycleTest` 3 and `MapZoomEventCoordinatorTest` 1) passed after final edits. Actual gesture, TalkBack, DHU, and vehicle testing remain `NOT TESTED` / `BLOCKED`.
+
 ### Added
 - 2026-11-23: Implemented native phone map zoom gestures and accessible zoom controls for issue `#85` (not yet closed; pending real-device touch/direction acceptance and future `#84` pre-trip map implementation):
   - **Map audit:** Web map (`src/components/Map.tsx`, used by Discovery and `TripPlanner.tsx`) uses Google Maps JS with `zoomControl: true` and `gestureHandling: 'cooperative'` (no one-handed double-tap-and-drag in WebView). Native `MyExplorerNavigationViewManager.kt` previously only enabled `isCompassEnabled = true` and `followMyLocation`, without explicit zoom/scroll gesture settings, `ScrollView`-intercept protection, or accessible RN zoom controls. The `#84` native pre-trip map does not exist yet.

@@ -18,6 +18,76 @@ import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 
+internal interface NavigationViewLifecycleTarget {
+  fun onCreate()
+  fun onStart()
+  fun onResume()
+  fun onPause()
+  fun onStop()
+  fun onDestroy()
+}
+
+internal class NavigationViewLifecycleStateMachine(
+  private val viewId: Long,
+  private val target: NavigationViewLifecycleTarget,
+  private val onDestroyedCleanup: (Long) -> Unit,
+) {
+  private var created = false
+  private var started = false
+  private var resumed = false
+  private var destroyed = false
+
+  fun isDestroyed(): Boolean = destroyed
+
+  fun onCreate() {
+    if (created || destroyed) return
+    target.onCreate()
+    created = true
+  }
+
+  fun onStart() {
+    if (!created || started || destroyed) return
+    target.onStart()
+    started = true
+  }
+
+  fun onResume() {
+    if (destroyed) return
+    onCreate()
+    onStart()
+    if (!resumed) {
+      target.onResume()
+      resumed = true
+    }
+  }
+
+  fun onPause() {
+    if (!resumed || destroyed) return
+    target.onPause()
+    resumed = false
+  }
+
+  fun onStop() {
+    if (destroyed) return
+    onPause()
+    if (started) {
+      target.onStop()
+      started = false
+    }
+  }
+
+  fun onDestroy() {
+    if (destroyed) return
+    onStop()
+    destroyed = true
+    onDestroyedCleanup(viewId)
+    if (created) {
+      target.onDestroy()
+      created = false
+    }
+  }
+}
+
 /**
  * Pure, testable coordinator for map-ready, camera-zoom-idle, and view-destroy
  * events so stale destroyed views never clobber recreated views and pan-only
@@ -173,63 +243,38 @@ class MyExplorerNavigationViewManager : SimpleViewManager<FrameLayout>() {
     val navView: NavigationView,
     val reactContext: ThemedReactContext,
   ) : LifecycleEventListener {
-    private var created = false
-    private var started = false
-    private var resumed = false
-    private var destroyed = false
+    private val machine = NavigationViewLifecycleStateMachine(
+      viewId = viewId,
+      target = object : NavigationViewLifecycleTarget {
+        override fun onCreate() = navView.onCreate(null)
+        override fun onStart() = navView.onStart()
+        override fun onResume() = navView.onResume()
+        override fun onPause() = navView.onPause()
+        override fun onStop() = navView.onStop()
+        override fun onDestroy() = navView.onDestroy()
+      },
+      onDestroyedCleanup = { destroyedViewId ->
+        if (zoomCoordinator.currentActiveViewId() == destroyedViewId) {
+          activeMapRef?.get()?.setOnCameraIdleListener(null)
+          activeMapRef = null
+        }
+        zoomCoordinator.onViewDestroyed(destroyedViewId)
+      },
+    )
 
-    fun isDestroyed(): Boolean = destroyed
+    fun isDestroyed(): Boolean = machine.isDestroyed()
 
-    fun onCreate() {
-      if (created || destroyed) return
-      navView.onCreate(null)
-      created = true
-    }
+    fun onCreate() = machine.onCreate()
 
-    fun onStart() {
-      if (!created || started || destroyed) return
-      navView.onStart()
-      started = true
-    }
+    fun onStart() = machine.onStart()
 
-    fun onResume() {
-      if (destroyed) return
-      onCreate()
-      onStart()
-      if (!resumed) {
-        navView.onResume()
-        resumed = true
-      }
-    }
+    fun onResume() = machine.onResume()
 
-    fun onPause() {
-      if (!resumed || destroyed) return
-      navView.onPause()
-      resumed = false
-    }
+    fun onPause() = machine.onPause()
 
-    fun onStop() {
-      if (destroyed) return
-      onPause()
-      if (started) {
-        navView.onStop()
-        started = false
-      }
-    }
+    fun onStop() = machine.onStop()
 
-    fun onDestroy() {
-      if (destroyed) return
-      destroyed = true
-      if (zoomCoordinator.currentActiveViewId() == viewId) {
-        activeMapRef?.get()?.setOnCameraIdleListener(null)
-        activeMapRef = null
-      }
-      zoomCoordinator.onViewDestroyed(viewId)
-      onStop()
-      if (created) {
-        navView.onDestroy()
-      }
-    }
+    fun onDestroy() = machine.onDestroy()
 
     override fun onHostResume() = onResume()
 
