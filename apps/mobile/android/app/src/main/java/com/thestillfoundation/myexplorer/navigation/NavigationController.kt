@@ -494,9 +494,48 @@ object NavigationController {
       guidanceFeedRegistered = false
       env?.stopForegroundService()
     }
+    return NavigationSessionRepository.update {
+      val preserveCorruptError = NavigationSessionRepository.hasCorruptRecoveryPayload()
+      it.clearGuidanceFields().copy(
+        status = if (preserveCorruptError) NavigationSessionStatus.PAUSED else NavigationSessionStatus.ABANDONED,
+        remainingDistanceMeters = 0,
+        remainingDurationSeconds = 0,
+        finalRemainingDistanceMeters = 0,
+        finalRemainingDurationSeconds = 0,
+        isRerouting = false,
+        needsNavigatorReconnect = preserveCorruptError,
+        guidanceFeedRegistered = false,
+        lastError = if (preserveCorruptError) it.lastError else null,
+      )
+    }
+  }
+
+  /**
+   * Explicit user action to discard a quarantined corrupt recovery session.
+   * Never invoked by ordinary phone/car/host stopNavigation events.
+   */
+  fun discardCorruptRecoverySession(context: Context): NavigationSessionSnapshot {
+    return discardCorruptRecoverySessionWithEnv(resolveEnvironment(context))
+  }
+
+  internal fun discardCorruptRecoverySessionWithEnv(env: NavigationEnvironment?): NavigationSessionSnapshot {
+    operationSeq.incrementAndGet()
+    activeRouteOpId = 0L
+    cancelPendingServiceStart("Corrupt recovery session discarded by user.")
+    dispatcher.post {
+      navigatorHandle?.stopGuidance()
+      navigatorHandle?.clearDestinations()
+      navigatorHandle?.unregisterGuidanceFeed()
+      guidanceFeedRegistered = false
+      env?.stopForegroundService()
+    }
     return NavigationSessionRepository.replaceOrClearPreservedCorruptSession {
       it.clearGuidanceFields().copy(
         status = NavigationSessionStatus.ABANDONED,
+        stops = emptyList(),
+        tripId = "",
+        tripName = "",
+        sessionId = "",
         remainingDistanceMeters = 0,
         remainingDurationSeconds = 0,
         finalRemainingDistanceMeters = 0,
@@ -504,6 +543,7 @@ object NavigationController {
         isRerouting = false,
         needsNavigatorReconnect = false,
         guidanceFeedRegistered = false,
+        lastError = null,
       )
     }
   }

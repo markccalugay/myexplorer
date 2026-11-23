@@ -101,6 +101,12 @@ class NavigationBridgeModule(
   }
 
   @ReactMethod
+  fun discardCorruptRecoverySession(promise: Promise) {
+    val snapshot = NavigationController.discardCorruptRecoverySession(reactContext.applicationContext)
+    promise.resolve(snapshot.toJson().toString())
+  }
+
+  @ReactMethod
   fun searchPlaces(query: String, promise: Promise) {
     val trimmed = query.trim()
     if (trimmed.isEmpty()) {

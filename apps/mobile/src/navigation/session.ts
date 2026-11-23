@@ -43,6 +43,7 @@ export interface NavigationSessionSnapshot {
   updatedAtMs: number;
   lastError?: string;
   recoveryError?: string;
+  hasCorruptRecovery?: boolean;
   permissionStatus?: NavigationPermissionStatus;
 }
 
@@ -437,6 +438,7 @@ type NativeNavModule = {
   pauseNavigation: () => Promise<string>;
   resumeNavigation: () => Promise<string>;
   stopNavigation: () => Promise<string>;
+  discardCorruptRecoverySession?: () => Promise<string>;
 };
 
 function getNativeNavModule(): NativeNavModule | null {
@@ -596,6 +598,20 @@ export async function stopNativeNavigation(): Promise<NavigationSessionSnapshot>
   }
 
   const raw = await nativeMod.stopNavigation();
+  const parsed = parseNativeSessionSnapshot(raw) ?? IDLE_NAVIGATION_SESSION;
+  await persistLocalNavigationSession(parsed);
+  return parsed;
+}
+
+export async function discardCorruptRecoverySession(): Promise<NavigationSessionSnapshot> {
+  ++operationGeneration;
+  const nativeMod = getNativeNavModule();
+  if (!nativeMod || typeof nativeMod.discardCorruptRecoverySession !== 'function') {
+    await persistLocalNavigationSession(IDLE_NAVIGATION_SESSION);
+    return IDLE_NAVIGATION_SESSION;
+  }
+
+  const raw = await nativeMod.discardCorruptRecoverySession();
   const parsed = parseNativeSessionSnapshot(raw) ?? IDLE_NAVIGATION_SESSION;
   await persistLocalNavigationSession(parsed);
   return parsed;

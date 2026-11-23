@@ -561,4 +561,88 @@ class NavigationControllerTest {
     assertTrue(afterFail.needsNavigatorReconnect)
     assertEquals("Foreground start rejected", afterFail.lastError)
   }
+
+  @Test
+  fun hostAndPhoneStopsPreserveCorruptRecoveryUntilExplicitDiscardWhileHealthyStopAbandons() {
+    val prefsMap = mutableMapOf<String, String?>()
+    val editorProxy = java.lang.reflect.Proxy.newProxyInstance(
+      android.content.SharedPreferences.Editor::class.java.classLoader,
+      arrayOf(android.content.SharedPreferences.Editor::class.java),
+    ) { proxy, method, args ->
+      when (method.name) {
+        "putString" -> {
+          prefsMap[args[0] as String] = args[1] as String?
+          proxy
+        }
+        "remove" -> {
+          prefsMap.remove(args[0] as String)
+          proxy
+        }
+        "apply", "commit" -> if (method.returnType == java.lang.Boolean.TYPE) true else Unit
+        else -> proxy
+      }
+    } as android.content.SharedPreferences.Editor
+
+    val prefsProxy = java.lang.reflect.Proxy.newProxyInstance(
+      android.content.SharedPreferences::class.java.classLoader,
+      arrayOf(android.content.SharedPreferences::class.java),
+    ) { _, method, args ->
+      when (method.name) {
+        "getString" -> prefsMap[args[0] as String] ?: (args[1] as String?)
+        "edit" -> editorProxy
+        else -> null
+      }
+    } as android.content.SharedPreferences
+
+    val context = object : android.content.ContextWrapper(null) {
+      override fun getApplicationContext(): Context = this
+      override fun getSharedPreferences(name: String?, mode: Int): android.content.SharedPreferences =
+        prefsProxy
+    }
+
+    val corruptPayload = """{"sessionId":"nav-c","tripId":"trip-c","tripName":"Corrupt","status":"active","stops":[{"id":"s1","name":"Start","lat":14.59,"lng":120.98},{"id":"s2","name":"BadMid","lat":14.4}]}"""
+
+    try {
+      NavigationSessionRepository.resetForRestartTest()
+      prefsMap["snapshot_json"] = corruptPayload
+      NavigationSessionRepository.init(context)
+      assertTrue(NavigationSessionRepository.hasCorruptRecoveryPayload())
+      assertTrue(NavigationSessionRepository.snapshot().hasCorruptRecovery)
+
+      // 1. Android Auto host / phone stopNavigation must NOT clear the quarantined corrupt payload
+      val afterHostStop = NavigationController.stopNavigationWithEnv(fakeEnv)
+      assertTrue(afterHostStop.hasCorruptRecovery)
+      assertEquals(NavigationSessionStatus.PAUSED, afterHostStop.status)
+      assertTrue(afterHostStop.stops.isEmpty())
+      assertEquals("", afterHostStop.tripId)
+      assertNotNull(afterHostStop.lastError)
+      assertEquals(corruptPayload, prefsMap["snapshot_json"])
+      assertEquals(corruptPayload, prefsMap["corrupt_snapshot_backup_json"])
+
+      // 2. Ordinary update + app restart still preserves original payload and error
+      NavigationSessionRepository.update { it.copy(needsNavigatorReconnect = true) }
+      NavigationSessionRepository.resetForRestartTest()
+      NavigationSessionRepository.init(context)
+      assertTrue(NavigationSessionRepository.hasCorruptRecoveryPayload())
+      assertEquals(corruptPayload, prefsMap["snapshot_json"])
+      assertEquals(corruptPayload, prefsMap["corrupt_snapshot_backup_json"])
+
+      // 3. Explicit user discard clears the quarantined payload
+      val afterExplicitDiscard = NavigationController.discardCorruptRecoverySessionWithEnv(fakeEnv)
+      assertFalse(NavigationSessionRepository.hasCorruptRecoveryPayload())
+      assertFalse(afterExplicitDiscard.hasCorruptRecovery)
+      assertEquals(NavigationSessionStatus.ABANDONED, afterExplicitDiscard.status)
+      assertNull(prefsMap["corrupt_snapshot_backup_json"])
+
+      // 4. Healthy session stop still transitions normally to ABANDONED
+      NavigationController.startTripNavigationWithEnv(fakeEnv, "trip-h", "Healthy", trip1Stops) {}
+      fakeNav.pendingRouteCallback?.invoke(SdkRouteStatus.OK)
+      assertEquals(NavigationSessionStatus.ACTIVE, NavigationSessionRepository.snapshot().status)
+      val afterHealthyStop = NavigationController.stopNavigationWithEnv(fakeEnv)
+      assertEquals(NavigationSessionStatus.ABANDONED, afterHealthyStop.status)
+      assertFalse(afterHealthyStop.hasCorruptRecovery)
+    } finally {
+      NavigationSessionRepository.resetForRestartTest()
+    }
+  }
 }

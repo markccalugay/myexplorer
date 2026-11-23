@@ -120,6 +120,7 @@ data class NavigationSessionSnapshot(
   val versionSeq: Long = 0L,
   val updatedAtMs: Long = 0L,
   val lastError: String? = null,
+  val hasCorruptRecovery: Boolean = false,
 ) {
   fun clearGuidanceFields(): NavigationSessionSnapshot = copy(
     nextInstructionText = "",
@@ -152,6 +153,7 @@ data class NavigationSessionSnapshot(
     put("versionSeq", versionSeq)
     put("updatedAtMs", updatedAtMs)
     if (lastError != null) put("lastError", lastError)
+    if (hasCorruptRecovery) put("hasCorruptRecovery", true)
   }
 
   companion object {
@@ -277,6 +279,7 @@ object NavigationSessionRepository {
               status = NavigationSessionStatus.PAUSED,
               needsNavigatorReconnect = true,
               lastError = err.message ?: "Failed to recover saved navigation stops.",
+              hasCorruptRecovery = true,
             )
           }
       }
@@ -302,6 +305,7 @@ object NavigationSessionRepository {
         ?.apply()
       val transformed = transform(current)
       next = transformed.copy(
+        hasCorruptRecovery = hasPreservedCorruptPayload,
         versionSeq = current.versionSeq + 1L,
         updatedAtMs = System.currentTimeMillis(),
       )
@@ -327,6 +331,7 @@ object NavigationSessionRepository {
     synchronized(stateLock) {
       val transformed = transform(current)
       next = transformed.copy(
+        hasCorruptRecovery = hasPreservedCorruptPayload,
         versionSeq = current.versionSeq + 1L,
         updatedAtMs = System.currentTimeMillis(),
       )

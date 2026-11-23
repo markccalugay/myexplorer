@@ -54,6 +54,7 @@ import {
   persistSavedTrips,
 } from './src/planner/storage';
 import {
+  discardCorruptRecoverySession,
   IDLE_NAVIGATION_SESSION,
   isNavigationSessionInProgress,
   navigationSessionMatchesTrip,
@@ -718,6 +719,18 @@ export function NativePlannerScreen({
     }
   }
 
+  async function handleDiscardCorruptRecoverySession() {
+    try {
+      const next = await discardCorruptRecoverySession();
+      setNavigationSession(next);
+      setValidationMessage('Discarded corrupted recovery session.');
+    } catch (error) {
+      setValidationMessage(
+        error instanceof Error ? error.message : 'Unable to discard corrupted recovery session.',
+      );
+    }
+  }
+
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
@@ -743,6 +756,7 @@ export function NativePlannerScreen({
           onSaveTrip={saveTrip}
           onStartNavigation={handleStartNavigation}
           onStopNavigation={handleStopNavigation}
+          onDiscardCorruptRecoverySession={handleDiscardCorruptRecoverySession}
           onStopDraftChange={updateStopDraft}
           onSubmitStop={addStop}
           onTripNameChange={updateTripName}
@@ -854,6 +868,7 @@ function AppContent({
   onSaveTrip,
   onStartNavigation,
   onStopNavigation,
+  onDiscardCorruptRecoverySession,
   onStopDraftChange,
   onSubmitStop,
   onTripNameChange,
@@ -897,6 +912,7 @@ function AppContent({
   onSaveTrip: () => void;
   onStartNavigation: () => void;
   onStopNavigation: () => void;
+  onDiscardCorruptRecoverySession: () => void;
   onStopDraftChange: (field: keyof StopDraft, value: string) => void;
   onSubmitStop: () => void;
   onTripNameChange: (name: string) => void;
@@ -948,6 +964,22 @@ function AppContent({
         {validationMessage ? (
           <View style={styles.messageBanner}>
             <Text style={styles.messageText}>{validationMessage}</Text>
+          </View>
+        ) : null}
+
+        {navigationSession.hasCorruptRecovery ? (
+          <View style={styles.pendingCard}>
+            <Text style={styles.pendingTitle}>Corrupted navigation recovery</Text>
+            <Text style={styles.pendingBody}>
+              {navigationSession.lastError ??
+                'Saved navigation recovery data was invalid. Your original data is preserved until you discard it or start a new valid trip.'}
+            </Text>
+            <View style={styles.pendingActions}>
+              <ActionButton
+                label="Discard Corrupted Session"
+                onPress={onDiscardCorruptRecoverySession}
+              />
+            </View>
           </View>
         ) : null}
 
