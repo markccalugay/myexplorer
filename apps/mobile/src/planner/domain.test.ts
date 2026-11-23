@@ -1,7 +1,10 @@
 import {
+  cloneTrip,
   createManualStop,
   insertStopIntoTripStops,
   parseManualCoordinate,
+  upsertSavedTrip,
+  type Trip,
 } from './domain';
 
 describe('planner domain stop insertion and manual coordinate parsing', () => {
@@ -51,5 +54,65 @@ describe('planner domain stop insertion and manual coordinate parsing', () => {
     expect(parseManualCoordinate('0', -90, 90)).toBe(0);
     expect(parseManualCoordinate(' 0.0 ', -180, 180)).toBe(0);
     expect(parseManualCoordinate('14.5995', -90, 90)).toBe(14.5995);
+  });
+
+  test('round-trips legacy convoy, stop metadata, and unknown fields across clone, edit, and save', () => {
+    const legacyTrip: Trip = {
+      id: 'trip-legacy-convoy',
+      name: 'Legacy Convoy Trip',
+      stops: [
+        {
+          id: 's1',
+          name: 'Manila',
+          location: {lat: 14.5995, lng: 120.9842},
+          type: 'start',
+          source: 'manual',
+          isAutoSuggested: false,
+          customStopFlag: 'keep-me',
+        },
+        {
+          id: 's2',
+          name: 'Tagaytay',
+          location: {lat: 14.1153, lng: 120.9621},
+          type: 'destination',
+          source: 'auto-pitstop',
+          isAutoSuggested: true,
+        },
+      ],
+      convoy: {
+        id: 'c1',
+        tripId: 'trip-legacy-convoy',
+        vehicles: [
+          {
+            id: 'v1',
+            label: 'Lead Car',
+            order: 0,
+            createdAt: '2026-03-20T00:00:00.000Z',
+            updatedAt: '2026-03-20T00:00:00.000Z',
+          },
+        ],
+        participants: [],
+        invites: [],
+        assignments: [],
+        createdAt: '2026-03-20T00:00:00.000Z',
+        updatedAt: '2026-03-20T00:00:00.000Z',
+      },
+      legacyUnknownField: {tag: 'preserved'},
+    };
+
+    const cloned = cloneTrip(legacyTrip);
+    const edited: Trip = {
+      ...cloned,
+      name: 'Renamed Legacy Trip',
+      stops: insertStopIntoTripStops(cloned.stops, stopMid1),
+    };
+    const savedList = upsertSavedTrip([], edited);
+    const reloaded = JSON.parse(JSON.stringify(savedList)) as Trip[];
+
+    expect(reloaded[0].convoy?.vehicles[0].label).toBe('Lead Car');
+    expect(reloaded[0].legacyUnknownField).toEqual({tag: 'preserved'});
+    expect(reloaded[0].stops[0].customStopFlag).toBe('keep-me');
+    expect(reloaded[0].stops[2].source).toBe('auto-pitstop');
+    expect(reloaded[0].stops[2].isAutoSuggested).toBe(true);
   });
 });

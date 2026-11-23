@@ -14,7 +14,7 @@
 
 | Issue | Current Status (Fact) | Impact on #84 |
 | --- | --- | --- |
-| **#82** | Phone/car reconciliation, FG-service startup guard, and draft-conflict preservation exist in local commits (`da3c48c`–`f5fb3a9`), **not yet verified on physical Samsung or DHU**. **Unresolved gap:** Android Auto / controller `stopNavigation` paths can still clear `corrupt_snapshot_backup_json` without an explicit user decision on the phone. | **Trip recovery is NOT accepted.** #84 cannot claim recovery parity until #82's device/DHU checks pass and corrupt-backup clearing requires explicit user confirmation. |
+| **#82** | Phone/car reconciliation, FG-service startup guard, draft-conflict preservation, and separation of ordinary phone/car `stopNavigation` from explicit `discardCorruptRecoverySession` exist in local commits, **not yet verified on physical Samsung or DHU**. | **Trip recovery is NOT accepted** until #82's physical-device, DHU, and vehicle checks pass. |
 | **#83** | Phone place search (`NavigationBridgeModule.searchPlaces` using Android `Geocoder`), coordinate-free stop management, intermediate insertion, stale-query guards, and Undo exist in local commits (`34a7797`, `58b3bee`). **Real Samsung availability and landmark/business recall are UNVERIFIED**; Android Auto search and stop editing remain incomplete. | Milestone 1 builds on #83's phone stop-search flow; real-device `Geocoder` verification on Samsung (`SM_A366B`) is required before deciding whether Google Places API is needed. |
 | **#78 & #79** | Product requirements (#78) and usability research (#79) are pending. | No existing capability (`Discovery`, `Bookings`, `Convoy`, `LocationDetail`, `Legal`) may be removed or sunsetted without an explicit #78 decision and data-migration plan. |
 | **#80** | [`docs/design-guide.md`](design-guide.md) is a **working draft** pending owner approval and Mobbin travel-screen comparison. | #84 follows the draft guide's principles (`Home → search/manage stops → begin navigation → return to trip`) without locking unapproved visual tokens. |
@@ -87,7 +87,7 @@ Status legend (explicitly distinguishing **Code Inspection** from **Device-Teste
 ## 5. Concrete Data-Migration Proposal (Not Yet Implemented)
 
 > [!NOTE]
-> **Status:** Proposed design only; migration code is **not** implemented yet.
+> **Status:** Foundation building blocks implemented (`Trip.convoy` / legacy field round-trip in `apps/mobile/src/planner/domain.ts`, pure `planLegacyWebTripMigration` planner in `apps/mobile/src/planner/legacyMigration.ts`, and read-only `LegacyWebStorageReader.kt` parser/reader). **Automatic migration is NOT wired** and live Android WebView execution (online and offline `loadDataWithBaseURL`) is **UNVERIFIED / NOT TESTED** on a physical device or emulator.
 
 ### Stored Schema Inventory (Code Inspection)
 

@@ -20,6 +20,76 @@ export interface Stop {
   distanceFromPrevious?: number;
   durationFromPrevious?: number;
   arrivalTime?: string;
+  [extraKey: string]: unknown;
+}
+
+export type ConvoyParticipantKind = 'individual' | 'group';
+export type ConvoyParticipantStatus = 'pending' | 'joined' | 'declined';
+export type ConvoyInviteMethod = 'link' | 'code' | 'manual';
+export type ConvoyInviteStatus = 'pending' | 'accepted' | 'declined' | 'revoked';
+export type ConvoyAssignmentStatus = 'active' | 'removed';
+
+export interface ConvoyVehicle {
+  id: string;
+  label: string;
+  order: number;
+  seatCapacity?: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConvoyMember {
+  id: string;
+  displayName: string;
+  isPrimary?: boolean;
+}
+
+export interface ConvoyParticipant {
+  id: string;
+  kind: ConvoyParticipantKind;
+  displayName: string;
+  status: ConvoyParticipantStatus;
+  invitedBy?: string;
+  contactLabel?: string;
+  members: ConvoyMember[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConvoyInvite {
+  id: string;
+  participantId: string;
+  method: ConvoyInviteMethod;
+  token?: string;
+  status: ConvoyInviteStatus;
+  sentAt?: string;
+  respondedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConvoyAssignment {
+  id: string;
+  participantId: string;
+  memberId: string;
+  vehicleId: string;
+  assignedBy?: string;
+  status: ConvoyAssignmentStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Convoy {
+  id: string;
+  tripId: string;
+  vehicles: ConvoyVehicle[];
+  participants: ConvoyParticipant[];
+  invites: ConvoyInvite[];
+  assignments: ConvoyAssignment[];
+  assignmentLockAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Trip {
@@ -28,9 +98,12 @@ export interface Trip {
   stops: Stop[];
   totalDistance?: number;
   totalDuration?: number;
+  convoy?: Convoy;
   savedAt?: string;
   updatedAt?: string;
+  migratedFromWebAt?: string;
   routeSnapshot?: import('./route').PersistedRoutePayload;
+  [extraKey: string]: unknown;
 }
 
 export const createTripId = () =>
