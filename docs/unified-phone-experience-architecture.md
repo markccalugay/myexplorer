@@ -1,189 +1,142 @@
 # Unified App-Packaged Phone Experience: Audit & Architecture Proposal (Issue #84)
 
-**Status:** Draft audit and architecture proposal for owner review (November 23, 2026).
-**Scope:** Phase 1 of [#84](https://github.com/markccalugay/myexplorer/issues/84) — codebase audit, state/data flow trace, target architecture, migration plan, and Milestone 1 definition. No application code or behavior was changed.
+**Status:** Revised draft audit and architecture proposal for owner review (November 23, 2026).
+**Scope:** Phase 1 of [#84](https://github.com/markccalugay/myexplorer/issues/84) — codebase audit, capability-parity & release plan, concrete data-migration proposal, and milestone breakdown. **No application code, build configuration, or runtime behavior was changed.**
 
-> [!NOTE]
-> Throughout this document, **Facts (Code Inspection)** are distinguished from **Device-Tested Behavior**, **Unverified / Blocked Items**, **Assumptions**, and **Open Questions / Recommended Decisions**.
+> [!IMPORTANT]
+> **Product Decision Recorded:** The web experience belongs on the web. The phone app must have its own **app-packaged native experience** that mirrors the web's user-facing interactions and capabilities. Users must not switch between a hosted web interface and a separate app interface to complete a journey, nor rely on a hosted website, embedded web shell, or secondary "open web" link as the intended phone experience.
+>
+> **Current Reality vs. Target Architecture:** Everything in Section 3–5 describes the **target architecture**. The current Android app **still** cold-launches `WebExperienceScreen` (`WebView` loading `https://myexplorer-travel.vercel.app`) and bridges to a separate `NativePlannerScreen` via React-fiber DOM scraping.
 
 ---
 
-## 1. Executive Summary & Dependency Context
-
-MyExplorer on Android currently operates as **two disconnected phone experiences** bridged by a one-way DOM-fiber export:
-
-1. **Hosted Web Shell (`WebExperienceScreen`):** Cold-launches `https://myexplorer-travel.vercel.app` inside an Android `WebView` (`MyExplorerWebViewManager.kt`), providing Explore, Discovery, Place Details (when reached from Discovery), Trip Planner, Saved Trips (`Bookings`), Convoy, and Legal pages.
-2. **Native Planner & Navigation (`NativePlannerScreen` + `MyExplorerNavigationViewManager` + `NavigationController`):** A separate React Native screen backed by `AsyncStorage`, Google Navigation SDK (`7.6.1`), `NavigationForegroundService`, and Android Auto (`MyExplorerCarScreen`).
-
-Users currently have to understand the boundary between the hosted website (`☰ → Navigate Current Trip (Native Nav)` / `Return to Trip` banner) and the native turn-by-turn screen, and the two layers maintain separate persistence (`WebView` `localStorage` vs React Native `AsyncStorage` vs native `SharedPreferences`).
-
-### Explicit Cross-Issue Dependencies
+## 1. Cross-Issue Dependencies & Unresolved Gaps
 
 | Issue | Current Status (Fact) | Impact on #84 |
 | --- | --- | --- |
-| **#82** | Phone/car reconciliation, startup race guard, and draft-conflict preservation exist in local commits (`da3c48c`–`f5fb3a9`), **not yet verified on physical Samsung or DHU**. Unresolved gap: the Android Auto host (`MyExplorerCarScreen` / `NavigationController` path) can still clear or replace a quarantined corrupt-session backup without an explicit user decision on the phone. | **Trip recovery is NOT accepted.** #84 cannot assume recovery is complete until #82's device/DHU checks pass and corrupt-backup clearing requires explicit user confirmation. |
-| **#83** | Phone place search (`android.location.Geocoder` via `NavigationBridgeModule.searchPlaces`), coordinate-free stop management, intermediate insertion, stale-query guards, and Undo exist in local commits (`34a7797`, `58b3bee`). **Real Samsung recall for landmarks/businesses is NOT TESTED**; Android Auto search and stop editing remain incomplete. | Milestone 1 of #84 builds directly on #83's phone stop-search flow; real-device `Geocoder` vs Places API evaluation is required before removing the web planner. |
-| **#78 & #79** | Product requirements (#78) and usability research (#79) are pending. | No existing capability (Explore, Discovery, Convoy, Bookings, Legal) may be sunsetted or removed without an explicit #78 decision and data-migration plan. |
-| **#80** | [`docs/design-guide.md`](design-guide.md) is a **working draft** pending owner approval and Mobbin comparison. | Proposed UI structure in #84 follows the draft guide's principles (`Home → search/manage stops → begin navigation → return to trip`) without locking unapproved visual tokens. |
-| **#81** | Broader UI improvements depend on reviewed #80 direction. | #84 Milestone 1 stays scoped to unifying the core journey rather than performing the broader redesign. |
+| **#82** | Phone/car reconciliation, FG-service startup guard, and draft-conflict preservation exist in local commits (`da3c48c`–`f5fb3a9`), **not yet verified on physical Samsung or DHU**. **Unresolved gap:** Android Auto / controller `stopNavigation` paths can still clear `corrupt_snapshot_backup_json` without an explicit user decision on the phone. | **Trip recovery is NOT accepted.** #84 cannot claim recovery parity until #82's device/DHU checks pass and corrupt-backup clearing requires explicit user confirmation. |
+| **#83** | Phone place search (`NavigationBridgeModule.searchPlaces` using Android `Geocoder`), coordinate-free stop management, intermediate insertion, stale-query guards, and Undo exist in local commits (`34a7797`, `58b3bee`). **Real Samsung availability and landmark/business recall are UNVERIFIED**; Android Auto search and stop editing remain incomplete. | Milestone 1 builds on #83's phone stop-search flow; real-device `Geocoder` verification on Samsung (`SM_A366B`) is required before deciding whether Google Places API is needed. |
+| **#78 & #79** | Product requirements (#78) and usability research (#79) are pending. | No existing capability (`Discovery`, `Bookings`, `Convoy`, `LocationDetail`, `Legal`) may be removed or sunsetted without an explicit #78 decision and data-migration plan. |
+| **#80** | [`docs/design-guide.md`](design-guide.md) is a **working draft** pending owner approval and Mobbin travel-screen comparison. | #84 follows the draft guide's principles (`Home → search/manage stops → begin navigation → return to trip`) without locking unapproved visual tokens. |
+| **#81** | Broader interface improvements depend on reviewed #80 design direction. | #84 Milestone 1 focuses on functional parity and coherent native structure rather than the broader visual redesign. |
 
 ---
 
-## 2. Capability Inventory: Web vs. Native Phone
+## 2. Web-to-Phone Capability Inventory & Parity Plan
 
-Status legend:
-- **Implemented (Code)** — present in source code.
-- **Partial (Code)** — core exists, missing key UX or parity pieces.
-- **Unverified (Device)** — code exists, not yet verified on physical device / current build.
+Status legend (explicitly distinguishing **Code Inspection** from **Device-Tested Behavior**):
+- **Implemented (Code)** — present in source code; device status noted separately.
+- **Partial (Code)** — core exists, missing key UX, map, or parity pieces.
+- **Unverified (Device)** — code exists, not tested on physical Samsung (`RFGYC0D9KHF`) or current build.
 - **Missing** — not implemented on that surface.
 
-| Capability | Web (`src/`) — Code Inspection | Native Phone (`apps/mobile/`) — Code Inspection | Device-Tested Status (Observed) |
+| Capability / User Interaction | Web (`src/`) — Code Inspection | Current Native Phone (`apps/mobile/`) — Code Inspection | Device-Tested Behavior (Observed) | Planned Phone Parity & Preservation |
+| --- | --- | --- | --- | --- |
+| **Home / Explore** | **Implemented:** `ExplorePage` (`src/components/ExplorePage.tsx`) — curated destinations, search/filter, `Start Planning`. | **Missing natively** (Android cold-launches `WebExperienceScreen` WebView; iOS opens `NativePlannerScreen` directly). | WebView loads `https://myexplorer-travel.vercel.app` on `emulator-5554` (`v4`). Native Home: **NOT TESTED / Missing**. | Native `HomeScreen` with brand, current/active trip card (`Return to Trip` / `Continue Planning`), `Plan a trip`, curated Explore entry, and Saved Trips. |
+| **Discovery (Places, Stays & Pitstops)** | **Implemented:** `view === 'discovery'` (`src/App.tsx`) — `usePlaces`, `usePitstops`, `FilterPanel`, `DestinationCard` list, map markers. | **Missing** in `NativePlannerScreen`. | **Unverified** on physical Samsung. | Preserve in existing WebView until native Discovery screen/drawer is built and verified (or owner approves #78 disposition). |
+| **Place Search (name / address)** | **Implemented:** `SearchBar` + `PlaceAutocompleteInput` (`src/lib/googlePlaces.ts`, Google Places JS). | **Implemented (Code, #83):** `NavigationBridgeModule.searchPlaces` (Android `Geocoder`) + `placeSearch.ts` + `App.tsx` search UI. **Missing on iOS.** | **NOT TESTED** on physical Samsung (`RFGYC0D9KHF`) or emulator. `Geocoder` availability & POI/business recall: **Unverified**. | Evaluate `Geocoder` on Samsung first; keep `PlaceSearchProvider` interface so Places API can be plugged in if recall is insufficient. |
+| **Place Details** | **Partial (Code):** `LocationDetail.tsx` exists under `view === 'discovery'`, but has no navigation trigger from `ExplorePage` or `TripPlanner` on the live site (`CHANGELOG.md` 2026-11-19). | **Missing** in `NativePlannerScreen`. | Verified **unreachable** from `ExplorePage`/`TripPlanner` on deployed site (`v4` audit). | Native place-detail sheet/modal triggered from search results and Discovery cards (showing name, address, rating/notes when available, and `Add to trip`). |
+| **Interactive Pre-Trip Map** | **Implemented:** `src/components/Map.tsx` — interactive Google Map with pan, zoom, stop/place markers, directions polyline. | **Partial:** `NavigationMapView` hosts Google Navigation SDK `NavigationView` in a fixed `240px` box in `Turn-by-Turn Navigation` (`MyExplorerNavigationViewManager.kt`), not an interactive pre-trip map with stop pins/route preview. | WebView map tiles & route polyline verified on `emulator-5554` (`v4`); native `NavigationView` **NOT TESTED** on `#82`/`#83` commits. | **Required in core phone journey (not deferred):** interactive native map in planner showing stop markers, pan/zoom (plus accessible zoom controls), and route preview polyline when route data is available. |
+| **Trip Planning (Stops, Order, Undo)** | **Implemented:** `TripPlanner.tsx` — stop search, reorder, remove, auto-pitstops, `StopCard`, `Timeline`. | **Implemented (Code, #83):** `App.tsx` — coordinate-free search, intermediate stop insertion before destination, `Up`/`Down`/`Remove` + `Undo`, active-nav edit lock. | **NOT TESTED** on physical Samsung (`RFGYC0D9KHF`). | Unify into native `TripPlannerScreen` alongside the interactive pre-trip map. |
+| **Route Preview & ETA** | **Implemented:** `googleRoutes.ts`, `journeyDetailsEngine.ts`, `RoutePlanner.tsx`. | **Partial:** `routingProxyClient.ts` requires `app.json`'s `routingProxyUrl` (currently `""`); otherwise `routeState` shows `stale`/`idle`. | Default mobile build has `routingProxyUrl` unconfigured (**Unverified** end-to-end). | Configure/host routing proxy (or native Routes adapter) so distance, duration, and polyline render reliably on the pre-trip map. |
+| **Saved Trips & Bookings** | **Implemented:** `Bookings.tsx` displays `myexplorer.saved-trips` (`localStorage`), `Open Trip`, `Manage Convoy`, `Create Trip` (no live venue-booking backend). | **Implemented (Code):** `AsyncStorage` `saved-trips`, `draft-trip`, `draft-baseline` (`storage.ts`). | Web `Save Trip` survived `force-stop` on `emulator-5554` (`v4`); native draft/conflict persistence **NOT TESTED** on device. | Native **Saved Trips / Bookings** view preserving both migrated web trips (including `convoy` metadata) and native trips. |
+| **Convoy** | **Implemented:** `ConvoyPanel.tsx` (`src/lib/convoy.ts`) — vehicles, participants, invites, assignments stored on `Trip.convoy`. | **Missing** natively (only accessible inside `WebView`). | **Unverified** on physical Samsung. | Preserve `Trip.convoy` data during migration (`#78` disposition required before sunsetting or building native Convoy UI). |
+| **Legal & Support Pages** | **Implemented:** `LegalPage.tsx` + `SiteFooter.tsx` (`#privacy`, `#terms`, `#attribution`, `#permissions`, `#support`). | **Partial:** `WebExperienceScreen` has **App info** (`Version 1.0 (4)`), but no native Privacy/Terms/Attribution/Support screens. | App info modal verified in Jest & `v4` emulator; native Legal screens **Missing**. | Bundle legal/support content natively in **Menu → App info & Legal** so offline users can read them without a WebView. |
+| **Navigation & Return to Trip** | **Partial (Session state):** `navigationSessionStore.ts` (`myexplorer.navigation-session`), no OS FG service. | **Implemented (Code, #82):** Google Nav SDK `7.6.1`, `NavigationForegroundService` (`7201`), `NavigationSessionRepository`, `MyExplorerCarScreen`, `Return to Trip`. | Earlier debug build reached active guidance on emulator; `#82`/`#83` commits **NOT TESTED** on physical Samsung, emulator, DHU, or vehicle. | Single authoritative `NavigationSessionRepository` + `NavigationController` driving both native phone guidance and Android Auto. |
+
+### Release Gate (No Premature Removal)
+> [!CAUTION]
+> **Release Gate:** Do **not** remove `WebExperienceScreen` from a user-facing release build until:
+> 1. Every capability required for the unified core journey—including **native Home, coordinate-free Place Search, interactive pre-trip Map (pan, zoom, stop markers, route preview), Trip Planning, Saved Trips, Legal/App info, Navigation, and Return to Trip**—is implemented and verified on physical Android hardware (Samsung `SM_A366B`) and Android Auto DHU/vehicle.
+> 2. Every web-only capability (`Discovery`, `Convoy`, `Bookings`) either has native parity **or** has an explicit owner-approved disposition under `#78`.
+> 3. The non-destructive data migration (Section 5) is implemented, tested, and verified not to lose user data.
+
+---
+
+## 3. Current Data & State Flows vs. Target Architecture
+
+### Current State Silos (Code Inspection)
+1. **Hosted WebView (`localStorage`):** `myexplorer.saved-trips` (`sanitizePersistedTrip`) and `myexplorer.navigation-session` (`createNavigationSessionStore`), plus unsaved `TripPlanner` React state exported only via `MyExplorerWebViewManager.exportTripFromWebStorage()` scraping `.trip-planner-view` / `.trip-planner` React fibers.
+2. **React Native (`AsyncStorage`):** `myexplorer.mobile.saved-trips`, `myexplorer.mobile.draft-trip`, `myexplorer.mobile.draft-baseline`, `myexplorer.mobile.navigationSession.v1`.
+3. **Android Native (`SharedPreferences` + In-Memory):** `myexplorer_nav_session` (`snapshot_json`, `corrupt_snapshot_backup_json`) owned by `NavigationSessionRepository`, synced to `MyExplorerCarScreen`.
+
+### Target App-Packaged Architecture
+- **Shared Core (`packages/shared` or `src/shared` consumed by both web and `apps/mobile`):**
+  - Pure TypeScript models (`Trip`, `Stop`, `GeoPoint`, `Convoy`, `NavigationSessionSnapshot`), validation (`parseManualCoordinate`, `validateSnapshotStops`, coordinate bounds), stop sequence & route-key logic (`retypeStops`, `insertStopIntoTripStops`, `buildRouteKey`, `journeyDetailsEngine`), and session conflict/reconciliation rules.
+- **Platform-Specific Phone Layer (`apps/mobile/`):**
+  - **UI:** Native React Native screens (`HomeScreen`, `TripPlannerScreen` with interactive pre-trip map, `ActiveNavigationScreen`, `SavedTripsScreen`, `AppInfoAndLegalScreen`) — zero visible WebView shell or hosted-site dependency.
+  - **Adapters:** `StorageAdapter` (`AsyncStorage` + `SharedPreferences`), `PlaceSearchAdapter` (`Geocoder` / Places provider), `RoutingAdapter` (routing proxy / SDK), `MapAdapter` (interactive native `MapView` + `NavigationView` for active guidance).
+- **Phone + Android Auto Consistency:**
+  - `NavigationSessionRepository` + `NavigationController` remain the single runtime authority for `ACTIVE`, `PREPARING`, `RECONNECTING`, `PAUSED`, `COMPLETED`, and `ABANDONED`.
+  - Editing stops remains locked while `isNavigationSessionInProgress` is true (preventing phone/car route drift) until a future parked-only live-edit protocol is designed and verified.
+  - `#82` corrupt-backup protection must be tightened so Android Auto / controller transitions never clear `corrupt_snapshot_backup_json` without an explicit phone-side user decision.
+
+---
+
+## 4. Practical Milestones (Internal Dev vs. Release-Ready)
+
+| Milestone | Kind | Scope | Exit Gate |
 | --- | --- | --- | --- |
-| **Home / Explore** | **Implemented:** `ExplorePage` (`src/components/ExplorePage.tsx`) with curated destinations & `Start Planning` entry. | **Partial (via WebView only):** `WebExperienceScreen` hosts the deployed Vercel site. No native Home screen exists; iOS launches directly into `NativePlannerScreen`. | WebView loads `https://myexplorer-travel.vercel.app` on `emulator-5554` (`v4` release APK). Native Home: **Missing**. |
-| **Discovery (Stays / Pitstops)** | **Implemented:** `view === 'discovery'` (`src/App.tsx`) with `usePlaces`, `usePitstops`, `FilterPanel`, `DestinationCard` list, and map markers. | **Missing** in `NativePlannerScreen`. | **Unverified** on physical phone (`RFGYC0D9KHF`). |
-| **Place Search (by name/address)** | **Implemented:** `SearchBar` + `PlaceAutocompleteInput` (`src/lib/googlePlaces.ts`, Google Maps JS Places API). | **Implemented (Code, #83):** `NavigationBridgeModule.searchPlaces` using Android `android.location.Geocoder` + `placeSearch.ts` + search UI in `App.tsx` (with collapsed manual lat/lng fallback). **Missing on iOS.** | **NOT TESTED** on physical Samsung or emulator (blocked by Play-signed mismatch / emulator storage). `Geocoder` recall for POIs/businesses is **Unverified**. |
-| **Interactive Map** | **Implemented:** `src/components/Map.tsx` (Google Maps JS, markers, directions polyline, zoom/pan). | **Partial:** `NavigationMapView` wraps Google Navigation SDK `NavigationView` inside a fixed `240px` box in `Turn-by-Turn Navigation` (`MyExplorerNavigationViewManager.kt`), used for guidance rather than pre-trip interactive map browsing/pin selection. | WebView map tiles & route polyline verified on `emulator-5554` (`v4`); native `NavigationView` **NOT TESTED** on `#82`/`#83` commits. |
-| **Place Details** | **Partial (Code):** `LocationDetail.tsx` exists, but in `src/App.tsx` it only mounts under `view === 'discovery'` with no live navigation trigger from `ExplorePage` or `TripPlanner` (confirmed in `CHANGELOG.md` 2026-11-19). | **Missing** in `NativePlannerScreen`. | Verified **unreachable** on deployed web app (`v4` audit). |
-| **Trip Planning (Stops, Order, Undo)** | **Implemented:** `TripPlanner.tsx` (88 KB) with autocomplete stops, drag/reorder, auto-pitstops, journey timing, `StopCard`, `Timeline`. | **Implemented (Code, #83):** `NativePlannerScreen` (`App.tsx`) supports trip naming, coordinate-free search, intermediate stop insertion before destination, `Up`/`Down`/`Remove` + `Undo`, and active-navigation edit lock. | **NOT TESTED** on physical Samsung (`RFGYC0D9KHF`). |
-| **Route Preview & ETA** | **Implemented:** `googleRoutes.ts` + `journeyDetailsEngine.ts` + `RoutePlanner.tsx`. | **Partial:** `routingProxyClient.ts` computes distance/duration/polyline only when `app.json`'s `routingProxyUrl` is configured (currently empty `""` by default); otherwise `routeState` shows `stale`/`idle` notice. | Proxy tested locally in earlier milestones; default mobile build has `routingProxyUrl` unconfigured (**Unverified** end-to-end). |
-| **Saved Trips & Drafts** | **Implemented:** `Bookings.tsx` + `localStorage` key `myexplorer.saved-trips` (`browserKeyValueStore.ts`). Unsaved web drafts do not survive `force-stop`. | **Implemented (Code):** `AsyncStorage` keys `myexplorer.mobile.saved-trips`, `myexplorer.mobile.draft-trip`, `myexplorer.mobile.draft-baseline` (`storage.ts`). | Web `Save Trip` survived `force-stop` on `emulator-5554` (`v4`); native `AsyncStorage` draft-conflict flow **NOT TESTED** on device. |
-| **Turn-by-Turn Navigation & FG Service** | **Partial (Sim/Session only):** `navigationSessionController.ts` tracks web session state; no OS foreground location service. | **Implemented (Code):** Google Navigation SDK `7.6.1` (`NavigationController`, `NavigationSdkAdapter`, `NavigationForegroundService` `7201`), voice guidance, pause/resume/end. | Reached `preparing` in `v4` emulator test; earlier `flow_01`–`flow_05` proved active guidance on debug emulator, **NOT TESTED** on `#82`/`#83` commits or physical Samsung. |
-| **Return to Active Trip & Recovery** | **Partial:** `navigationSessionStore.ts` (`myexplorer.navigation-session` in `localStorage`). | **Implemented (Code, #82):** `NavigationSessionRepository` (`SharedPreferences`), `WebExperienceScreen` `current-trip-banner` + `Return to Current Trip` menu item, `App.tsx` launch/`AppState` auto-restore + conflict prompt. | **NOT TESTED** on physical Samsung, emulator (`#82`/`#83`), DHU, or vehicle. |
-| **Convoy & Legal Pages** | **Implemented:** `ConvoyPanel.tsx` (in `TripPlanner`), `LegalPage.tsx` + `SiteFooter.tsx` (`#privacy`, `#terms`, etc.). | **Missing** natively (only accessible inside `WebView`). | Legal/Convoy on mobile **Unverified** on physical Samsung. |
+| **M0: Hardware & Gap Verification** | Pre-req | Unblock Samsung (`SM_A366B`) testing (Play internal-testing build or owner-approved test track), verify `#82` phone/DHU recovery + fix corrupt-backup clearing, and verify `#83` `Geocoder` recall on real landmarks/businesses. | Real-device test evidence recorded for `#82` and `#83`; `Geocoder` vs. Places API decision made. |
+| **M1: Core Native Journey (Internal Dev)** | Internal Dev (WebView retained as fallback or feature-flagged until M3 gate) | Implement native `HomeScreen`, unified `TripPlannerScreen` **with interactive pre-trip map (pan, zoom, stop markers, route preview)**, `#83` stop search/management, `#82` `NavigationController` guidance + `Return to Trip`, and bundled App Info / Legal screens. | Automated Jest/TS/Lint/JUnit pass + internal dev verification on Samsung for `Home → Map & Search Stops → Start Nav → Background/Relaunch → Return to Trip`. |
+| **M2: Non-Destructive Data Migration** | Internal Dev | Implement and test `localStorage` → `AsyncStorage` migration (Section 5) with backup, idempotency, collision handling, and rollback. | All migration unit/integration tests pass with representative web payloads, corrupt payloads, and colliding IDs. |
+| **M3: Parity & Release-Ready Replacement** | Release Gate | Complete `#78`/`#80`-approved native Discovery, Place Details, and Convoy/Bookings disposition; remove `WebExperienceScreen` cold-launch WebView only after all release-gate criteria pass on Samsung, DHU, and vehicle. | Owner sign-off on `#78`–`#81`, full Samsung + DHU + vehicle pass, migration verified on upgrade build. |
 
 ---
 
-## 3. Current Data & Navigation State Flow
+## 5. Concrete Data-Migration Proposal (Not Yet Implemented)
 
-```
-┌───────────────────────────────────────────────────────────────────────────┐
-│ Hosted WebView (https://myexplorer-travel.vercel.app)                     │
-│  • State: React state + localStorage (myexplorer.saved-trips,             │
-│           myexplorer.navigation-session)                                  │
-│  • Handoff (one-way, user-triggered):                                     │
-│    ☰ Menu -> MyExplorerWebViewManager.exportTripFromWebStorage()          │
-│    reads .trip-planner-view/.trip-planner React fiber -> tripHandoff.ts   │
-└───────────────────────────────────┬───────────────────────────────────────┘
-                                    │ onOpenNativePlanner(trip)
-                                    ▼
-┌───────────────────────────────────────────────────────────────────────────┐
-│ React Native Shell (App.tsx -> NativePlannerScreen)                       │
-│  • State: AsyncStorage (saved-trips, draft-trip, draft-baseline,          │
-│           navigationSession.v1)                                           │
-│  • Place Search: MyExplorerNavigation.searchPlaces() -> Android Geocoder  │
-│  • Route Preview: optional HTTP POST to routingProxyUrl (unconfigured)    │
-│  • Navigation Commands: startNavigation / pause / resume / stop           │
-└───────────────────────────────────┬───────────────────────────────────────┘
-                                    │ React Native Bridge
-                                    ▼
-┌───────────────────────────────────────────────────────────────────────────┐
-│ Native Android Authoritative Session Layer                                │
-│  • NavigationSessionRepository (in-memory + SharedPreferences             │
-│    myexplorer_nav_session / snapshot_json + corrupt_snapshot_backup_json) │
-│  • NavigationController + NavigationSdkAdapter (Google Nav SDK 7.6.1)     │
-│  • NavigationForegroundService (notification 7201, location FGS)          │
-└───────────────────────────────────┬───────────────────────────────────────┘
-                                    │ Listener + CarHostUpdateCoordinator
-                                    ▼
-┌───────────────────────────────────────────────────────────────────────────┐
-│ Android Auto (MyExplorerCarAppService -> MyExplorerCarScreen)             │
-│  • NavigationTemplate + NavigationViewForAuto (ACTIVE/PREPARING/RECONN.)  │
-│  • MessageTemplate with Resume/End (PAUSED) or status text (ABANDONED)    │
-│  • UNRESOLVED (#82): Car/controller transitions can still clear backup    │
-└───────────────────────────────────────────────────────────────────────────┘
-```
+> [!NOTE]
+> **Status:** Proposed design only; migration code is **not** implemented yet.
 
-### Identified Data-Loss, Split-Brain, and Dependency Risks
+### Stored Schema Inventory (Code Inspection)
 
-1. **Three isolated persistence silos:**
-   - WebView `localStorage` (`myexplorer.saved-trips`) is completely invisible to `NativePlannerScreen` (`AsyncStorage`), and vice-versa. Retiring the WebView without migrating `localStorage` would hide trips users saved on the hosted web planner.
-2. **Brittle React-fiber DOM scraping for handoff:**
-   - `MyExplorerWebViewManager.exportTripFromWebStorage()` traverses `.trip-planner-view` / `.trip-planner` React internal fiber keys (`__reactFiber$`). Any frontend deploy to `myexplorer-travel.vercel.app` that renames that class or refactors state shape can break trip handoff without an app update.
-3. **Hosted-website runtime dependency & offline fragility:**
-   - Cold launch on Android requires HTTPS access to `https://myexplorer-travel.vercel.app`. Offline cold launch drops users onto a WebView error fallback instead of their saved trips and planner.
-4. **Unresolved `#82` corrupt-session backup risk:**
-   - `NavigationSessionRepository` quarantines corrupt `snapshot_json` into `corrupt_snapshot_backup_json`, but an Android Auto **End** (`stopNavigation` → `replaceOrClearPreservedCorruptSession`) or host-driven clear can discard that backup without an explicit user decision on the phone.
-5. **External service & platform coupling:**
-   - Web relies on `VITE_GOOGLE_MAPS_API_KEY` (browser JS Maps/Places/Routes).
-   - Native Android relies on Google Navigation SDK `7.6.1` (upload + Play App Signing SHA-1 authorized), Android `Geocoder` (Play Services + network), and an optional `routingProxyUrl` (`scripts/mobile-routing-proxy.mjs`) not yet hosted/configured in `apps/mobile/app.json`.
-   - **iOS:** Native map/navigation/place-search bridges are unimplemented; `App.tsx` falls back to `NativePlannerScreen` without a native map or `searchPlaces` provider.
-
----
-
-## 4. Proposed Architecture: App-Packaged Phone Experience
-
-### Core Principle
-Make the **React Native app the single app-packaged shell** for the entire phone journey (`Home → search and manage stops → begin navigation → return to the current trip`), eliminating the visible hosted WebView shell and React-fiber scraping while **preserving existing user data and avoiding premature removal of web-only capabilities**.
-
-### Layering: Shared vs. Platform-Specific
-
-| Layer | Shared TypeScript (`packages/` or `src/shared/` + `apps/mobile/src/`) | Platform-Specific Adapters & UI |
+| Store | Keys | Fields Stored |
 | --- | --- | --- |
-| **Domain & Validation** | `Trip`, `Stop`, `GeoPoint`, `retypeStops`, `insertStopIntoTripStops`, `normalizeTrip`, `parseManualCoordinate`, `tripHandoff` coordinate bounds. | None (pure TS). |
-| **Route & ETA Logic** | `buildRouteKey`, `routeSnapshotMatchesTrip`, `journeyDetailsEngine`, `stopSequence`, `autoPitstops`, `formatDistanceKm` / `formatDuration`. | Web uses `google.maps` Directions/Routes adapter; Mobile uses `routingProxyClient` / native Navigation SDK route estimates. |
-| **Navigation Session Rules** | `NavigationSessionSnapshot`, `isNavigationSessionInProgress`, `reconcileTripWithNavigationSession`, `preserveConflictingDraftInSavedTrips`, `validateSnapshotStops`. | Android: `NavigationSessionRepository` + `NavigationController` + `NavigationForegroundService`. Future iOS: native Nav SDK / MapKit adapter. |
-| **Storage** | Typed `TripStorage` & `SessionStorage` interfaces. | Web: `localStorage`; Mobile: `AsyncStorage` + native `SharedPreferences` (with one-time WebView `localStorage` import). |
-| **Place Search & Maps** | Normalized `PlaceSearchResult` + validation (`placeResultToStop`). | Web: Google Places JS; Mobile: `PlacesProvider` interface (initially Android `Geocoder`, upgradeable to Places SDK / proxy without UI rewrite) + native `MapView` / `NavigationView`. |
-| **UI & Car Surfaces** | Shared copy, status labels, and journey structure from approved `#80` guide. | Mobile: React Native screens (`Home`, `TripPlanner`, `ActiveNavigation`); Android Auto: `MyExplorerCarScreen` templates reading `NavigationSessionRepository`; Future CarPlay: native templates. |
+| **Web `localStorage`** | `myexplorer.saved-trips` (`src/lib/persistence.ts`) | `Trip[]`: `id`, `name`, `stops[]` (`id`, `name`, `location.{lat,lng}`, `type`, `source`, `isAutoSuggested` — note `sanitizePersistedTrip` strips `formattedAddress`, `rating`, `description`, `googleMapsUri`, `distanceFromPrevious`, `durationFromPrevious`, `arrivalTime`, `totalDistance`, `totalDuration`), `convoy` (`Convoy`), `savedAt`, `updatedAt`. |
+| **Web `localStorage`** | `myexplorer.navigation-session` (`src/lib/navigationSessionStore.ts`) | `PersistedNavigationSession`: `sessionId`, `tripId`, `tripSnapshot` (`Trip`), `status`, `startedAt`, `updatedAt`, `currentStopIndex`, `currentLegIndex`, `approvedPitstops`, `reconnectState`, `lastSyncSource`, etc. |
+| **Mobile `AsyncStorage`** | `myexplorer.mobile.saved-trips`, `draft-trip`, `draft-baseline`, `navigationSession.v1` | `Trip`: `id`, `name`, `stops[]` (includes optional `formattedAddress`, `source`, `isAutoSuggested`, etc.), `totalDistance`, `totalDuration`, `savedAt`, `updatedAt`, `routeSnapshot`. **Currently lacks `convoy` field.** |
+| **Android `SharedPreferences`** | `myexplorer_nav_session` (`snapshot_json`, `corrupt_snapshot_backup_json`) | `NavigationSessionSnapshot` JSON (`sessionId`, `tripId`, `tripName`, `status`, `stops[]`, `currentStopIndex`, `currentLegIndex`, `versionSeq`, `updatedAtMs`, `lastError`, etc.). |
 
-### Keeping Phone and Android Auto Consistent
-- **Single runtime authority:** `NavigationSessionRepository` (Android native) remains the sole runtime owner of `ACTIVE`, `PREPARING`, `RECONNECTING`, `PAUSED`, `COMPLETED`, and `ABANDONED` states for both `NativePlannerScreen` and `MyExplorerCarScreen`.
-- **Single planner trip store:** Once the WebView shell is replaced, there is **no web-to-native handoff boundary**—the phone planner edits `Trip` directly in `AsyncStorage` (locked while `isNavigationSessionInProgress` is true until a future parked-only live-edit protocol is approved and verified).
-- **Corrupt backup safety (#82):** `NavigationController` must require an explicit phone-side user confirmation (or dedicated recovery prompt) before clearing `corrupt_snapshot_backup_json`; Android Auto idle/end actions must not silently erase quarantined recovery data.
+### Field-by-Field Mapping & Preservation Policy
 
-### Practical Migration Sequence (Preserving Data & Capabilities)
+1. **`Trip.id`, `name`, `savedAt`, `updatedAt`:** Preserve verbatim; if `name` is blank, default to `"Imported Trip"`.
+2. **`Trip.stops[]` (ordered):** Preserve exact array order and apply `retypeStops` only after validating every stop's `id`, `name`, and finite `location.lat` (`[-90, 90]`) / `location.lng` (`[-180, 180]`). **Never silently drop an invalid stop:** if any stop in a trip is invalid, quarantine that trip entry into a migration-error/backup key and surface an actionable notice.
+3. **Fields without native UI yet (`Trip.convoy`, `Stop.source`, `Stop.isAutoSuggested`, `PersistedNavigationSession.approvedPitstops`):**
+   - Extend mobile `Trip` type with optional `convoy?: Convoy` (and `migratedFromWebAt?: string`) so `convoy` vehicles, participants, invites, and assignments are **preserved verbatim** in `AsyncStorage` rather than stripped.
+4. **ID-Collision & Duplicate Detection Policy:**
+   - **Exact duplicate** (`id` matches an existing mobile trip AND normalized `name` + `stops` + `convoy` match): skip without duplicating.
+   - **Same `id`, different content** (e.g., user edited a trip natively and also has a web trip with that `id`): keep the existing mobile trip untouched and import the web trip under a new unique ID (`${webTrip.id}-web-${timestamp}`) labeled `"<Name> (Imported from Web)"`.
+   - **Active navigation session (`myexplorer.navigation-session`):** Never auto-start a migrated web navigation session; import its `tripSnapshot` into Saved Trips if it contains valid stops not already saved, while leaving Android's `NavigationSessionRepository` as the sole active-session authority.
 
-1. **Phase 0 — Prerequisites & Owner Decisions (Pre-implementation):**
-   - Resolve `#82` device/DHU testing and corrupt-backup protection; verify `#83` `Geocoder` recall on physical Samsung; confirm `#78`/`#80` scope for Discovery, Bookings, Convoy, and Legal pages.
-2. **Phase 1 — One-Time Data Bridge & App-Packaged Core Journey (Milestone 1):**
-   - Build a clean native **Home** screen (`Plan a trip`, `Return to trip` / `Continue planning` card, **Saved Trips** list, `☰ → App info` + Legal links) and unify it with the #83 **Trip Planner** and **Turn-by-Turn Navigation** inside `apps/mobile`—behind a clean internal navigation stack with **no visible WebView shell** on cold launch.
-   - Add a **silent, one-time WebView `localStorage` → `AsyncStorage` migration** (or explicit "Import trips from previous web planner" fallback) reading `myexplorer.saved-trips` before retiring `WebExperienceScreen` so existing users do not lose saved trips.
-3. **Phase 2 — Map & Place Search Parity:**
-   - Add an interactive pre-trip map (pan/zoom, stop pins, route polyline via hosted routing proxy) and upgrade place search from `Geocoder` to Google Places API (if Samsung testing shows `Geocoder` POI recall is insufficient).
-4. **Phase 3 — Secondary Capabilities (Per #78/#80 Approval) & iOS / Car:**
-   - Migrate or link Discovery (`Explore` / `Stays` / `Pitstops`), `Place Details`, and `Legal` natively (or keep an explicit secondary web link only if owner approves deferring them).
-   - Address Android Auto parked-only search / stop-edit architecture (`#83`) and future CarPlay (`AUTOMOTIVE_REFERENCE.md`).
+### Non-Destructive Execution, Failure/Retry & Rollback
+1. **Backup first:** Before mutating `AsyncStorage`, snapshot existing `myexplorer.mobile.saved-trips` and raw WebView export payload into `myexplorer.mobile.migration-backup.v1` and set a status flag (`pending` → `completed` | `failed`).
+2. **Idempotency & retry:** Mark completion per source payload hash/version; if interrupted mid-write, re-running on next launch resumes from backup without duplicating already-imported trips.
+3. **Failure / Rollback:** If `AsyncStorage` write or validation fails, restore `myexplorer.mobile.saved-trips` from `migration-backup.v1`, keep WebView `localStorage` untouched, and show a non-blocking retry notice.
+4. **Offline / Unavailable WebView storage:** WebView `localStorage` is stored locally on the device (not on Vercel), so migration **does not require network access**. However, **investigation needed:** confirm the exact Android API/hidden-WebView or Chromium `Local Storage/leveldb` reader mechanism so the native app can read `https://myexplorer-travel.vercel.app` origin storage reliably during upgrade without flashing a visible WebView to the user.
 
----
-
-## 5. Recommended First Implementation Milestone (Milestone 1)
-
-**Goal:** Deliver the unified app-packaged core journey on Android with zero visible hosted WebView switching:
-
-> **Home → Search and manage stops → Begin navigation → Return to the current trip**
-
-### Scope of Milestone 1
-- **Native Home screen (`HomeScreen`):**
-  - Brand header + `☰` menu (**App info** with runtime version, **Legal & Privacy**).
-  - Priority **Current / Active Trip** card (`Return to Trip` when active/paused, `Continue Planning` when a draft exists, or dismissed/clear status when canceled/completed—reusing #82's `NavigationSessionSnapshot` reconciliation).
-  - Primary **"Plan a trip"** CTA and **Saved Trips** quick-open list.
-- **Unified Planner & Navigation flow (`TripPlannerScreen`):**
-  - Directly opens from Home ("Plan a trip", "Continue Planning", or a Saved Trip) without any WebView handoff or fiber scraping.
-  - Uses #83's coordinate-free place search, intermediate stop insertion, `Up`/`Down`/`Remove` + `Undo`, and active-navigation edit lock.
-  - Uses #82's `NavigationController` / `NavigationForegroundService` for `Start Navigation`, `Pause`, `Resume`, `End`, and relaunch recovery.
-- **Data Preservation:**
-  - Non-destructive import of any existing `myexplorer.saved-trips` from WebView storage on upgrade, preserving existing `AsyncStorage` drafts and saved trips.
-
-### Milestone 1 Acceptance Criteria & Verification Plan
-1. **Cold start (no active session):** App launches offline-capable into native **Home** in < 2s with no `WebExperienceScreen` / `myexplorer-travel.vercel.app` load.
-2. **Data migration:** Existing `myexplorer.saved-trips` and `myexplorer.mobile.saved-trips` appear in **Saved Trips** without duplicates or data loss.
-3. **Core journey:** User taps **Plan a trip** → **Add stop** → searches by name/address (no lat/lng) → adds origin, destination, and intermediate stop → taps **Start Navigation** → reaches active guidance with notification `7201`.
-4. **Background, relaunch, and Return to Trip:** Minimizing and reopening restores the active/paused trip; navigating back to **Home** shows the **Return to Trip** card and returns to the exact trip and stops.
-5. **Regression & device gates:** All Jest, TypeScript, ESLint, and Android JUnit tests pass, **plus** physical Samsung (`SM_A366B`) + Android Auto DHU verification (`PASS`) before closing `#84`.
+### Required Migration Test Matrix (Before Implementation)
+- Representative legacy `myexplorer.saved-trips` with multi-stop `Stop` metadata and `Convoy` data.
+- Partial/corrupt web JSON or stop with invalid coordinates (quarantined, no partial trip created, existing mobile trips untouched).
+- Repeated migration runs (strictly idempotent, zero duplicates).
+- ID collision with differing content (both mobile and web versions preserved with distinct IDs/labels).
+- Simulated write failure / mid-migration interruption (rollback preserves both web and mobile data).
 
 ---
 
-## 6. Tradeoffs, Open Questions & Decisions Needed From Owner
+## 6. Verification & Acceptance Criteria (Distinguished by Environment)
 
-1. **Place Search Provider (`Geocoder` vs. Google Places API):**
-   - *Tradeoff:* Android `Geocoder` requires no new API key or Cloud setup, but has weaker POI/business recall. Google Places API (New) gives rich business results and addresses, but requires hosting a proxy or configuring Android-restricted Places SDK billing/quotas.
-   - *Decision needed:* Approve testing `Geocoder` first on Samsung (`#83`) or authorize Places SDK / proxy for Milestone 1/2.
-2. **Routing Proxy Hosting (`scripts/mobile-routing-proxy.mjs`):**
-   - *Tradeoff:* Pre-navigation route distance/duration/polyline on native currently waits on `routingProxyUrl` (`""` in `app.json`).
-   - *Decision needed:* Confirm where the routing proxy will be hosted (or whether pre-nav route preview is deferred to Milestone 2 while Navigation SDK handles active guidance).
-3. **Fate of Web-Only Views During Transition (`Discovery`, `LocationDetail`, `Bookings`, `Convoy`, `Legal`):**
-   - *Tradeoff:* Removing `WebExperienceScreen` immediately without native equivalents would hide Discovery and Convoy; keeping a secondary **"Explore (Web)"** menu link preserves access until `#78` decides which features are native-built vs. sunsetted.
-   - *Decision needed:* Confirm whether Milestone 1 removes the default WebView launch while keeping an optional secondary web/legal link, or waits until Discovery/Legal are native.
-4. **Play Internal Testing Track for Physical Samsung Verification:**
-   - *Blocker:* Your Samsung (`RFGYC0D9KHF`) has a Play-signed install (`9a:29:70:e0:...`) that cannot be updated in-place by locally signed APKs without uninstalling.
-   - *Decision needed:* Approve cutting a bumped Play internal-testing AAB after reviewing `#82`/`#83` commits so real-device verification can unblock `#82`, `#83`, and `#84` Milestone 1.
+- **Automated checks (code/unit):** Mobile Jest, TypeScript (`tsc --noEmit`), ESLint, Android JUnit (`testDebugUnitTest`), plus migration suite.
+- **Physical Samsung (`SM_A366B` / `RFGYC0D9KHF`):** Currently **BLOCKED** by Play App Signing mismatch (`9a:29:70:e0:...`); required for `Geocoder` landmark/business availability & recall verification, interactive pre-trip map gestures, cold start, background/relaunch, and `#82`/`#83` acceptance.
+- **Emulator (`Medium_Phone_API_36.1`):** Currently **BLOCKED** by `INSTALL_FAILED_INSUFFICIENT_STORAGE` (`564M` free on `/data`).
+- **Android Auto DHU & Actual Vehicle:** **NOT TESTED**; required before claiming `#82`, `#83`, or `#84` release readiness.
+- **Cold-start performance:** Any cold-start latency target must be defined against a specific reference device, warm/cold state, and measurement method (e.g., Android `adb shell am start -W` / `Displayed` metric on `SM_A366B`) rather than an arbitrary ungrounded threshold.
+
+---
+
+## 7. Decisions Needed From Owner Before Implementation
+
+1. **Samsung Verification Path:** Approve cutting a bumped Play internal-testing AAB (or freeing emulator space) so `#82`, `#83` (`Geocoder` availability & POI recall), and M0 can be verified on real hardware.
+2. **Pre-Trip Map & Routing Proxy:** Confirm where `scripts/mobile-routing-proxy.mjs` will be hosted for Milestone 1's interactive pre-trip map route preview.
+3. **Feature Disposition (`#78`–`#81`):** Confirm native parity scope vs. sunset/deferral plan for `Discovery`, `LocationDetail`, `Convoy`, and `Bookings` before any release build removes `WebExperienceScreen`.
+4. **Data-Migration Mechanism:** Approve investigating a one-time background/hidden-WebView `localStorage` export bridge during upgrade (keeping `WebExperienceScreen` hidden/non-user-facing during migration) vs. a Chromium storage reader.
