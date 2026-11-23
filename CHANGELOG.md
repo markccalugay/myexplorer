@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- 2026-11-23: Added codebase audit and architecture proposal for issue `#86` ([`docs/convoy-stop-proposals-voting-architecture.md`](docs/convoy-stop-proposals-voting-architecture.md), linked from [`README.md`](README.md)) documenting the current local-only `TripPlanner.tsx` recommendation voting behavior, `Convoy` / `#12`–`#14` gaps, required owner product decisions (eligibility, majority/ties/disconnects, time/distance expiry, organizer authority, route-failure/trip-end handling), authoritative multi-user sync design, idempotent stop insertion, Android Auto safety constraints, and a 4-milestone implementation plan. No application code, voting rules, version numbers, or build configuration were changed.
+
 ### Fixed
 - 2026-11-23: Fixed `NavigationView` lifecycle regression in `MyExplorerNavigationViewManager.kt` (`#85`):
   - **Lifecycle state machine (`NavigationViewLifecycleStateMachine`):** Fixed `onDestroy()` to invoke `onStop()` before setting `destroyed = true` so an active `NavigationView` receives `onPause()` -> `onStop()` -> `onDestroy()` in order while remaining idempotent across repeated pause/stop/destroy/host callbacks and never recreating a destroyed view. Preserved `MapZoomEventCoordinator` camera-listener cleanup and post-destruction `getMapAsync` rejection (`NavigationViewLifecycleTest.kt`: 3 tests).
