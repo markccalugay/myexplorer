@@ -1,12 +1,12 @@
 # Convoy Stop Proposals, Voting, and Organizer Approval (Issue #86)
 
-**Status:** Specification & Architecture Proposal (**Core voting rules approved; membership-during-vote & vote-change rules pending owner approval; no implementation yet**)
+**Status:** Specification & Architecture Proposal (**All #86 voting rules approved; no implementation yet**)
 **Issue:** [#86](https://github.com/markccalugay/myexplorer/issues/86)
 **Related Issues:** [#12](https://github.com/markccalugay/myexplorer/issues/12)–[#14](https://github.com/markccalugay/myexplorer/issues/14) (Convoy Voice), [#82](https://github.com/markccalugay/myexplorer/issues/82) (Navigation Session), [#83](https://github.com/markccalugay/myexplorer/issues/83) (Coordinate-free Stop Search), [#84](https://github.com/markccalugay/myexplorer/issues/84) (Unified Native Phone Experience)
 **Date:** 2026-11-23
 
 > [!IMPORTANT]
-> **Status Separation:** This document explicitly separates **(1) Verified / Observed Codebase State**, **(2) Owner-Approved Product Decisions**, **(3) Recommendations Pending Owner Approval**, and **(4) Unimplemented Architecture**. Do not treat unimplemented architecture—especially live route replacement during active navigation or per-person identity—as working today.
+> **Status Separation:** This document explicitly separates **(1) Verified / Observed Codebase State**, **(2) Owner-Approved Product Decisions**, **(3) Deferred Future Enhancements**, and **(4) Unimplemented Architecture**. Do not treat unimplemented architecture—especially live route replacement during active navigation or per-person identity—as working today.
 
 ---
 
@@ -65,11 +65,11 @@ All findings below come from **static source inspection** of the repository. No 
    - Every new proposal opens with a **5-minute** (`300_000` ms) voting window (`extensionsUsed = 0`, `maxExtensions = 3`).
    - While a proposal remains `open`, the trip initiator may extend the deadline **up to 3 times**, choosing **1, 2, or 5 additional minutes** per extension.
    - All participants must see the updated deadline (`expiresAt`) and how many extensions remain (`3 - extensionsUsed`).
-   - **Distance-based expiry is removed** from the initial voting rules (see §2.3).
+   - **Distance-based expiry is removed** from the initial voting rules (see §2.2).
 6. **Initiator Override & Proposer Withdrawal (Atomic Resolution):**
    - The trip initiator can **approve** or **reject** an `open` proposal at any time.
    - The proposer can **withdraw** their own proposal while it remains `open`.
-   - **Competing actions:** Votes (including the final vote that triggers early resolution), vote changes (if approved), initiator approve/reject, proposer withdrawal, deadline expiry, and trip completion execute as **atomic server-side state transitions** guarded by `status === 'open'` and `tripRevision`. Only the **first** committed transition from `open` → terminal succeeds; any concurrent or late action sees the terminal state and is rejected without applying a second decision.
+   - **Competing actions:** Votes (including the final vote that triggers early resolution), vote changes, initiator approve/reject, proposer withdrawal, deadline expiry, and trip completion execute as **atomic server-side state transitions** guarded by `status === 'open'` and `tripRevision`. Only the **first** committed transition from `open` → terminal succeeds; any concurrent or late action sees the terminal state and is rejected without applying a second decision.
 7. **Automatic Stop Addition & Honest Routing Failure State:**
    - Only an **approved** proposal (`accepted_majority` or `accepted_organizer`) adds the stop to the authoritative trip route automatically.
    - A **rejected**, **withdrawn**, **expired**, or **cancelled** proposal must **never** be added to the route.
@@ -77,8 +77,19 @@ All findings below come from **static source inspection** of the repository. No 
 8. **Trip Completion Cancels Open Proposals:**
    - When the trip concludes, any `open` proposal is immediately **cancelled** (`cancelled`) and its stop is **not** added.
    - Participants are informed that voting ended because the trip concluded (via in-app modal when active in the app, or notification when appropriate and supported in the background, subject to platform notification support and without delivery guarantees).
+9. **Eligible Voter List & Mid-Vote Membership Changes:**
+   - Set the eligible voter list (`eligibleVoterIds`) when a proposal opens.
+   - Someone who joins the convoy after voting starts becomes eligible starting with the **next** proposal.
+   - Temporary network loss, backgrounding the app, a closed app, or a dead battery does **not** remove someone from the convoy or `eligibleVoterIds`. If they do not vote by the deadline, they abstain.
+   - If someone deliberately leaves or is removed from the convoy while voting is open, remove them from `eligibleVoterIds` and **exclude any vote they already cast**.
+   - If that departure means all remaining eligible people have voted, resolve immediately using `yes > no`. If **no eligible voters remain**, **expire** the proposal (`expired`) without adding the stop.
+10. **Changing a Vote While Open:**
+   - An eligible person may change their `yes`/`no` vote while the proposal remains `open`.
+   - Once the last eligible person votes, resolve immediately and stop the timer; no further vote changes are accepted.
+   - Changing a vote does **not** create or submit another stop recommendation.
+   - Competing actions (a vote change racing with the final vote, deadline expiry, initiator approve/reject, proposer withdrawal, or trip completion) resolve atomically on the server (`status === 'open'` and `now < expiresAt` guard); a losing or late vote change is rejected (`PROPOSAL_ALREADY_CLOSED`) and returns the committed terminal state.
 
-#### Concrete Tallying & Timer Extension Examples
+#### Concrete Tallying, Membership, & Timer Extension Examples
 
 | Scenario | Cast Votes (`Yes` / `No`) | Non-Votes (Abstain) | Timing | Outcome |
 |---|---|---|---|---|
@@ -87,6 +98,9 @@ All findings below come from **static source inspection** of the repository. No 
 | **Large convoy tie (`50 Yes` / `50 No`)** | `50 Yes`, `50 No` | 10 | Deadline | **Does not pass** (`50 === 50`, tie) |
 | **5 people, all 5 vote early (`3 Yes` / `2 No`)** | `3 Yes`, `2 No` | 0 | **Stops timer immediately** | **Passes** (`3 > 2`) |
 | **5 people, 3 vote (`2 Yes` / `1 No`, 2 offline)** | `2 Yes`, `1 No` | 2 | Deadline | **Passes** (`2 > 1`; disconnected people stay in convoy, abstain at deadline) |
+| **Voter changes `No -> Yes` while open** | `2 Yes` (was `1 Yes`, `1 No`), 1 pending | 1 | Remains `open` | Vote updates in place; no new proposal created |
+| **Deliberate departure after voting** | 3 eligible (`2 Yes`, `1 No` leaves) | 0 | **Stops timer immediately** | `No` vote excluded; remaining 2 voted `2 > 0` → **Passes** |
+| **All eligible voters depart while open** | 0 eligible remain | 0 | **Stops timer immediately** | **Expires** (`expired`); stop not added |
 | **4 people, 2 vote (`1 Yes` / `1 No`)** | `1 Yes`, `1 No` | 2 | Deadline | **Does not pass** (`1 === 1`, tie) |
 | **4 people, 0 vote (`0 Yes` / `0 No`)** | `0 Yes`, `0 No` | 4 | Deadline | **Expires** (`expired`); stop not added; in-app modal / bg notification |
 
@@ -96,20 +110,7 @@ All findings below come from **static source inspection** of the repository. No 
   3. At `12:11:45`, initiator extends by `+1 min` → `expiresAt = 12:13:00`, `extensionsRemaining = 0`.
   4. Any 4th extension request is rejected (`NO_EXTENSIONS_REMAINING`).
 
-### 2.2 Proposed Rules Pending Owner Approval
-
-> [!WARNING]
-> **Not yet approved — do not implement as settled rules until confirmed by the owner:**
-> 1. **Participation Changes During an Open Vote (Pending Approval):**
->    - **Joining mid-vote:** Snapshot the eligible voter list (`eligibleVoterIds`) when the proposal opens. A person who joins the convoy while a proposal is already `open` does **not** vote on that in-flight proposal and becomes eligible starting with the next proposal.
->    - **Explicit departure vs. temporary disconnection:**
->      - **Temporary disconnection** (network loss, app backgrounded, closed app, dead battery) **never** counts as leaving the convoy. The person remains in `eligibleVoterIds`; if they reconnect before the deadline they can still vote, and if they do not vote by the deadline they are treated as abstaining (Decision 2).
->      - **Actual departure** (the person explicitly leaves the convoy or is removed by the initiator while `open`) removes them from `eligibleVoterIds` for that open proposal (and clears any uncast slot). If they had not voted and all remaining eligible people have now voted, the proposal **resolves immediately** via `yes > no` (or expires if 0 remain). *(If they already voted before explicitly leaving, their cast vote is also removed/or retained — proposed default: remove from `eligibleVoterIds` and exclude their vote so only remaining convoy members decide.)*
-> 2. **Changing a Vote While Open (Pending Approval):**
->    - **Proposed rule:** A person may change their own vote (`yes` ↔ `no`) while the proposal remains `open`. Once the last eligible person casts a vote, the proposal resolves immediately, the timer stops, and **no further vote changes are accepted**.
->    - **Atomic race handling:** Every vote/change request runs in a server transaction checking `status === 'open'` and `now < expiresAt`. If a vote change arrives after the final eligible person's vote, initiator approve/reject, or deadline expiry has already committed a terminal status, the server rejects the change (`PROPOSAL_ALREADY_CLOSED`) and returns the authoritative terminal state.
-
-### 2.3 Deferred Future Enhancements
+### 2.2 Deferred Future Enhancements
 
 - **Distance-based expiry (Deferred):** Excluded from `#86` initial scope. Any future distance-based expiry will require defining: which vehicle is the **lead vehicle**, what happens when lead location is unavailable or stale, GPS accuracy tolerances, and fallback to time-only expiry on failure.
 
@@ -125,9 +126,9 @@ All findings below come from **static source inspection** of the repository. No 
   - Add `initiatorId: string` and `tripRevision: number` to `Trip` / `Convoy`.
 - **Authorization & duplicate-vote prevention:** Clients authenticate with their `userId` / verified session token and can only write `votes[theirOwnMemberId]` while `status === 'open'` and `memberId ∈ eligibleVoterIds`. Only `initiatorId` can approve, reject, or extend; only `proposedByMemberId` can withdraw.
 - **State transitions (`open` → terminal happens at most once):**
-  - `open` → `accepted_majority` (all eligible voted with `yes > no`, or deadline reached with `yes > no`)
-  - `open` → `rejected_majority` (all eligible voted with `yes <= no`, or deadline reached with `yes <= no` and `yes + no > 0`)
-  - `open` → `expired` (deadline reached with `yes === 0 && no === 0`)
+  - `open` → `accepted_majority` (all remaining eligible people voted with `yes > no`, or deadline reached with `yes > no`)
+  - `open` → `rejected_majority` (all remaining eligible people voted with `yes <= no`, or deadline reached with `yes <= no` and `yes + no > 0`)
+  - `open` → `expired` (deadline reached with `yes === 0 && no === 0`, or all eligible voters depart leaving `0` eligible voters)
   - `open` → `accepted_organizer` (initiator approves while `open`)
   - `open` → `rejected_organizer` (initiator rejects while `open`)
   - `open` → `withdrawn` (proposer withdraws while `open`)
@@ -164,8 +165,8 @@ Because `apps/mobile/App.tsx` (`L1144-L1153`) currently locks stop edits during 
 ## 4. Implementation Milestones & Acceptance Criteria
 
 1. **Milestone 1 — Shared Proposal Domain Contract & Deterministic Reducer:**
-   - Pure TypeScript types and reducer implementing Approved Decisions 1–8 (and confirmed §2.2 rules) with per-person `memberId`/`userId` keying and `eligibleVoterIds`.
-   - *Tests:* Unit tests for **individual vs. group voting** (3-member group + 1 solo = 4 votes), **membership changes during open vote** (new joiner excluded until next proposal; explicit departure unblocks early resolution), **temporary disconnection** (does not remove voter; deadline treats as abstention), **vote-change races** (change while `open` succeeds; change racing final vote or deadline rejected atomically), **no votes at deadline** (`0/0 -> expired`), **all votes arriving early** (timer stopped, immediate `yes > no`), **ties** (`1/1`, `2/2`, `50/50 -> rejected`), **large convoy** (`51 Yes / 50 No -> accepted`), **trip completion** (`open -> cancelled`), **extension limits** (`1/2/5` min up to 3x), **races between final vote and initiator action**, and **duplicate-insertion prevention**.
+   - Pure TypeScript types and reducer implementing Approved Decisions 1–10 with per-person `memberId`/`userId` keying and `eligibleVoterIds`.
+   - *Tests:* Unit tests for **individual vs. group voting** (3-member group + 1 solo = 4 votes), **membership changes during open vote** (new joiner excluded until next proposal; deliberate departure excludes any already-cast vote and triggers immediate resolution when remaining eligible people have voted, or `expired` without adding stop when 0 eligible remain), **temporary disconnection** (does not remove voter; deadline treats as abstention), **changing a vote while open** (updates vote without creating a new stop recommendation; final-vote resolution blocks further changes), **vote-change races** (racing with final vote, deadline, or closing action resolves atomically), **no votes at deadline** (`0/0 -> expired`), **all votes arriving early** (timer stopped, immediate `yes > no`), **ties** (`1/1`, `2/2`, `50/50 -> rejected`), **large convoy** (`51 Yes / 50 No -> accepted`), **trip completion** (`open -> cancelled`), **extension limits** (`1/2/5` min up to 3x), **races between final vote and initiator action**, and **duplicate-insertion prevention**.
 2. **Milestone 2 — Authoritative Backend Sync, Identity, & Reconnect Layer:**
    - Trip-scoped realtime store, per-person/initiator authorization (preventing duplicate votes across devices), atomic proposal transitions, and offline/reconnect state reconciliation.
    - *Acceptance & Tests:* Multi-client integration tests for per-person group voting, duplicate-vote rejection across devices, vote-change vs. final-vote vs. initiator-override vs. expiry vs. trip-end races, temporary disconnect/reconnect recovery, and duplicate-decision rejection.
