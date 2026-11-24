@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- 2026-11-24, approximately 4:48 PM Asia/Manila: Owner reported uploading the Android internal-testing build (`versionCode 5`, `versionName "1.0"`) to Google Play. This is the report time; the exact upload time and review status have not been independently verified.
 - 2026-11-24: Prepared signed internal-testing Android AAB (`versionCode 5`, `versionName "1.0"`) for `#87` tracking `#82`–`#86`:
   - **Build & verification:** Built [`apps/mobile/android/app/build/outputs/bundle/release/app-release.aab`](apps/mobile/android/app/build/outputs/bundle/release/app-release.aab) (`67M`, SHA-256 `9c588b45785d580dc415fb4a4bcabc0b09c0365fc189b7b0160300d7a5236b6c`), signed with the Play upload keystore (`jar verified`, signer SHA-256 `07:8C:FC:1A:F3:8D:70:5F:4E:95:83:42:86:40:49:75:78:FF:17:23:0D:8E:38:58:D8:CE:E4:84:46:C3:AD:A7`). `bundletool dump manifest` confirmed `package="com.thestillfoundation.myexplorer"`, `versionCode="5"`, `versionName="1.0"`, preserved `com.google.android.gms.car.application`, `MyExplorerCarAppService`, and `NavigationForegroundService`, and confirmed `android.hardware.type.automotive` is absent.
   - **Tracked `#87` scope status:**
