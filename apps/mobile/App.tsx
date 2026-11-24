@@ -15,6 +15,12 @@ import {
 } from 'react-native';
 import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
 import appConfig from './app.json';
+import {
+  resolveBackNavigationTarget,
+  type AppScreen,
+  type NativeReturnTarget,
+} from './src/home/homeNavigation';
+import {NativeHomeScreen} from './src/home/NativeHomeScreen';
 import {WebExperienceScreen} from './src/web/WebExperienceScreen';
 
 import {
@@ -94,10 +100,12 @@ const ROUTE_REFRESH_DEBOUNCE_MS = 800;
 
 export function NativePlannerScreen({
   onBackToExplore,
+  backLabel = 'Explore (Web)',
   handoffTrip,
   handoffKey,
 }: {
   onBackToExplore?: () => void;
+  backLabel?: string;
   handoffTrip?: Trip | null;
   handoffKey?: number;
 }) {
@@ -763,6 +771,7 @@ export function NativePlannerScreen({
           isDarkMode ? styles.safeAreaDark : styles.safeAreaLight,
         ]}>
         <AppContent
+          backLabel={backLabel}
           onBackToExplore={onBackToExplore}
           currentTrip={currentTrip}
           hasUnsavedChanges={hasUnsavedChanges}
@@ -878,6 +887,7 @@ export function NativePlannerScreen({
 }
 
 function AppContent({
+  backLabel,
   currentTrip,
   hasUnsavedChanges,
   navigationSession,
@@ -925,6 +935,7 @@ function AppContent({
   stopDraft,
   validationMessage,
 }: {
+  backLabel: string;
   currentTrip: Trip;
   hasUnsavedChanges: boolean;
   navigationSession: NavigationSessionSnapshot;
@@ -986,7 +997,7 @@ function AppContent({
 
         <View style={styles.actionRow}>
           {onBackToExplore ? (
-            <ActionButton label="Explore (Web)" onPress={onBackToExplore} />
+            <ActionButton label={backLabel} onPress={onBackToExplore} />
           ) : null}
           <ActionButton label="New Trip" onPress={onCreateNewTrip} />
           <ActionButton label="Save Trip" onPress={onSaveTrip} />
@@ -1787,9 +1798,11 @@ const styles = StyleSheet.create({
 });
 
 function App() {
-  const [screen, setScreen] = useState<'web' | 'native'>(
+  const [screen, setScreen] = useState<AppScreen>(
     Platform.OS === 'android' ? 'web' : 'native',
   );
+  const [nativeReturnTarget, setNativeReturnTarget] =
+    useState<NativeReturnTarget>('web');
   const [handoffTrip, setHandoffTrip] = useState<Trip | null>(null);
   const [handoffKey, setHandoffKey] = useState(0);
   const [navigationSession, setNavigationSession] = useState<NavigationSessionSnapshot>(
@@ -1809,6 +1822,7 @@ function App() {
           if (allowAutoRestore && !hasAutoRestoredRef.current) {
             hasAutoRestoredRef.current = true;
             if (isNavigationSessionInProgress(restored)) {
+              setNativeReturnTarget('web');
               setScreen('native');
             }
           }
@@ -1834,15 +1848,20 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (Platform.OS !== 'android' || screen !== 'native') {
+    const backTarget = resolveBackNavigationTarget({
+      currentScreen: screen,
+      nativeReturnTarget,
+      platformOs: Platform.OS,
+    });
+    if (!backTarget) {
       return undefined;
     }
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setScreen('web');
+      setScreen(backTarget);
       return true;
     });
     return () => sub.remove();
-  }, [screen]);
+  }, [nativeReturnTarget, screen]);
 
   const currentNoticeKey = `${navigationSession.sessionId}:${navigationSession.status}`;
   const visibleWebSession =
@@ -1856,13 +1875,18 @@ function App() {
       <SafeAreaProvider>
         <WebExperienceScreen
           navigationSession={visibleWebSession}
-          onReturnToCurrentTrip={() => setScreen('native')}
+          onReturnToCurrentTrip={() => {
+            setNativeReturnTarget('web');
+            setScreen('native');
+          }}
           onDismissSessionNotice={() => setDismissedNoticeKey(currentNoticeKey)}
+          onOpenNativeHome={__DEV__ ? () => setScreen('home') : undefined}
           onOpenNativePlanner={trip => {
             if (trip) {
               setHandoffTrip(trip);
               setHandoffKey(k => k + 1);
             }
+            setNativeReturnTarget('web');
             setScreen('native');
           }}
         />
@@ -1870,12 +1894,48 @@ function App() {
     );
   }
 
+  if (screen === 'home') {
+    return (
+      <SafeAreaProvider>
+        <NativeHomeScreen
+          navigationSession={navigationSession}
+          onPlanTrip={() => {
+            setHandoffTrip(null);
+            setNativeReturnTarget('home');
+            setScreen('native');
+          }}
+          onReturnToCurrentTrip={() => {
+            setHandoffTrip(null);
+            setNativeReturnTarget('home');
+            setScreen('native');
+          }}
+          onOpenSavedTrip={trip => {
+            setHandoffTrip(trip);
+            setHandoffKey(k => k + 1);
+            setNativeReturnTarget('home');
+            setScreen('native');
+          }}
+          onBackToWeb={
+            Platform.OS === 'android' ? () => setScreen('web') : undefined
+          }
+        />
+      </SafeAreaProvider>
+    );
+  }
+
+  const plannerBackTarget = resolveBackNavigationTarget({
+    currentScreen: 'native',
+    nativeReturnTarget,
+    platformOs: Platform.OS,
+  });
+
   return (
     <NativePlannerScreen
       handoffTrip={handoffTrip}
       handoffKey={handoffKey}
+      backLabel={nativeReturnTarget === 'home' ? 'Back to Home' : 'Explore (Web)'}
       onBackToExplore={
-        Platform.OS === 'android' ? () => setScreen('web') : undefined
+        plannerBackTarget ? () => setScreen(plannerBackTarget) : undefined
       }
     />
   );

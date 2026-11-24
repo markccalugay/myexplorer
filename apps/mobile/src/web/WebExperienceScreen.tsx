@@ -34,6 +34,7 @@ export const MYEXPLORER_WEB_URL = 'https://myexplorer-travel.vercel.app';
 
 type Props = {
   onOpenNativePlanner: (handoffTrip: Trip | null) => void;
+  onOpenNativeHome?: () => void;
   navigationSession?: NavigationSessionSnapshot | null;
   onReturnToCurrentTrip?: () => void;
   onDismissSessionNotice?: () => void;
@@ -93,6 +94,7 @@ function getSessionBannerCopy(session: NavigationSessionSnapshot): {
 
 export function WebExperienceScreen({
   onOpenNativePlanner,
+  onOpenNativeHome,
   navigationSession,
   onReturnToCurrentTrip,
   onDismissSessionNotice,
@@ -374,6 +376,20 @@ export function WebExperienceScreen({
               }}>
               <Text style={styles.menuItemText}>Reload</Text>
             </Pressable>
+            {__DEV__ && onOpenNativeHome ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Native Home (Dev Preview)"
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  onOpenNativeHome();
+                }}>
+                <Text style={styles.menuItemText}>
+                  Native Home (Dev Preview)
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="App info"
