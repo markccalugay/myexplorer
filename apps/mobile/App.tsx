@@ -104,12 +104,14 @@ export function NativePlannerScreen({
   handoffTrip,
   handoffKey,
   handoffSource = 'web',
+  onConsumeHandoff,
 }: {
   onBackToExplore?: () => void;
   backLabel?: string;
   handoffTrip?: Trip | null;
   handoffKey?: number;
   handoffSource?: 'web' | 'home';
+  onConsumeHandoff?: (consumedKey: number) => void;
 }) {
   const isDarkMode = useColorScheme() === 'dark';
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -144,15 +146,35 @@ export function NativePlannerScreen({
   const [navigationSession, setNavigationSession] = useState<NavigationSessionSnapshot>(
     IDLE_NAVIGATION_SESSION,
   );
-  const [hasRestoredNavSession, setHasRestoredNavSession] = useState(
-    Platform.OS !== 'android',
+  const [sessionRestoreStatus, setSessionRestoreStatus] = useState<
+    'loading' | 'ready' | 'error'
+  >('loading');
+  const [sessionRestoreError, setSessionRestoreError] = useState<string | null>(
+    null,
   );
   const routingProxyUrl = appConfig.routingProxyUrl?.trim() ?? '';
+
+  function attemptRestoreNavigationSession() {
+    setSessionRestoreStatus('loading');
+    setSessionRestoreError(null);
+    restoreNavigationSession()
+      .then(restored => {
+        setNavigationSession(restored);
+        setSessionRestoreStatus('ready');
+        setSessionRestoreError(null);
+      })
+      .catch(() => {
+        setSessionRestoreStatus('error');
+        setSessionRestoreError(
+          'Could not verify active navigation session. Retry before opening or switching trips.',
+        );
+      });
+  }
 
   useEffect(() => {
     if (
       !hasHydrated ||
-      !hasRestoredNavSession ||
+      sessionRestoreStatus !== 'ready' ||
       !handoffTrip ||
       !handoffKey ||
       lastProcessedHandoffKeyRef.current === handoffKey
@@ -160,6 +182,7 @@ export function NativePlannerScreen({
       return;
     }
     lastProcessedHandoffKeyRef.current = handoffKey;
+    onConsumeHandoff?.(handoffKey);
     if (handoffSource === 'home') {
       queueOrRunAction({type: 'open-saved', tripId: handoffTrip.id});
       return;
@@ -179,27 +202,25 @@ export function NativePlannerScreen({
       `Loaded "${nextTrip.name}" (${nextTrip.stops.length} stops) from web.`,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasHydrated, hasRestoredNavSession, handoffKey, handoffSource, handoffTrip, navigationSession]);
+  }, [
+    hasHydrated,
+    sessionRestoreStatus,
+    handoffKey,
+    handoffSource,
+    handoffTrip,
+    navigationSession,
+  ]);
 
   useEffect(() => {
     const unsubscribe = subscribeToNavigationUpdates(snapshot => {
       setNavigationSession(snapshot);
+      setSessionRestoreStatus('ready');
+      setSessionRestoreError(null);
     });
-    restoreNavigationSession()
-      .then(restored => {
-        setNavigationSession(restored);
-      })
-      .catch(() => {})
-      .finally(() => {
-        setHasRestoredNavSession(true);
-      });
+    attemptRestoreNavigationSession();
     const appStateSub = AppState.addEventListener('change', nextState => {
       if (nextState === 'active') {
-        restoreNavigationSession()
-          .then(restored => {
-            setNavigationSession(restored);
-          })
-          .catch(() => {});
+        attemptRestoreNavigationSession();
       }
     });
     return () => {
@@ -391,6 +412,14 @@ export function NativePlannerScreen({
   }, [currentRouteKey, currentTrip.routeSnapshot, currentTrip.stops, hasHydrated, routingProxyUrl]);
 
   function queueOrRunAction(action: PendingAction) {
+    if (sessionRestoreStatus !== 'ready') {
+      setValidationMessage(
+        sessionRestoreError ||
+          'Checking active navigation session. Retry before switching or creating a trip.',
+      );
+      return;
+    }
+
     if (isNavigationSessionInProgress(navigationSession)) {
       setValidationMessage(
         'End active or paused navigation before switching or creating a trip.',
@@ -800,6 +829,8 @@ export function NativePlannerScreen({
           currentTrip={currentTrip}
           hasUnsavedChanges={hasUnsavedChanges}
           navigationSession={navigationSession}
+          sessionRestoreError={sessionRestoreError}
+          onRetrySessionRestore={attemptRestoreNavigationSession}
           onCreateNewTrip={() => queueOrRunAction({type: 'new-trip'})}
           onDismissPendingAction={() => setPendingAction(null)}
           onDiscardPendingAction={discardPendingAction}
@@ -915,6 +946,8 @@ function AppContent({
   currentTrip,
   hasUnsavedChanges,
   navigationSession,
+  sessionRestoreError,
+  onRetrySessionRestore,
   onBackToExplore,
   onCreateNewTrip,
   onDismissPendingAction,
@@ -963,6 +996,8 @@ function AppContent({
   currentTrip: Trip;
   hasUnsavedChanges: boolean;
   navigationSession: NavigationSessionSnapshot;
+  sessionRestoreError: string | null;
+  onRetrySessionRestore: () => void;
   onBackToExplore?: () => void;
   onCreateNewTrip: () => void;
   onDismissPendingAction: () => void;
@@ -1061,6 +1096,19 @@ function AppContent({
                   onPress={onDiscardCorruptRecoverySession}
                 />
               )}
+            </View>
+          </View>
+        ) : null}
+
+        {sessionRestoreError ? (
+          <View style={styles.pendingCard} testID="session-restore-error-card">
+            <Text style={styles.pendingTitle}>Session check failed</Text>
+            <Text style={styles.pendingBody}>{sessionRestoreError}</Text>
+            <View style={styles.pendingActions}>
+              <ActionButton
+                label="Retry Session Check"
+                onPress={onRetrySessionRestore}
+              />
             </View>
           </View>
         ) : null}
@@ -1827,9 +1875,12 @@ function App() {
   );
   const [nativeReturnTarget, setNativeReturnTarget] =
     useState<NativeReturnTarget>('web');
-  const [handoffTrip, setHandoffTrip] = useState<Trip | null>(null);
-  const [handoffKey, setHandoffKey] = useState(0);
-  const [handoffSource, setHandoffSource] = useState<'web' | 'home'>('web');
+  const [handoffRequest, setHandoffRequest] = useState<{
+    trip: Trip;
+    key: number;
+    source: 'web' | 'home';
+  } | null>(null);
+  const handoffSeqRef = useRef(0);
   const [navigationSession, setNavigationSession] = useState<NavigationSessionSnapshot>(
     IDLE_NAVIGATION_SESSION,
   );
@@ -1901,6 +1952,7 @@ function App() {
         <WebExperienceScreen
           navigationSession={visibleWebSession}
           onReturnToCurrentTrip={() => {
+            setHandoffRequest(null);
             setNativeReturnTarget('web');
             setScreen('native');
           }}
@@ -1908,9 +1960,14 @@ function App() {
           onOpenNativeHome={__DEV__ ? () => setScreen('home') : undefined}
           onOpenNativePlanner={trip => {
             if (trip) {
-              setHandoffTrip(trip);
-              setHandoffSource('web');
-              setHandoffKey(k => k + 1);
+              handoffSeqRef.current += 1;
+              setHandoffRequest({
+                trip,
+                key: handoffSeqRef.current,
+                source: 'web',
+              });
+            } else {
+              setHandoffRequest(null);
             }
             setNativeReturnTarget('web');
             setScreen('native');
@@ -1926,19 +1983,22 @@ function App() {
         <NativeHomeScreen
           navigationSession={navigationSession}
           onPlanTrip={() => {
-            setHandoffTrip(null);
+            setHandoffRequest(null);
             setNativeReturnTarget('home');
             setScreen('native');
           }}
           onReturnToCurrentTrip={() => {
-            setHandoffTrip(null);
+            setHandoffRequest(null);
             setNativeReturnTarget('home');
             setScreen('native');
           }}
           onOpenSavedTrip={trip => {
-            setHandoffTrip(trip);
-            setHandoffSource('home');
-            setHandoffKey(k => k + 1);
+            handoffSeqRef.current += 1;
+            setHandoffRequest({
+              trip,
+              key: handoffSeqRef.current,
+              source: 'home',
+            });
             setNativeReturnTarget('home');
             setScreen('native');
           }}
@@ -1958,9 +2018,14 @@ function App() {
 
   return (
     <NativePlannerScreen
-      handoffTrip={handoffTrip}
-      handoffKey={handoffKey}
-      handoffSource={handoffSource}
+      handoffTrip={handoffRequest?.trip ?? null}
+      handoffKey={handoffRequest?.key ?? 0}
+      handoffSource={handoffRequest?.source ?? 'web'}
+      onConsumeHandoff={consumedKey => {
+        setHandoffRequest(current =>
+          current?.key === consumedKey ? null : current,
+        );
+      }}
       backLabel={nativeReturnTarget === 'home' ? 'Back to Home' : 'Explore (Web)'}
       onBackToExplore={
         plannerBackTarget ? () => setScreen(plannerBackTarget) : undefined

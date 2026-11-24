@@ -1204,4 +1204,137 @@ describe('Native Home saved-trip opening & unsaved-changes protection', () => {
     const {hasText} = createHelpers(renderer!);
     expect(hasText('Loaded "Tagaytay Escape" (2 stops) from web.')).toBe(true);
   });
+
+  test('consumes a handoff only once and does not reopen it when NativePlannerScreen remounts', async () => {
+    const onConsumeHandoff = jest.fn();
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.saved-trips') {
+        return JSON.stringify([SAVED_TRIP_FROM_HOME]);
+      }
+      return null;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <NativePlannerScreen
+          handoffTrip={SAVED_TRIP_FROM_HOME}
+          handoffKey={7}
+          handoffSource="home"
+          onConsumeHandoff={onConsumeHandoff}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onConsumeHandoff).toHaveBeenCalledTimes(1);
+    expect(onConsumeHandoff).toHaveBeenCalledWith(7);
+
+    // Unmount and remount after parent clears consumed handoff, with an existing draft in storage
+    await ReactTestRenderer.act(async () => {
+      renderer!.unmount();
+    });
+
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.saved-trips') {
+        return JSON.stringify([SAVED_TRIP_FROM_HOME]);
+      }
+      if (key === 'myexplorer.mobile.draft-trip') {
+        return JSON.stringify(UNSAVED_DRAFT);
+      }
+      return null;
+    });
+
+    let remounted: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      remounted = ReactTestRenderer.create(
+        <NativePlannerScreen
+          handoffTrip={null}
+          handoffKey={0}
+          handoffSource="home"
+          onConsumeHandoff={onConsumeHandoff}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const {hasText} = createHelpers(remounted!);
+    expect(hasText('Makati')).toBe(true);
+    expect(hasText('Opened saved trip "Tagaytay Escape"')).toBe(false);
+    expect(onConsumeHandoff).toHaveBeenCalledTimes(1);
+  });
+
+  test('preserves pending handoff and draft when session restore fails, then processes on retry respecting active session', async () => {
+    const navMock = (NativeModules as Record<string, any>).MyExplorerNavigation;
+    const onConsumeHandoff = jest.fn();
+    navMock.getSessionState.mockRejectedValueOnce(new Error('Binder unavailable'));
+
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.saved-trips') {
+        return JSON.stringify([SAVED_TRIP_FROM_HOME]);
+      }
+      if (key === 'myexplorer.mobile.draft-trip') {
+        return JSON.stringify(UNSAVED_DRAFT);
+      }
+      return null;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <NativePlannerScreen
+          handoffTrip={SAVED_TRIP_FROM_HOME}
+          handoffKey={9}
+          handoffSource="home"
+          onConsumeHandoff={onConsumeHandoff}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const {hasText, findBtn} = createHelpers(renderer!);
+    expect(hasText('Session check failed')).toBe(true);
+    expect(hasText('Makati')).toBe(true);
+    expect(hasText('Opened saved trip')).toBe(false);
+    expect(onConsumeHandoff).not.toHaveBeenCalled();
+
+    // Retry succeeds and discovers an active navigation session -> preserves active-nav protection
+    navMock.getSessionState.mockResolvedValueOnce(
+      JSON.stringify({
+        sessionId: 'sess-active',
+        tripId: 'trip-active',
+        tripName: 'Active Trip',
+        status: 'active',
+        stops: SAVED_TRIP_FROM_HOME.stops,
+      }),
+    );
+
+    await ReactTestRenderer.act(async () => {
+      findBtn('Retry Session Check').props.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(hasText('Session check failed')).toBe(false);
+    expect(onConsumeHandoff).toHaveBeenCalledWith(9);
+    expect(
+      hasText('End active or paused navigation before switching or creating a trip.'),
+    ).toBe(true);
+    expect(hasText('Opened saved trip')).toBe(false);
+  });
 });
