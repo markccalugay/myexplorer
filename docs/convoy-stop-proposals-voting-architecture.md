@@ -1,12 +1,12 @@
 # Convoy Stop Proposals, Voting, and Organizer Approval (Issue #86)
 
-**Status:** Specification & Architecture Proposal (**All #86 voting rules approved; no implementation yet**)
+**Status:** Specification & Architecture Proposal (**Owner product decisions recorded; passed-stop technical design open; no implementation yet**)
 **Issue:** [#86](https://github.com/markccalugay/myexplorer/issues/86)
 **Related Issues:** [#12](https://github.com/markccalugay/myexplorer/issues/12)–[#14](https://github.com/markccalugay/myexplorer/issues/14) (Convoy Voice), [#82](https://github.com/markccalugay/myexplorer/issues/82) (Navigation Session), [#83](https://github.com/markccalugay/myexplorer/issues/83) (Coordinate-free Stop Search), [#84](https://github.com/markccalugay/myexplorer/issues/84) (Unified Native Phone Experience)
-**Date:** 2026-11-23
+**Date:** 2026-11-24
 
 > [!IMPORTANT]
-> **Status Separation:** This document explicitly separates **(1) Verified / Observed Codebase State**, **(2) Owner-Approved Product Decisions**, **(3) Deferred Future Enhancements**, and **(4) Unimplemented Architecture**. Do not treat unimplemented architecture—especially live route replacement during active navigation or per-person identity—as working today.
+> **Status Separation:** This document explicitly separates **(1) Verified / Observed Codebase State**, **(2) Owner-Approved Product Decisions**, **(3) Proposed Technical Direction & Open Technical Questions**, and **(4) Unimplemented Architecture**. Do not treat unimplemented architecture—especially live route replacement during active navigation, passed-stop detection, or per-person identity—as working today.
 
 ---
 
@@ -65,11 +65,11 @@ All findings below come from **static source inspection** of the repository. No 
    - Every new proposal opens with a **5-minute** (`300_000` ms) voting window (`extensionsUsed = 0`, `maxExtensions = 3`).
    - While a proposal remains `open`, the trip initiator may extend the deadline **up to 3 times**, choosing **1, 2, or 5 additional minutes** per extension.
    - All participants must see the updated deadline (`expiresAt`) and how many extensions remain (`3 - extensionsUsed`).
-   - **Distance-based expiry is removed** from the initial voting rules (see §2.2).
+   - Extensions remain subject to **Decision 11** (passing the proposed stop still ends the vote early).
 6. **Initiator Override & Proposer Withdrawal (Atomic Resolution):**
    - The trip initiator can **approve** or **reject** an `open` proposal at any time.
    - The proposer can **withdraw** their own proposal while it remains `open`.
-   - **Competing actions:** Votes (including the final vote that triggers early resolution), vote changes, initiator approve/reject, proposer withdrawal, deadline expiry, and trip completion execute as **atomic server-side state transitions** guarded by `status === 'open'` and `tripRevision`. Only the **first** committed transition from `open` → terminal succeeds; any concurrent or late action sees the terminal state and is rejected without applying a second decision.
+   - **Competing actions:** Votes (including the final vote that triggers early resolution), vote changes, initiator approve/reject, proposer withdrawal, deadline expiry, passed-stop expiry, and trip completion execute as **atomic server-side state transitions** guarded by `status === 'open'` and `tripRevision`. Only the **first** committed transition from `open` → terminal succeeds; any concurrent or late action sees the terminal state and is rejected without applying a second decision.
 7. **Automatic Stop Addition & Honest Routing Failure State:**
    - Only an **approved** proposal (`accepted_majority` or `accepted_organizer`) adds the stop to the authoritative trip route automatically.
    - A **rejected**, **withdrawn**, **expired**, or **cancelled** proposal must **never** be added to the route.
@@ -87,9 +87,16 @@ All findings below come from **static source inspection** of the repository. No 
    - An eligible person may change their `yes`/`no` vote while the proposal remains `open`.
    - Once the last eligible person votes, resolve immediately and stop the timer; no further vote changes are accepted.
    - Changing a vote does **not** create or submit another stop recommendation.
-   - Competing actions (a vote change racing with the final vote, deadline expiry, initiator approve/reject, proposer withdrawal, or trip completion) resolve atomically on the server (`status === 'open'` and `now < expiresAt` guard); a losing or late vote change is rejected (`PROPOSAL_ALREADY_CLOSED`) and returns the committed terminal state.
+   - Competing actions (a vote change racing with the final vote, deadline expiry, passed-stop expiry, initiator approve/reject, proposer withdrawal, or trip completion) resolve atomically on the server (`status === 'open'` and `now < expiresAt` guard); a losing or late vote change is rejected (`PROPOSAL_ALREADY_CLOSED`) and returns the committed terminal state.
+11. **Passing the Proposed Stop Ends an Open Vote:**
+   - Passing the proposed stop ends an `open` vote immediately, **even if the trip initiator extended the timer**. The proposal **expires** (`expired`, `resolutionReason: 'passed_stop'`) and the stop is **not** added.
+   - **Tell participants why voting ended:**
+     - Show an **in-app modal** when they are using the app, with clear language such as: *"Voting ended because the convoy passed the proposed stop."*
+     - Provide an **appropriate background notification** where supported and permitted (without promising delivery when the device or platform cannot guarantee it).
+     - When someone **reconnects or returns to the app**, make the outcome and reason available to them from the authoritative proposal state.
+   - **First valid closing action wins:** A passed-stop event racing with the final vote, deadline expiry, initiator action, or trip completion resolves atomically; a later vote or action must not change a closed result.
 
-#### Concrete Tallying, Membership, & Timer Extension Examples
+#### Concrete Tallying, Membership, Passed-Stop, & Timer Extension Examples
 
 | Scenario | Cast Votes (`Yes` / `No`) | Non-Votes (Abstain) | Timing | Outcome |
 |---|---|---|---|---|
@@ -101,6 +108,9 @@ All findings below come from **static source inspection** of the repository. No 
 | **Voter changes `No -> Yes` while open** | `2 Yes` (was `1 Yes`, `1 No`), 1 pending | 1 | Remains `open` | Vote updates in place; no new proposal created |
 | **Deliberate departure after voting** | 3 eligible (`2 Yes`, `1 No` leaves) | 0 | **Stops timer immediately** | `No` vote excluded; remaining 2 voted `2 > 0` → **Passes** |
 | **All eligible voters depart while open** | 0 eligible remain | 0 | **Stops timer immediately** | **Expires** (`expired`); stop not added |
+| **Stop passed while vote is open** | `2 Yes`, `0 No`, 2 pending | 2 | **Convoy passes stop** | **Expires** (`expired`, `passed_stop`); stop not added; in-app modal / bg notification |
+| **Stop passed after timer extension** | `1 Yes`, `1 No`, 2 pending (`extensionsUsed: 1`) | 2 | **Convoy passes stop** | **Expires** (`expired`, `passed_stop`); stop not added despite extension |
+| **Initiator location unavailable or inaccurate** | `1 Yes`, `0 No`, 3 pending | 3 | Location/route check unreliable | Vote **remains `open`** and continues using the active timer |
 | **4 people, 2 vote (`1 Yes` / `1 No`)** | `1 Yes`, `1 No` | 2 | Deadline | **Does not pass** (`1 === 1`, tie) |
 | **4 people, 0 vote (`0 Yes` / `0 No`)** | `0 Yes`, `0 No` | 4 | Deadline | **Expires** (`expired`); stop not added; in-app modal / bg notification |
 
@@ -109,10 +119,20 @@ All findings below come from **static source inspection** of the repository. No 
   2. At `12:06:30`, initiator extends by `+5 min` → `expiresAt = 12:12:00`, `extensionsRemaining = 1`.
   3. At `12:11:45`, initiator extends by `+1 min` → `expiresAt = 12:13:00`, `extensionsRemaining = 0`.
   4. Any 4th extension request is rejected (`NO_EXTENSIONS_REMAINING`).
+  5. If the convoy passes the proposed stop at `12:08:00` (even after extensions), the proposal immediately transitions to `expired` (`passed_stop`), the stop is not added, and participants are notified.
 
-### 2.2 Deferred Future Enhancements
+### 2.2 Proposed Technical Direction & Open Questions: Passed-Stop Detection *(UNIMPLEMENTED)*
 
-- **Distance-based expiry (Deferred):** Excluded from `#86` initial scope. Any future distance-based expiry will require defining: which vehicle is the **lead vehicle**, what happens when lead location is unavailable or stale, GPS accuracy tolerances, and fallback to time-only expiry on failure.
+> [!NOTE]
+> **Proposed technical direction — not owner-approved thresholds, and not yet implemented:**
+> - **Reference location:** Use the **trip initiator's location** as the initial reference for convoy progress.
+> - **Route-progress check:** Determine whether a stop has been passed using **progress along the current route**, rather than straight-line proximity alone.
+> - **Safe fallback:** If the initiator's location, route position, or GPS accuracy is insufficient to determine this reliably, **keep the vote `open`** and rely on the existing timer.
+> - **Open technical questions requiring further design & validation (do not invent thresholds yet):**
+>   1. Exact geometric/route definition of **"passed"** (e.g., distance past the projected route snap-point or detour branch point).
+>   2. Minimum **GPS accuracy thresholds** and staleness limits before falling back to the timer.
+>   3. **Location-sharing requirements** and permissions (foreground/background location consent from the initiator).
+>   4. Behavior across **route changes / off-route detours** and when the **initiator is unavailable** or offline.
 
 ---
 
@@ -128,7 +148,7 @@ All findings below come from **static source inspection** of the repository. No 
 - **State transitions (`open` → terminal happens at most once):**
   - `open` → `accepted_majority` (all remaining eligible people voted with `yes > no`, or deadline reached with `yes > no`)
   - `open` → `rejected_majority` (all remaining eligible people voted with `yes <= no`, or deadline reached with `yes <= no` and `yes + no > 0`)
-  - `open` → `expired` (deadline reached with `yes === 0 && no === 0`, or all eligible voters depart leaving `0` eligible voters)
+  - `open` → `expired` (deadline reached with `yes === 0 && no === 0` [`deadline_no_votes`], all eligible voters depart leaving `0` eligible voters [`no_eligible_voters`], or convoy passes the proposed stop along the route [`passed_stop`])
   - `open` → `accepted_organizer` (initiator approves while `open`)
   - `open` → `rejected_organizer` (initiator rejects while `open`)
   - `open` → `withdrawn` (proposer withdraws while `open`)
@@ -152,7 +172,8 @@ Because `apps/mobile/App.tsx` (`L1144-L1153`) currently locks stop edits during 
 
 - **Convoy membership persistence:** Backgrounding, screen lock, network drops, dead battery, or OS process termination **never removes** a person from the convoy. On return/reconnect, the client fetches the authoritative `Trip` + `StopProposal` snapshot and reconciles UI state (including outcomes decided while offline).
 - **In-app modals & background notifications:**
-  - When a proposal fails (`expired` with 0 votes, `rejected_*`, or `cancelled` on trip end), show an **in-app modal** to active foreground users and send a **background notification** where appropriate and supported.
+  - When a proposal fails (`expired` due to `0` votes or passing the stop, `rejected_*`, or `cancelled` on trip end), show an **in-app modal** to active foreground users with the specific reason (e.g., *"Voting ended because the convoy passed the proposed stop."*), and send an appropriate **background notification** where supported and permitted.
+  - When a participant **reconnects or returns to the app** after a vote ended, fetch the authoritative `StopProposal` outcome and `resolutionReason` so the outcome and reason are available to them.
   - While `open`, show an ongoing trip/vote notification with proposal summary and countdown (`expiresAt`) where supported, plus vibration / attention alert when a vote needs attention, subject to user permissions and device settings.
   - **No delivery guarantees:** Persistent background connections and instant notification delivery **cannot be guaranteed** due to OS battery optimization, Doze/App Standby, iOS background suspension, permission denials, or network loss.
 - **Platform-specific constraints (to verify before implementation):**
@@ -165,13 +186,13 @@ Because `apps/mobile/App.tsx` (`L1144-L1153`) currently locks stop edits during 
 ## 4. Implementation Milestones & Acceptance Criteria
 
 1. **Milestone 1 — Shared Proposal Domain Contract & Deterministic Reducer:**
-   - Pure TypeScript types and reducer implementing Approved Decisions 1–10 with per-person `memberId`/`userId` keying and `eligibleVoterIds`.
-   - *Tests:* Unit tests for **individual vs. group voting** (3-member group + 1 solo = 4 votes), **membership changes during open vote** (new joiner excluded until next proposal; deliberate departure excludes any already-cast vote and triggers immediate resolution when remaining eligible people have voted, or `expired` without adding stop when 0 eligible remain), **temporary disconnection** (does not remove voter; deadline treats as abstention), **changing a vote while open** (updates vote without creating a new stop recommendation; final-vote resolution blocks further changes), **vote-change races** (racing with final vote, deadline, or closing action resolves atomically), **no votes at deadline** (`0/0 -> expired`), **all votes arriving early** (timer stopped, immediate `yes > no`), **ties** (`1/1`, `2/2`, `50/50 -> rejected`), **large convoy** (`51 Yes / 50 No -> accepted`), **trip completion** (`open -> cancelled`), **extension limits** (`1/2/5` min up to 3x), **races between final vote and initiator action**, and **duplicate-insertion prevention**.
+   - Pure TypeScript types and reducer implementing Approved Decisions 1–11 with per-person `memberId`/`userId` keying, `eligibleVoterIds`, and `resolutionReason` (including `'passed_stop'`).
+   - *Tests:* Unit tests for **individual vs. group voting** (3-member group + 1 solo = 4 votes), **membership changes during open vote** (new joiner excluded until next proposal; deliberate departure excludes any already-cast vote and triggers immediate resolution when remaining eligible people have voted, or `expired` without adding stop when 0 eligible remain), **temporary disconnection** (does not remove voter; deadline treats as abstention), **changing a vote while open** (updates vote without creating a new stop recommendation; final-vote resolution blocks further changes), **vote-change races** (racing with final vote, deadline, or closing action resolves atomically), **stop passed while vote is open** and **stop passed after a timer extension** (`expired` with `passed_stop`, stop not added), **unavailable or inaccurate location** (keeps vote `open` on timer), **passed-stop event racing with final vote, expiry, initiator action, or trip completion** (first valid closing action wins), **no votes at deadline** (`0/0 -> expired`), **all votes arriving early** (timer stopped, immediate `yes > no`), **ties** (`1/1`, `2/2`, `50/50 -> rejected`), **large convoy** (`51 Yes / 50 No -> accepted`), **trip completion** (`open -> cancelled`), **extension limits** (`1/2/5` min up to 3x), and **duplicate-insertion prevention**.
 2. **Milestone 2 — Authoritative Backend Sync, Identity, & Reconnect Layer:**
-   - Trip-scoped realtime store, per-person/initiator authorization (preventing duplicate votes across devices), atomic proposal transitions, and offline/reconnect state reconciliation.
-   - *Acceptance & Tests:* Multi-client integration tests for per-person group voting, duplicate-vote rejection across devices, vote-change vs. final-vote vs. initiator-override vs. expiry vs. trip-end races, temporary disconnect/reconnect recovery, and duplicate-decision rejection.
-3. **Milestone 3 — Web/Phone UI, Live `NavigationController` Route Updates, & Notifications:**
-   - Replace `TripPlanner.tsx` local vote UI; add native phone proposal/vote UI (`#84`) using `#83` place search; implement `NavigationController` live `setDestinations` reconciliation + failure/retry UI; add in-app outcome modals, platform-gated ongoing countdown notifications, and vibration alerts.
-   - *Acceptance & Tests:* Unit/component tests + Android JUnit tests for route-recalc failure/retry, concurrent `tripRevision` updates, in-app modals for unsuccessful/cancelled votes, notification permission-denied fallback, and vibration/DND handling.
+   - Trip-scoped realtime store, per-person/initiator authorization (preventing duplicate votes across devices), atomic proposal transitions (including passed-stop expiry events), and offline/reconnect state reconciliation.
+   - *Acceptance & Tests:* Multi-client integration tests for per-person group voting, duplicate-vote rejection across devices, vote-change vs. final-vote vs. passed-stop vs. initiator-override vs. expiry vs. trip-end races, temporary disconnect/reconnect recovery (participant returning after vote ended receives outcome and `resolutionReason`), and duplicate-decision rejection.
+3. **Milestone 3 — Web/Phone UI, Live `NavigationController` Route Updates, Passed-Stop Progress, & Notifications:**
+   - Replace `TripPlanner.tsx` local vote UI; add native phone proposal/vote UI (`#84`) using `#83` place search; implement `NavigationController` live `setDestinations` reconciliation + failure/retry UI; implement initiator route-progress passed-stop detection (with safe fallback to timer when location/route/accuracy is insufficient); add in-app outcome modals (including *"Voting ended because the convoy passed the proposed stop."*), platform-gated ongoing countdown notifications, and vibration alerts.
+   - *Acceptance & Tests:* Unit/component tests + Android JUnit tests for route-recalc failure/retry, concurrent `tripRevision` updates, passed-stop route progress vs. unavailable/inaccurate GPS fallback, in-app modals for unsuccessful/cancelled/passed-stop votes, reconnect outcome visibility, notification permission-denied fallback, and vibration/DND handling.
 4. **Milestone 4 — Android Auto Alerts & Multi-Device / DHU Verification:**
    - Distraction-safe Android Auto outcome notifications in `MyExplorerCarScreen.kt`; end-to-end verification across multiple physical devices (Android/iOS/Web), background/network-loss recovery, and Android Auto DHU/vehicle.
