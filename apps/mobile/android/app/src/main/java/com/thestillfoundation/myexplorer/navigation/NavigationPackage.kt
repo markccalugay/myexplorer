@@ -10,5 +10,8 @@ class NavigationPackage : ReactPackage {
     listOf(NavigationBridgeModule(reactContext))
 
   override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =
-    listOf(MyExplorerNavigationViewManager())
+    listOf(
+      MyExplorerNavigationViewManager(),
+      MyExplorerPreTripMapViewManager(),
+    )
 }

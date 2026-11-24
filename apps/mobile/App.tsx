@@ -77,6 +77,7 @@ import {
 } from './src/navigation/session';
 import {NavigationMapView} from './src/navigation/NavigationMapView';
 import {openAppPermissionSettings} from './src/navigation/permissions';
+import {PreTripMapView} from './src/planner/PreTripMapView';
 
 type PendingAction =
   | {type: 'new-trip'}
@@ -1160,8 +1161,12 @@ function AppContent({
           <Text style={styles.tripMeta}>Stops: {currentTrip.stops.length}</Text>
         </SectionCard>
 
+        <SectionCard title="Trip Map">
+          <PreTripMapView trip={currentTrip} routeState={routeState} />
+        </SectionCard>
+
         <SectionCard title="Turn-by-Turn Navigation">
-          {navigationSession.status !== 'idle' || currentTrip.stops.length >= 2 ? (
+          {navigationSession.status !== 'idle' ? (
             <NavigationMapView />
           ) : null}
           <Text style={styles.tripMeta}>

@@ -1457,4 +1457,46 @@ describe('Native Home saved-trip opening & unsaved-changes protection', () => {
     expect(hasText('Opened saved trip')).toBe(false);
     expect(hasText('Newer Active Trip')).toBe(true);
   });
+
+  test('renders Trip Map in NativePlannerScreen and updates marker/route status when stops change', async () => {
+    const navMock = (NativeModules as Record<string, any>).MyExplorerNavigation;
+    navMock.getPreTripMapZoomState = jest
+      .fn()
+      .mockResolvedValue(JSON.stringify({available: true, zoom: 14, minZoom: 2, maxZoom: 21}));
+
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.saved-trips') {
+        return JSON.stringify([SAVED_TRIP_FROM_HOME]);
+      }
+      return null;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <NativePlannerScreen
+          handoffTrip={SAVED_TRIP_FROM_HOME}
+          handoffKey={20}
+          handoffSource="home"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const {hasText, findBtn} = createHelpers(renderer!);
+    expect(hasText('Trip Map')).toBe(true);
+    expect(hasText('2 valid stops')).toBe(true);
+    expect(hasText('No calculated route preview available yet; showing stop markers only.')).toBe(true);
+
+    // Removing a stop updates marker count and route status honestly
+    await ReactTestRenderer.act(async () => {
+      findBtn('Remove').props.onPress();
+    });
+    expect(hasText('1 valid stop')).toBe(true);
+    expect(hasText('Add at least two valid stops to preview a route.')).toBe(true);
+  });
 });
