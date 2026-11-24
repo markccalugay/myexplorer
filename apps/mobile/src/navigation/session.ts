@@ -41,6 +41,7 @@ export interface NavigationSessionSnapshot {
   isRerouting: boolean;
   needsNavigatorReconnect: boolean;
   updatedAtMs: number;
+  versionSeq?: number;
   lastError?: string;
   recoveryError?: string;
   hasCorruptRecovery?: boolean;
@@ -51,6 +52,37 @@ const STORAGE_KEY = 'myexplorer.mobile.navigationSession.v1';
 const EVENT_NAME = 'MyExplorerNavigationStateChanged';
 
 let operationGeneration = 0;
+let sessionStateEpoch = 0;
+let latestVerifiedSnapshot: NavigationSessionSnapshot | null = null;
+let persistQueue: Promise<void> = Promise.resolve();
+
+function recordVerifiedSnapshot(snapshot: NavigationSessionSnapshot): void {
+  latestVerifiedSnapshot = snapshot;
+}
+
+function enqueuePersistLocalNavigationSession(
+  snapshot: NavigationSessionSnapshot,
+  epochAtEnqueue: number,
+): Promise<void> {
+  const next = persistQueue
+    .catch(() => {})
+    .then(async () => {
+      if (epochAtEnqueue !== sessionStateEpoch) {
+        return;
+      }
+      if (
+        snapshot.status === 'idle' ||
+        snapshot.status === 'abandoned' ||
+        snapshot.status === 'completed'
+      ) {
+        await AsyncStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    });
+  persistQueue = next;
+  return next;
+}
 
 export function isNavigationSessionInProgress(session: NavigationSessionSnapshot): boolean {
   return (
@@ -415,16 +447,9 @@ export function parseNativeSessionSnapshot(
 export async function persistLocalNavigationSession(
   snapshot: NavigationSessionSnapshot,
 ): Promise<void> {
-  if (
-    snapshot.status === 'idle' ||
-    snapshot.status === 'abandoned' ||
-    snapshot.status === 'completed'
-  ) {
-    await AsyncStorage.removeItem(STORAGE_KEY);
-    return;
-  }
-
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  const epoch = ++sessionStateEpoch;
+  recordVerifiedSnapshot(snapshot);
+  await enqueuePersistLocalNavigationSession(snapshot, epoch);
 }
 
 export async function loadLocalNavigationSession(): Promise<NavigationSessionSnapshot | null> {
@@ -449,19 +474,38 @@ function getNativeNavModule(): NativeNavModule | null {
 }
 
 export async function restoreNavigationSession(): Promise<NavigationSessionSnapshot> {
+  const epoch = ++sessionStateEpoch;
   const nativeMod = getNativeNavModule();
   if (nativeMod) {
     const raw = await nativeMod.getSessionState();
     const parsed = parseNativeSessionSnapshot(raw);
-    if (parsed) {
-      // Authoritative native state overrides any stale AsyncStorage snapshot.
-      await persistLocalNavigationSession(parsed);
-      return parsed;
+    if (!parsed) {
+      throw new Error('Native navigation module returned a malformed session snapshot.');
     }
-    throw new Error('Native navigation module returned a malformed session snapshot.');
+    if (epoch !== sessionStateEpoch && latestVerifiedSnapshot) {
+      await persistQueue.catch(() => {});
+      return latestVerifiedSnapshot;
+    }
+    if (
+      latestVerifiedSnapshot &&
+      parsed.sessionId &&
+      parsed.sessionId === latestVerifiedSnapshot.sessionId &&
+      typeof parsed.versionSeq === 'number' &&
+      typeof latestVerifiedSnapshot.versionSeq === 'number' &&
+      parsed.versionSeq < latestVerifiedSnapshot.versionSeq
+    ) {
+      await persistQueue.catch(() => {});
+      return latestVerifiedSnapshot;
+    }
+    recordVerifiedSnapshot(parsed);
+    await enqueuePersistLocalNavigationSession(parsed, epoch);
+    return parsed;
   }
 
   const local = await loadLocalNavigationSession();
+  if (epoch !== sessionStateEpoch && latestVerifiedSnapshot) {
+    return latestVerifiedSnapshot;
+  }
   if (!local || local.status === 'abandoned' || local.status === 'completed') {
     return IDLE_NAVIGATION_SESSION;
   }
@@ -631,7 +675,9 @@ export function subscribeToNavigationUpdates(
   const subscription = emitter.addListener(EVENT_NAME, (raw: string) => {
     const parsed = parseNativeSessionSnapshot(raw);
     if (parsed) {
-      persistLocalNavigationSession(parsed).catch(() => {});
+      const epoch = ++sessionStateEpoch;
+      recordVerifiedSnapshot(parsed);
+      enqueuePersistLocalNavigationSession(parsed, epoch).catch(() => {});
       onUpdate(parsed);
     }
   });

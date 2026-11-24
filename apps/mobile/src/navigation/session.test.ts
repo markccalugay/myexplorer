@@ -4,19 +4,26 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn().mockResolvedValue(undefined),
 }));
 
-import {NativeModules, PermissionsAndroid, Platform} from 'react-native';
+import {
+  DeviceEventEmitter,
+  NativeModules,
+  PermissionsAndroid,
+  Platform,
+} from 'react-native';
 import {
   buildTripFromNavigationSession,
   createPreparingSession,
   isNavigationSessionInProgress,
   navigationSessionMatchesTrip,
   parseNativeSessionSnapshot,
+  persistLocalNavigationSession,
   reconcileTripWithNavigationSession,
   restoreNavigationSession,
   resumeNativeNavigation,
   resumeOrRetryNavigation,
   startNativeNavigation,
   stopNativeNavigation,
+  subscribeToNavigationUpdates,
   transitionNavigationSession,
 } from './session';
 import type {Trip} from '../planner/domain';
@@ -500,5 +507,243 @@ describe('mobile navigation session', () => {
     if (conflictResult.action === 'conflict') {
       expect(conflictResult.sessionTrip.id).toBe(sampleTrip.id);
     }
+  });
+});
+
+describe('shared navigation-session storage race protection', () => {
+  const STORAGE_KEY = 'myexplorer.mobile.navigationSession.v1';
+  const originalOs = Platform.OS;
+
+  function installInMemoryAsyncStorage() {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    const store = new Map<string, string>();
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) =>
+      store.has(key) ? store.get(key)! : null,
+    );
+    (AsyncStorage.setItem as jest.Mock).mockImplementation(
+      async (key: string, value: string) => {
+        store.set(key, value);
+      },
+    );
+    (AsyncStorage.removeItem as jest.Mock).mockImplementation(
+      async (key: string) => {
+        store.delete(key);
+      },
+    );
+    return {AsyncStorage, store};
+  }
+
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', {value: originalOs, configurable: true});
+    delete (NativeModules as Record<string, unknown>).MyExplorerNavigation;
+  });
+
+  test('older idle restore arriving after newer active event leaves active session saved and visible', async () => {
+    const {store} = installInMemoryAsyncStorage();
+    Object.defineProperty(Platform, 'OS', {value: 'android', configurable: true});
+
+    let resolveOlderRestore!: (raw: string) => void;
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      getSessionState: jest.fn(
+        () =>
+          new Promise<string>(resolve => {
+            resolveOlderRestore = resolve;
+          }),
+      ),
+      addListener: jest.fn(),
+      removeListeners: jest.fn(),
+    };
+
+    const events: string[] = [];
+    const unsubscribe = subscribeToNavigationUpdates(snapshot => {
+      events.push(snapshot.status);
+    });
+
+    const restorePromise = restoreNavigationSession();
+    DeviceEventEmitter.emit(
+      'MyExplorerNavigationStateChanged',
+      JSON.stringify({
+        sessionId: 'sess-active-1',
+        tripId: 'trip-1',
+        tripName: 'Manila to Tagaytay',
+        status: 'active',
+        versionSeq: 2,
+        stops: sampleTrip.stops,
+      }),
+    );
+
+    resolveOlderRestore(JSON.stringify({status: 'idle', versionSeq: 1}));
+    const restored = await restorePromise;
+
+    expect(events).toEqual(['active']);
+    expect(restored.status).toBe('active');
+    expect(restored.sessionId).toBe('sess-active-1');
+    const persisted = JSON.parse(store.get(STORAGE_KEY) || '{}');
+    expect(persisted.status).toBe('active');
+    expect(persisted.sessionId).toBe('sess-active-1');
+    unsubscribe();
+  });
+
+  test('older active restore arriving after newer terminal/idle event does not restore or save old active session', async () => {
+    const {store} = installInMemoryAsyncStorage();
+    Object.defineProperty(Platform, 'OS', {value: 'android', configurable: true});
+
+    let resolveOlderRestore!: (raw: string) => void;
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      getSessionState: jest.fn(
+        () =>
+          new Promise<string>(resolve => {
+            resolveOlderRestore = resolve;
+          }),
+      ),
+      addListener: jest.fn(),
+      removeListeners: jest.fn(),
+    };
+
+    const unsubscribe = subscribeToNavigationUpdates(() => {});
+    const restorePromise = restoreNavigationSession();
+
+    DeviceEventEmitter.emit(
+      'MyExplorerNavigationStateChanged',
+      JSON.stringify({
+        sessionId: 'sess-ended-1',
+        status: 'abandoned',
+        versionSeq: 5,
+      }),
+    );
+
+    resolveOlderRestore(
+      JSON.stringify({
+        sessionId: 'sess-old-active',
+        tripId: 'trip-1',
+        tripName: 'Stale Trip',
+        status: 'active',
+        versionSeq: 4,
+        stops: sampleTrip.stops,
+      }),
+    );
+    const restored = await restorePromise;
+
+    expect(restored.status).toBe('abandoned');
+    expect(store.get(STORAGE_KEY)).toBeUndefined();
+    unsubscribe();
+  });
+
+  test('two overlapping restores finishing out of order: newer authoritative result wins in storage', async () => {
+    const {store} = installInMemoryAsyncStorage();
+    Object.defineProperty(Platform, 'OS', {value: 'android', configurable: true});
+
+    let resolveFirst!: (raw: string) => void;
+    let resolveSecond!: (raw: string) => void;
+    const getSessionStateMock = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>(resolve => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>(resolve => {
+            resolveSecond = resolve;
+          }),
+      );
+
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      getSessionState: getSessionStateMock,
+    };
+
+    const firstPromise = restoreNavigationSession();
+    const secondPromise = restoreNavigationSession();
+
+    resolveSecond(
+      JSON.stringify({
+        sessionId: 'sess-newer',
+        tripId: 'trip-newer',
+        tripName: 'Newer Trip',
+        status: 'paused',
+        stops: sampleTrip.stops,
+      }),
+    );
+    const secondResult = await secondPromise;
+
+    resolveFirst(JSON.stringify({status: 'idle'}));
+    const firstResult = await firstPromise;
+
+    expect(secondResult.status).toBe('paused');
+    expect(firstResult.status).toBe('paused');
+    const persisted = JSON.parse(store.get(STORAGE_KEY) || '{}');
+    expect(persisted.sessionId).toBe('sess-newer');
+    expect(persisted.status).toBe('paused');
+  });
+
+  test('adverse AsyncStorage write/delete completion order preserves final persisted state', async () => {
+    const {AsyncStorage, store} = installInMemoryAsyncStorage();
+    let releaseFirstSetItem!: () => void;
+    (AsyncStorage.setItem as jest.Mock).mockImplementationOnce(
+      (key: string, value: string) =>
+        new Promise<void>(resolve => {
+          releaseFirstSetItem = () => {
+            store.set(key, value);
+            resolve();
+          };
+        }),
+    );
+
+    const activeSnapshot = parseNativeSessionSnapshot(
+      JSON.stringify({
+        sessionId: 'sess-write-1',
+        tripId: 'trip-1',
+        tripName: 'Write Race',
+        status: 'active',
+        stops: sampleTrip.stops,
+      }),
+    )!;
+    const completedSnapshot = parseNativeSessionSnapshot(
+      JSON.stringify({
+        sessionId: 'sess-write-1',
+        status: 'completed',
+      }),
+    )!;
+
+    const firstWrite = persistLocalNavigationSession(activeSnapshot);
+    // Let firstWrite enter AsyncStorage.setItem before queueing secondDelete
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const secondDelete = persistLocalNavigationSession(completedSnapshot);
+
+    // Flush microtasks; removeItem must not run ahead of firstWrite
+    await Promise.resolve();
+    await Promise.resolve();
+
+    releaseFirstSetItem();
+    await Promise.all([firstWrite, secondDelete]);
+
+    expect(store.get(STORAGE_KEY)).toBeUndefined();
+  });
+
+  test('malformed native response does not alter saved session data', async () => {
+    const {store} = installInMemoryAsyncStorage();
+    Object.defineProperty(Platform, 'OS', {value: 'android', configurable: true});
+
+    const existingPayload = JSON.stringify({
+      sessionId: 'sess-saved',
+      tripId: 'trip-saved',
+      tripName: 'Saved Paused Trip',
+      status: 'paused',
+      stops: sampleTrip.stops,
+    });
+    store.set(STORAGE_KEY, existingPayload);
+
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      getSessionState: jest.fn().mockResolvedValue('{corrupt-native-response'),
+    };
+
+    await expect(restoreNavigationSession()).rejects.toThrow(
+      'Native navigation module returned a malformed session snapshot.',
+    );
+    expect(store.get(STORAGE_KEY)).toBe(existingPayload);
   });
 });
