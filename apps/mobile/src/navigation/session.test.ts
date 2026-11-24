@@ -193,6 +193,40 @@ describe('mobile navigation session', () => {
     expect(parseNativeSessionSnapshot('not-json')).toBeNull();
   });
 
+  test('restoreNavigationSession throws on malformed Android native response without fabricating idle or clearing storage', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    AsyncStorage.setItem.mockClear();
+    AsyncStorage.removeItem.mockClear();
+    Object.defineProperty(Platform, 'OS', {value: 'android', configurable: true});
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      getSessionState: jest.fn().mockResolvedValue('not-json'),
+    };
+
+    await expect(restoreNavigationSession()).rejects.toThrow(
+      'Native navigation module returned a malformed session snapshot.',
+    );
+
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      getSessionState: jest.fn().mockResolvedValue('{}'),
+    };
+    await expect(restoreNavigationSession()).rejects.toThrow(
+      'Native navigation module returned a malformed session snapshot.',
+    );
+
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+  });
+
+  test('restoreNavigationSession accepts valid idle Android response', async () => {
+    Object.defineProperty(Platform, 'OS', {value: 'android', configurable: true});
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      getSessionState: jest.fn().mockResolvedValue(JSON.stringify({status: 'idle'})),
+    };
+
+    const restored = await restoreNavigationSession();
+    expect(restored.status).toBe('idle');
+  });
+
   test('deny first start -> retry -> grant permission -> invokes native startNavigation with selected trip', async () => {
     Object.defineProperty(Platform, 'OS', {value: 'android', configurable: true});
     const reqSpy = jest

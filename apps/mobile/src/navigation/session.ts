@@ -458,7 +458,7 @@ export async function restoreNavigationSession(): Promise<NavigationSessionSnaps
       await persistLocalNavigationSession(parsed);
       return parsed;
     }
-    return IDLE_NAVIGATION_SESSION;
+    throw new Error('Native navigation module returned a malformed session snapshot.');
   }
 
   const local = await loadLocalNavigationSession();

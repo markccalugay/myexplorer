@@ -4,7 +4,7 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import {NativeModules, Platform, Text} from 'react-native';
+import {DeviceEventEmitter, NativeModules, Platform, Text} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import App, {NativePlannerScreen} from '../App';
 
@@ -994,7 +994,7 @@ describe('Native Home saved-trip opening & unsaved-changes protection', () => {
     Platform.OS = 'android';
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
     (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
-      getSessionState: jest.fn().mockResolvedValue('{}'),
+      getSessionState: jest.fn().mockResolvedValue(JSON.stringify({status: 'idle'})),
       startTripNavigation: jest.fn(),
       pauseNavigation: jest.fn(),
       resumeNavigation: jest.fn(),
@@ -1336,5 +1336,125 @@ describe('Native Home saved-trip opening & unsaved-changes protection', () => {
       hasText('End active or paused navigation before switching or creating a trip.'),
     ).toBe(true);
     expect(hasText('Opened saved trip')).toBe(false);
+  });
+
+  test('treats malformed native session response as a failure, preserves draft and handoff, and proceeds to unsaved-changes prompt on idle retry', async () => {
+    const navMock = (NativeModules as Record<string, any>).MyExplorerNavigation;
+    const onConsumeHandoff = jest.fn();
+    navMock.getSessionState.mockResolvedValueOnce('{malformed-json');
+
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.saved-trips') {
+        return JSON.stringify([SAVED_TRIP_FROM_HOME]);
+      }
+      if (key === 'myexplorer.mobile.draft-trip') {
+        return JSON.stringify(UNSAVED_DRAFT);
+      }
+      return null;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <NativePlannerScreen
+          handoffTrip={SAVED_TRIP_FROM_HOME}
+          handoffKey={11}
+          handoffSource="home"
+          onConsumeHandoff={onConsumeHandoff}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const {hasText, findBtn} = createHelpers(renderer!);
+    expect(hasText('Session check failed')).toBe(true);
+    expect(hasText('Makati')).toBe(true);
+    expect(hasText('Opened saved trip')).toBe(false);
+    expect(onConsumeHandoff).not.toHaveBeenCalled();
+
+    // Retry returns valid idle -> pending handoff continues through unsaved-changes confirmation
+    navMock.getSessionState.mockResolvedValueOnce(JSON.stringify({status: 'idle'}));
+
+    await ReactTestRenderer.act(async () => {
+      findBtn('Retry Session Check').props.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(hasText('Session check failed')).toBe(false);
+    expect(onConsumeHandoff).toHaveBeenCalledWith(11);
+    expect(hasText('Unsaved changes')).toBe(true);
+  });
+
+  test('ignores an older restore response arriving after newer verified session state', async () => {
+    const navMock = (NativeModules as Record<string, any>).MyExplorerNavigation;
+    const onConsumeHandoff = jest.fn();
+    let resolveOlderRestore!: (value: string) => void;
+    navMock.getSessionState.mockImplementationOnce(
+      () =>
+        new Promise<string>(resolve => {
+          resolveOlderRestore = resolve;
+        }),
+    );
+
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.saved-trips') {
+        return JSON.stringify([SAVED_TRIP_FROM_HOME]);
+      }
+      return null;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <NativePlannerScreen
+          handoffTrip={SAVED_TRIP_FROM_HOME}
+          handoffKey={12}
+          handoffSource="home"
+          onConsumeHandoff={onConsumeHandoff}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Newer verified active session arrives via native event before older restore resolves
+    await ReactTestRenderer.act(async () => {
+      DeviceEventEmitter.emit(
+        'MyExplorerNavigationStateChanged',
+        JSON.stringify({
+          sessionId: 'sess-newer',
+          tripId: 'trip-newer',
+          tripName: 'Newer Active Trip',
+          status: 'active',
+          stops: SAVED_TRIP_FROM_HOME.stops,
+        }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const {hasText} = createHelpers(renderer!);
+    expect(
+      hasText('End active or paused navigation before switching or creating a trip.'),
+    ).toBe(true);
+
+    // Older restore resolves late with idle -> must NOT replace newer active session or open trip
+    await ReactTestRenderer.act(async () => {
+      resolveOlderRestore(JSON.stringify({status: 'idle'}));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(hasText('Opened saved trip')).toBe(false);
+    expect(hasText('Newer Active Trip')).toBe(true);
   });
 });

@@ -152,18 +152,26 @@ export function NativePlannerScreen({
   const [sessionRestoreError, setSessionRestoreError] = useState<string | null>(
     null,
   );
+  const sessionSyncSeqRef = useRef(0);
   const routingProxyUrl = appConfig.routingProxyUrl?.trim() ?? '';
 
   function attemptRestoreNavigationSession() {
+    const seq = ++sessionSyncSeqRef.current;
     setSessionRestoreStatus('loading');
     setSessionRestoreError(null);
     restoreNavigationSession()
       .then(restored => {
+        if (sessionSyncSeqRef.current !== seq) {
+          return;
+        }
         setNavigationSession(restored);
         setSessionRestoreStatus('ready');
         setSessionRestoreError(null);
       })
       .catch(() => {
+        if (sessionSyncSeqRef.current !== seq) {
+          return;
+        }
         setSessionRestoreStatus('error');
         setSessionRestoreError(
           'Could not verify active navigation session. Retry before opening or switching trips.',
@@ -213,6 +221,7 @@ export function NativePlannerScreen({
 
   useEffect(() => {
     const unsubscribe = subscribeToNavigationUpdates(snapshot => {
+      sessionSyncSeqRef.current += 1;
       setNavigationSession(snapshot);
       setSessionRestoreStatus('ready');
       setSessionRestoreError(null);
@@ -1886,14 +1895,19 @@ function App() {
   );
   const [dismissedNoticeKey, setDismissedNoticeKey] = useState<string | null>(null);
   const hasAutoRestoredRef = useRef(false);
+  const appSessionSyncSeqRef = useRef(0);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
       return undefined;
     }
     const syncSession = (allowAutoRestore: boolean) => {
+      const seq = ++appSessionSyncSeqRef.current;
       restoreNavigationSession()
         .then(restored => {
+          if (appSessionSyncSeqRef.current !== seq) {
+            return;
+          }
           setNavigationSession(restored);
           if (allowAutoRestore && !hasAutoRestoredRef.current) {
             hasAutoRestoredRef.current = true;
@@ -1907,6 +1921,7 @@ function App() {
     };
 
     const unsubscribe = subscribeToNavigationUpdates(snapshot => {
+      appSessionSyncSeqRef.current += 1;
       setNavigationSession(snapshot);
     });
     syncSession(true);
