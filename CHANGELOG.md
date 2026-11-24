@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- 2026-11-24: Fixed saved-trip data-loss risk when opening a saved trip from `#84` `NativeHomeScreen` ([`apps/mobile/App.tsx`](apps/mobile/App.tsx), [`apps/mobile/__tests__/App.test.tsx`](apps/mobile/__tests__/App.test.tsx)):
+  - **Root cause & fix:** Added `handoffSource: 'web' | 'home'` and `lastProcessedHandoffKeyRef` in `NativePlannerScreen` so saved trips opened from `NativeHomeScreen` route through `queueOrRunAction({type: 'open-saved', tripId})` instead of the web-handoff replacement path—preserving unsaved-draft confirmation (**Keep Editing** / **Discard Changes** / **Save & Continue**), active/paused navigation lock, corrupt-recovery backup protection, and accurate wording (`Opened saved trip "<Name>" (<N> stops).` for Home vs. `Loaded "<Name>" (<N> stops) from web.` for actual web handoffs).
+  - **Verification:** Mobile Jest (`11 suites, 52/52` including 5 new tests in `apps/mobile/__tests__/App.test.tsx`), `tsc --noEmit` (`0` errors), and mobile ESLint (`0` errors, `1` pre-existing warning in `report.js`) passed. No Android native code changed. Physical Samsung, emulator, Android Auto DHU, and vehicle testing remain `NOT TESTED`.
+
 ### Added
 - 2026-11-24: Implemented `#84` Milestone 1 native phone Home preview (`NativeHomeScreen` in [`apps/mobile/src/home/NativeHomeScreen.tsx`](apps/mobile/src/home/NativeHomeScreen.tsx), [`apps/mobile/src/home/homeNavigation.ts`](apps/mobile/src/home/homeNavigation.ts), wired into [`apps/mobile/App.tsx`](apps/mobile/App.tsx) and gated behind `__DEV__` in [`apps/mobile/src/web/WebExperienceScreen.tsx`](apps/mobile/src/web/WebExperienceScreen.tsx)):
   - **Capabilities & safeguards:** Provides **Plan a trip** (opening `NativePlannerScreen` with `#83` place search and stop management), **Return to current trip** (reusing authoritative `navigationSession` / `#82` corrupt-recovery / `draftTrip` state without duplicating state or discarding `corrupt_snapshot_backup_json`), **Saved Trips** access (preserving `Trip.convoy` metadata), and **App Info & Legal / Support** summaries (`getRuntimeAppInfo`, bundled Privacy/Terms/Attribution/Permissions/Support summaries), with predictable Back navigation (`NativePlannerScreen` <-> `NativeHomeScreen` <-> `WebExperienceScreen`).

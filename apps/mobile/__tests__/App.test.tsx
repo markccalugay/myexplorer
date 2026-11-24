@@ -179,6 +179,9 @@ test('launches web experience on Android, shows runtime version in hamburger App
     await ReactTestRenderer.act(async () => {
       await Promise.resolve();
       await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
     const webView = renderer!.root.findByProps({testID: 'mock-webview'});
@@ -212,6 +215,9 @@ test('launches web experience on Android, shows runtime version in hamburger App
     });
 
     await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -252,6 +258,9 @@ test('auto-restores active/paused trip on Android launch, stays on web for cance
       renderer = ReactTestRenderer.create(<App />);
     });
     await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -299,6 +308,9 @@ test('auto-restores active/paused trip on Android launch, stays on web for cance
       canceledRenderer = ReactTestRenderer.create(<App />);
     });
     await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -374,6 +386,9 @@ test('preserves conflicting draft across app restart, surfaces both choices with
     await ReactTestRenderer.act(async () => {
       await Promise.resolve();
       await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
     expect(renderer1!.root.findByProps({children: 'Trip recovery conflict'})).toBeTruthy();
@@ -398,6 +413,9 @@ test('preserves conflicting draft across app restart, surfaces both choices with
       renderer2 = ReactTestRenderer.create(<App />);
     });
     await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -442,6 +460,9 @@ test('preserves conflicting draft across app restart, surfaces both choices with
       renderer3 = ReactTestRenderer.create(<App />);
     });
     await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -524,6 +545,9 @@ test('conflict recovery preserves existing saved trips with colliding IDs, handl
     await ReactTestRenderer.act(async () => {
       await Promise.resolve();
       await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
     const useActiveText1 = renderer1!.root.findByProps({children: 'Use Active Trip'});
@@ -574,6 +598,9 @@ test('conflict recovery preserves existing saved trips with colliding IDs, handl
       renderer2 = ReactTestRenderer.create(<App />);
     });
     await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -630,6 +657,9 @@ test('searches places without coordinates, adds stops in order, reorders, remove
       renderer = ReactTestRenderer.create(<NativePlannerScreen />);
     });
     await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -799,6 +829,9 @@ test('prevents stale/out-of-order search results, preserves destination on inter
     await ReactTestRenderer.act(async () => {
       await Promise.resolve();
       await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
     const hasText = (expected: string) =>
@@ -934,4 +967,241 @@ test('prevents stale/out-of-order search results, preserves destination on inter
   } finally {
     Platform.OS = originalOs;
   }
+});
+
+describe('Native Home saved-trip opening & unsaved-changes protection', () => {
+  const SAVED_TRIP_FROM_HOME = {
+    id: 'saved-home-1',
+    name: 'Tagaytay Escape',
+    stops: [
+      {id: 's1', name: 'Manila', location: {lat: 14.5995, lng: 120.9842}, type: 'start' as const},
+      {id: 's2', name: 'Tagaytay', location: {lat: 14.1153, lng: 120.9621}, type: 'destination' as const},
+    ],
+  };
+
+  const UNSAVED_DRAFT = {
+    id: 'draft-unsaved-1',
+    name: 'Unsaved Weekend Draft',
+    stops: [
+      {id: 'd1', name: 'Makati', location: {lat: 14.5547, lng: 121.0244}, type: 'start' as const},
+    ],
+  };
+
+  const originalOs = Platform.OS;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Platform.OS = 'android';
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    (NativeModules as Record<string, unknown>).MyExplorerNavigation = {
+      getSessionState: jest.fn().mockResolvedValue('{}'),
+      startTripNavigation: jest.fn(),
+      pauseNavigation: jest.fn(),
+      resumeNavigation: jest.fn(),
+      stopNavigation: jest.fn(),
+      discardCorruptRecoverySession: jest.fn(),
+      addListener: jest.fn(),
+      removeListeners: jest.fn(),
+    };
+  });
+
+  afterEach(() => {
+    Platform.OS = originalOs;
+    delete (NativeModules as Record<string, unknown>).MyExplorerNavigation;
+  });
+
+  function createHelpers(renderer: ReactTestRenderer.ReactTestRenderer) {
+    const allText = () =>
+      renderer.root
+        .findAllByType(Text)
+        .map(n =>
+          Array.isArray(n.props.children)
+            ? n.props.children.join('')
+            : String(n.props.children ?? ''),
+        );
+    const hasText = (substr: string) => allText().some(t => t.includes(substr));
+    const findBtn = (label: string) =>
+      renderer.root.findAll(
+        n => n.props?.accessibilityRole === 'button' && n.props?.children?.props?.children === label,
+      )[0];
+    return {hasText, findBtn};
+  }
+
+  test('opens a saved trip from Native Home immediately when there is no unsaved draft', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.saved-trips') {
+        return JSON.stringify([SAVED_TRIP_FROM_HOME]);
+      }
+      return null;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <NativePlannerScreen
+          handoffTrip={SAVED_TRIP_FROM_HOME}
+          handoffKey={1}
+          handoffSource="home"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const {hasText} = createHelpers(renderer!);
+    expect(hasText('Opened saved trip "Tagaytay Escape" (2 stops).')).toBe(true);
+    expect(hasText('from web')).toBe(false);
+    expect(hasText('Unsaved changes')).toBe(false);
+  });
+
+  test('prompts for unsaved draft when opening a saved trip from Home and preserves draft on cancel', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.saved-trips') {
+        return JSON.stringify([SAVED_TRIP_FROM_HOME]);
+      }
+      if (key === 'myexplorer.mobile.draft-trip') {
+        return JSON.stringify(UNSAVED_DRAFT);
+      }
+      return null;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <NativePlannerScreen
+          handoffTrip={SAVED_TRIP_FROM_HOME}
+          handoffKey={1}
+          handoffSource="home"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const {hasText, findBtn} = createHelpers(renderer!);
+    expect(hasText('Unsaved changes')).toBe(true);
+    expect(hasText('Opened saved trip')).toBe(false);
+
+    await ReactTestRenderer.act(async () => {
+      findBtn('Keep Editing').props.onPress();
+    });
+
+    expect(hasText('Unsaved changes')).toBe(false);
+    expect(hasText('Makati')).toBe(true);
+    expect(
+      (AsyncStorage.setItem as jest.Mock).mock.calls.some(
+        ([k, v]) => k === 'myexplorer.mobile.draft-trip' && String(v).includes('Unsaved Weekend Draft'),
+      ),
+    ).toBe(true);
+  });
+
+  test('opens chosen saved trip from Home after confirming Discard Changes on unsaved draft', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.saved-trips') {
+        return JSON.stringify([SAVED_TRIP_FROM_HOME]);
+      }
+      if (key === 'myexplorer.mobile.draft-trip') {
+        return JSON.stringify(UNSAVED_DRAFT);
+      }
+      return null;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <NativePlannerScreen
+          handoffTrip={SAVED_TRIP_FROM_HOME}
+          handoffKey={1}
+          handoffSource="home"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const {hasText, findBtn} = createHelpers(renderer!);
+    expect(hasText('Unsaved changes')).toBe(true);
+
+    await ReactTestRenderer.act(async () => {
+      findBtn('Discard Changes').props.onPress();
+    });
+
+    expect(hasText('Opened saved trip "Tagaytay Escape" (2 stops).')).toBe(true);
+    expect(hasText('Tagaytay')).toBe(true);
+    expect(hasText('from web')).toBe(false);
+  });
+
+  test('preserves active navigation and corrupt-recovery protections when opening a saved trip from Home', async () => {
+    const navMock = (NativeModules as Record<string, any>).MyExplorerNavigation;
+    navMock.getSessionState.mockResolvedValue(
+      JSON.stringify({
+        sessionId: 'sess-active',
+        tripId: 'trip-active',
+        tripName: 'Active Trip',
+        status: 'active',
+        stops: SAVED_TRIP_FROM_HOME.stops,
+        hasCorruptRecovery: true,
+        recoveryError: 'Corrupt recovery payload preserved.',
+      }),
+    );
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'myexplorer.mobile.saved-trips') {
+        return JSON.stringify([SAVED_TRIP_FROM_HOME]);
+      }
+      return null;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <NativePlannerScreen
+          handoffTrip={SAVED_TRIP_FROM_HOME}
+          handoffKey={1}
+          handoffSource="home"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const {hasText} = createHelpers(renderer!);
+    expect(
+      hasText('End active or paused navigation before switching or creating a trip.'),
+    ).toBe(true);
+    expect(hasText('Opened saved trip')).toBe(false);
+    expect(navMock.discardCorruptRecoverySession).not.toHaveBeenCalled();
+  });
+
+  test('preserves web handoff wording for actual web handoffs', async () => {
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <NativePlannerScreen
+          handoffTrip={SAVED_TRIP_FROM_HOME}
+          handoffKey={1}
+          handoffSource="web"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const {hasText} = createHelpers(renderer!);
+    expect(hasText('Loaded "Tagaytay Escape" (2 stops) from web.')).toBe(true);
+  });
 });

@@ -103,11 +103,13 @@ export function NativePlannerScreen({
   backLabel = 'Explore (Web)',
   handoffTrip,
   handoffKey,
+  handoffSource = 'web',
 }: {
   onBackToExplore?: () => void;
   backLabel?: string;
   handoffTrip?: Trip | null;
   handoffKey?: number;
+  handoffSource?: 'web' | 'home';
 }) {
   const isDarkMode = useColorScheme() === 'dark';
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -137,14 +139,29 @@ export function NativePlannerScreen({
     message: string;
   } | null>(null);
   const [dismissedConflictKey, setDismissedConflictKey] = useState<string | null>(null);
+  const lastProcessedHandoffKeyRef = useRef(0);
   const [routeState, setRouteState] = useState<RouteState>(createInitialRouteState);
   const [navigationSession, setNavigationSession] = useState<NavigationSessionSnapshot>(
     IDLE_NAVIGATION_SESSION,
   );
+  const [hasRestoredNavSession, setHasRestoredNavSession] = useState(
+    Platform.OS !== 'android',
+  );
   const routingProxyUrl = appConfig.routingProxyUrl?.trim() ?? '';
 
   useEffect(() => {
-    if (!hasHydrated || !handoffTrip || !handoffKey) {
+    if (
+      !hasHydrated ||
+      !hasRestoredNavSession ||
+      !handoffTrip ||
+      !handoffKey ||
+      lastProcessedHandoffKeyRef.current === handoffKey
+    ) {
+      return;
+    }
+    lastProcessedHandoffKeyRef.current = handoffKey;
+    if (handoffSource === 'home') {
+      queueOrRunAction({type: 'open-saved', tripId: handoffTrip.id});
       return;
     }
     if (isNavigationSessionInProgress(navigationSession)) {
@@ -161,7 +178,8 @@ export function NativePlannerScreen({
     setValidationMessage(
       `Loaded "${nextTrip.name}" (${nextTrip.stops.length} stops) from web.`,
     );
-  }, [hasHydrated, handoffKey, handoffTrip, navigationSession]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasHydrated, hasRestoredNavSession, handoffKey, handoffSource, handoffTrip, navigationSession]);
 
   useEffect(() => {
     const unsubscribe = subscribeToNavigationUpdates(snapshot => {
@@ -171,7 +189,10 @@ export function NativePlannerScreen({
       .then(restored => {
         setNavigationSession(restored);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        setHasRestoredNavSession(true);
+      });
     const appStateSub = AppState.addEventListener('change', nextState => {
       if (nextState === 'active') {
         restoreNavigationSession()
@@ -408,6 +429,9 @@ export function NativePlannerScreen({
     setTripBaselineSnapshot(normalizeTrip(nextTrip));
     setStopDraft(EMPTY_STOP_DRAFT);
     setRouteState(getRouteStateForTrip(nextTrip));
+    setValidationMessage(
+      `Opened saved trip "${nextTrip.name}" (${nextTrip.stops.length} stops).`,
+    );
   }
 
   function discardPendingAction() {
@@ -1805,6 +1829,7 @@ function App() {
     useState<NativeReturnTarget>('web');
   const [handoffTrip, setHandoffTrip] = useState<Trip | null>(null);
   const [handoffKey, setHandoffKey] = useState(0);
+  const [handoffSource, setHandoffSource] = useState<'web' | 'home'>('web');
   const [navigationSession, setNavigationSession] = useState<NavigationSessionSnapshot>(
     IDLE_NAVIGATION_SESSION,
   );
@@ -1884,6 +1909,7 @@ function App() {
           onOpenNativePlanner={trip => {
             if (trip) {
               setHandoffTrip(trip);
+              setHandoffSource('web');
               setHandoffKey(k => k + 1);
             }
             setNativeReturnTarget('web');
@@ -1911,6 +1937,7 @@ function App() {
           }}
           onOpenSavedTrip={trip => {
             setHandoffTrip(trip);
+            setHandoffSource('home');
             setHandoffKey(k => k + 1);
             setNativeReturnTarget('home');
             setScreen('native');
@@ -1933,6 +1960,7 @@ function App() {
     <NativePlannerScreen
       handoffTrip={handoffTrip}
       handoffKey={handoffKey}
+      handoffSource={handoffSource}
       backLabel={nativeReturnTarget === 'home' ? 'Back to Home' : 'Explore (Web)'}
       onBackToExplore={
         plannerBackTarget ? () => setScreen(plannerBackTarget) : undefined
